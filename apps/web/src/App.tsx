@@ -75,7 +75,7 @@ function App() {
 
         <div className="rail-foot">
           <span className="rail-pulse" aria-hidden="true" />
-          Private network
+          http://127.0.0.1:5173
           <small>Phase 1 / v0.1</small>
         </div>
       </aside>
@@ -83,8 +83,8 @@ function App() {
       <main className="main-content" id="overview">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Personal infrastructure</p>
-            <h1>Overview</h1>
+            <p className="eyebrow">Cloud</p>
+            <h1>Dashboard</h1>
           </div>
           <div className="topbar-actions">
             <span className="last-check">
@@ -125,7 +125,7 @@ function DashboardView({ dashboard }: { dashboard: Dashboard }) {
             <span />
           </div>
           <div>
-            <p className="section-label">Primary system</p>
+            <p className="section-label">Server</p>
             <div className="system-title-row">
               <h2 id="system-heading">{system?.hostname ?? "Ark"}</h2>
               <StatusPill state={systemHealth?.state ?? "unavailable"} />
@@ -140,7 +140,7 @@ function DashboardView({ dashboard }: { dashboard: Dashboard }) {
         <div className="system-uptime">
           <span>Uptime</span>
           <strong>{system ? formatUptime(system.uptime_seconds) : "--"}</strong>
-          <small>{system ? "API runtime view" : "no telemetry"}</small>
+          <small>{system ? "API runtime" : "no telemetry"}</small>
         </div>
       </section>
 
@@ -149,7 +149,7 @@ function DashboardView({ dashboard }: { dashboard: Dashboard }) {
         aria-label="System resource utilization"
       >
         <MetricCard
-          label="CPU utilization"
+          label="CPU"
           value={system?.cpu_percent ?? null}
           detail={system ? `${system.cpu_count} logical cores` : "Unavailable"}
         />
@@ -170,8 +170,8 @@ function DashboardView({ dashboard }: { dashboard: Dashboard }) {
         aria-labelledby="services-heading"
       >
         <PanelHeading
-          eyebrow="Control plane"
-          title="Service health"
+          eyebrow="Control panel"
+          title="Services"
           aside={`${dashboard.integrations.length + 2} checks`}
           id="services-heading"
         />
@@ -183,7 +183,7 @@ function DashboardView({ dashboard }: { dashboard: Dashboard }) {
           />
           <ServiceRow
             name="PostgreSQL"
-            detail="Primary data store"
+            detail="Database"
             state={
               dashboard.platform.database === "connected"
                 ? "healthy"
