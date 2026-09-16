@@ -54,9 +54,66 @@ export type Dashboard = {
     message: string;
     collected_at: string;
   };
+  google_drive: GoogleDriveSummary;
   integrations: IntegrationHealth[];
   generated_at: string;
 };
+
+export type GoogleDriveSummary = {
+  state: IntegrationState;
+  account_email: string | null;
+  account_name: string | null;
+  used_bytes: number | null;
+  total_bytes: number | null;
+  available_bytes: number | null;
+  percent: number | null;
+  message: string;
+  checked_at: string;
+  web_url: string;
+};
+
+export type AuthSession = {
+  authenticated: boolean;
+  username: string | null;
+  csrf_token: string | null;
+};
+
+async function apiResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as {
+      detail?: string;
+    } | null;
+    throw new Error(payload?.detail ?? "Ark API request failed.");
+  }
+  return (await response.json()) as T;
+}
+
+export async function fetchSession(): Promise<AuthSession> {
+  return apiResponse<AuthSession>(await fetch("/api/auth/session"));
+}
+
+export async function login(
+  username: string,
+  password: string,
+): Promise<AuthSession> {
+  return apiResponse<AuthSession>(
+    await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    }),
+  );
+}
+
+export async function logout(csrfToken: string): Promise<void> {
+  const response = await fetch("/api/auth/logout", {
+    method: "POST",
+    headers: { "X-CSRF-Token": csrfToken },
+  });
+  if (!response.ok && response.status !== 204) {
+    throw new Error("Unable to log out.");
+  }
+}
 
 export async function fetchDashboard(signal: AbortSignal): Promise<Dashboard> {
   const response = await fetch("/api/dashboard", { signal });
@@ -64,4 +121,25 @@ export async function fetchDashboard(signal: AbortSignal): Promise<Dashboard> {
     throw new Error("Ark API could not assemble the dashboard.");
   }
   return (await response.json()) as Dashboard;
+}
+
+export async function refreshGoogleDrive(
+  csrfToken: string,
+): Promise<GoogleDriveSummary> {
+  return apiResponse<GoogleDriveSummary>(
+    await fetch("/api/integrations/google-drive/refresh", {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken },
+    }),
+  );
+}
+
+export async function disconnectGoogleDrive(csrfToken: string): Promise<void> {
+  const response = await fetch("/api/integrations/google-drive/disconnect", {
+    method: "POST",
+    headers: { "X-CSRF-Token": csrfToken },
+  });
+  if (response.status !== 204) {
+    await apiResponse(response);
+  }
 }

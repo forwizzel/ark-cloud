@@ -41,6 +41,18 @@ const dashboard: Dashboard = {
     message: "Add a Tailscale access token to enable device status.",
     collected_at: "2026-09-13T12:00:00Z",
   },
+  google_drive: {
+    state: "not_configured",
+    account_email: null,
+    account_name: null,
+    used_bytes: null,
+    total_bytes: null,
+    available_bytes: null,
+    percent: null,
+    message: "Connect a Google Drive account to enable Drive status.",
+    checked_at: "2026-09-13T12:00:00Z",
+    web_url: "https://drive.google.com/",
+  },
   integrations: [
     {
       id: "system",
@@ -66,23 +78,36 @@ afterEach(() => {
 });
 
 test("renders normalized system and integration health", async () => {
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(
-    new Response(JSON.stringify(dashboard), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }),
-  );
+  vi.spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          authenticated: true,
+          username: "ark",
+          csrf_token: "csrf",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    )
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify(dashboard), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
 
   render(<App />);
 
-  expect(screen.getByText("Reading Ark telemetry")).toBeInTheDocument();
   expect(
     await screen.findByRole("heading", { name: "Ark" }),
   ).toBeInTheDocument();
   expect(screen.getByText("4d 13h")).toBeInTheDocument();
   expect(screen.getByText("12%")).toBeInTheDocument();
   expect(screen.getByText("PostgreSQL")).toBeInTheDocument();
-  expect(screen.getAllByText("Not configured")).toHaveLength(3);
+  expect(screen.getAllByText("Not configured")).toHaveLength(5);
 });
 
 test("renders normalized Tailscale devices", async () => {
@@ -106,12 +131,26 @@ test("renders normalized Tailscale devices", async () => {
       ],
     },
   };
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(
-    new Response(JSON.stringify(withDevice), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }),
-  );
+  vi.spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          authenticated: true,
+          username: "ark",
+          csrf_token: "csrf",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    )
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify(withDevice), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
 
   render(<App />);
 

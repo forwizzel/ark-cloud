@@ -31,9 +31,18 @@ Status: implemented.
 The Phase 1 security review retains loopback-only binding by default. Authentication and
 HTTPS are still required before Ark Cloud is treated as more than a trusted private service.
 
+## Phase 2: Version 0.2
+
+Status: implemented.
+
+- Local single-user session authentication with CSRF protection
+- Optional server-side Google OAuth connection and encrypted refresh-token persistence
+- Normalized Google Drive connection health and storage quota on the dashboard
+- Google Drive remains the file manager and source of truth; Ark Cloud never proxies file content
+
 ## Later Direction
 
-1. Private file storage with path traversal protections and access control.
+1. Optional richer external-storage integrations when a concrete control-plane need exists.
 2. Immich status and metadata integration rather than custom photo management.
 3. Backup monitoring with documented and tested restoration.
 4. Safe Vaultwarden or Bitwarden metadata only, never custom password cryptography.

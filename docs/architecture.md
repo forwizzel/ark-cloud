@@ -102,11 +102,24 @@ size, maps only approved fields, and never returns raw third-party payloads. Dev
 uses `connectedToControl` when Tailscale provides it. For older or partial responses without
 that boolean, version 0.1 falls back to a `lastSeen` window of five minutes.
 
+This server-side integration is independent of browser network access. The web container is
+published on loopback by default, while Tailscale Serve can proxy that local port to authorized
+tailnet devices. The development environment uses rootless Docker, so publishing the port
+directly on the host's `100.x.y.z` Tailscale address is not supported. Tailscale provides a
+network boundary only; it does not replace Ark Cloud application authentication.
+
 ## Deferred Decisions
 
-- Authentication requires a dedicated design review before remote use beyond trusted
-  development access.
+- Multi-user authentication and authorization require a dedicated design review. Version 0.2 has
+  a deliberately narrow local single-user session boundary.
 - Caddy and HTTPS belong to deployment work, not the local scaffold.
 - Async database access is not justified by the Phase 0 workload. FastAPI safely runs the
   synchronous route in its worker thread pool.
 - Redis, workers, queues, WebSockets, and microservices have no current use case.
+
+## Google Drive Integration
+
+Google Drive remains the storage and file-management system. The API uses a server-side OAuth
+web flow to request metadata-only access, encrypts its refresh token before PostgreSQL storage,
+and caches normalized account/quota status. Browser clients receive no Google credentials or raw
+upstream responses. Ark Cloud does not browse, upload, download, export, or modify Drive files.

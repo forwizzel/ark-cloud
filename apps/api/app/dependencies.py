@@ -1,8 +1,12 @@
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy.orm import Session
 
+from app.auth.service import SESSION_COOKIE, Principal, get_session, validate_csrf
 from app.core.config import Settings, get_settings
+from app.core.database import get_db_session
+from app.integrations.google_drive import GoogleDriveIntegration
 from app.integrations.system import SystemIntegration
 from app.integrations.tailscale import TailscaleIntegration
 
@@ -17,3 +21,51 @@ def get_tailscale_integration(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> TailscaleIntegration:
     return TailscaleIntegration(settings)
+
+
+def get_google_drive_integration(
+    settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[Session, Depends(get_db_session)],
+) -> GoogleDriveIntegration:
+    return GoogleDriveIntegration(settings, db)
+
+
+def get_optional_principal(
+    request: Request,
+    db: Annotated[Session, Depends(get_db_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Principal | None:
+    if not settings.auth_is_configured:
+        return None
+    session = get_session(db, settings, request.cookies.get(SESSION_COOKIE))
+    if session is None:
+        return None
+    return Principal(id=session.principal_id, username=session.principal_id, session_id=session.id)
+
+
+def require_principal(
+    principal: Annotated[Principal | None, Depends(get_optional_principal)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Principal:
+    if not settings.auth_is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication is not configured.",
+        )
+    if principal is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required."
+        )
+    return principal
+
+
+def require_csrf(
+    request: Request,
+    principal: Annotated[Principal, Depends(require_principal)],
+    db: Annotated[Session, Depends(get_db_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Principal:
+    session = get_session(db, settings, request.cookies.get(SESSION_COOKIE))
+    if session is None or not validate_csrf(settings, session, request.headers.get("X-CSRF-Token")):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF validation failed.")
+    return principal

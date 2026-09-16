@@ -46,8 +46,17 @@ evaluated before deployment.
 ## Network Exposure
 
 The default port mapping is `127.0.0.1:5173:5173`, so only applications on Ark can connect.
-For private remote development, bind specifically to Ark's Tailscale IP. Avoid `0.0.0.0`,
-which listens on every host interface, and do not open router ports.
+For private remote development, keep that loopback binding and use Tailscale Serve to proxy the
+port through the tailnet:
+
+```bash
+sudo tailscale serve --bg http://127.0.0.1:5173
+```
+
+This is the supported approach for the rootless Docker development environment. Direct binding
+to Ark's `100.x.y.z` Tailscale address can fail because the rootless Docker networking namespace
+does not own the host interface. Avoid `0.0.0.0`, which listens on every host interface, and do
+not open router ports.
 
 When the integration is configured, authenticated Tailscale requests are initiated by
 unauthenticated dashboard clients and normalized device inventory is visible to every client
@@ -87,3 +96,16 @@ initial development image but do not lock every transitive package.
 - Add audit events, backup encryption, restoration tests, dependency scanning, and recovery
   documentation.
 - Review CORS before adding any cross-origin client; keep explicit origins rather than `*`.
+
+## Google Drive And Sessions
+
+- Dashboard and integration routes require a local server-side session. The session cookie is
+  HttpOnly and SameSite; mutations also require a session-bound CSRF token.
+- Configure a unique Argon2id password hash and random session secret in ignored `.env`, not in
+  source control. Set `ARK_COOKIE_SECURE=true` whenever access is served over HTTPS.
+- Google OAuth client credentials and Fernet encryption key remain server-side. Refresh tokens are
+  encrypted before database storage and are never returned to the browser or written to logs.
+- The OAuth callback validates a short-lived state value bound to the local session, then redirects
+  immediately so authorization parameters do not remain in the browser URL.
+- Ark Cloud requests metadata-only Drive access for account/quota health. It is not a Drive file
+  manager and never proxies file content.

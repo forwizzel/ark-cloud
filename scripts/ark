@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+usage() {
+    cat <<'EOF'
+Usage: ./scripts/ark <command> [arguments]
+
+Commands:
+  up                         Build, recreate, and wait for the full stack
+  down                       Stop and remove the stack, preserving volumes
+  restart                    Freshly recreate the full stack, preserving volumes
+  status                     Show service status
+  health                     Check the browser-facing API health endpoint
+  logs [service]             Follow logs for all services or one service
+  exec SERVICE COMMAND...    Execute a command in a running service
+  reset-data --confirm       Remove the stack and all named volumes
+EOF
+}
+
+fail() {
+    printf 'ark: %s\n' "$1" >&2
+    exit 1
+}
+
+require_tools() {
+    command -v docker >/dev/null 2>&1 || fail "Docker is required."
+    docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is required."
+    command -v curl >/dev/null 2>&1 || fail "curl is required for health checks."
+}
+
+require_env() {
+    [[ -f "$ROOT/.env" ]] || fail "Missing .env. Run: cp .env.example .env"
+}
+
+compose() {
+    # Loopback is the supported and safe published address. Use Tailscale Serve for remote access.
+    ARK_BIND_ADDRESS=127.0.0.1 docker compose "$@"
+}
+
+validate_compose() {
+    compose config --quiet || fail "Compose configuration is invalid. Check .env and compose.yaml."
+}
+
+prepare() {
+    require_tools
+    require_env
+    validate_compose
+}
+
+up() {
+    prepare
+    compose up --build --force-recreate --remove-orphans --detach --wait
+    health
+}
+
+down() {
+    prepare
+    compose down --remove-orphans
+}
+
+restart() {
+    down
+    up
+}
+
+status() {
+    prepare
+    compose ps
+}
+
+health() {
+    prepare
+    local binding port
+    binding="$(compose port web 5173 2>/dev/null || true)"
+    [[ -n "$binding" ]] || fail "The web service is not publishing port 5173. Run: ./scripts/ark up"
+    port="${binding##*:}"
+    curl --fail --show-error "http://127.0.0.1:${port}/api/health"
+    printf '\n'
+}
+
+logs() {
+    prepare
+    compose logs --follow --tail=200 "$@"
+}
+
+exec_service() {
+    prepare
+    [[ "$#" -ge 2 ]] || fail "Usage: ./scripts/ark exec SERVICE COMMAND..."
+    compose exec "$@"
+}
+
+reset_data() {
+    [[ "${1:-}" == "--confirm" && "$#" -eq 1 ]] || fail "This destroys PostgreSQL data. Use: ./scripts/ark reset-data --confirm"
+    prepare
+    printf 'Removing containers, networks, and named volumes...\n'
+    compose down --volumes --remove-orphans
+}
+
+main() {
+    local command="${1:-}"
+    shift || true
+
+    case "$command" in
+        up) up "$@" ;;
+        down) down "$@" ;;
+        restart) restart "$@" ;;
+        status) status "$@" ;;
+        health) health "$@" ;;
+        logs) logs "$@" ;;
+        exec) exec_service "$@" ;;
+        reset-data) reset_data "$@" ;;
+        help|-h|--help) usage ;;
+        *) usage >&2; exit 2 ;;
+    esac
+}
+
+main "$@"

@@ -3,7 +3,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.auth import router as auth_router
 from app.api.dashboard import router as dashboard_router
+from app.api.google_drive import router as google_drive_router
 from app.api.health import router as health_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
@@ -34,6 +36,8 @@ def create_app() -> FastAPI:
     )
     application.include_router(health_router)
     application.include_router(dashboard_router)
+    application.include_router(auth_router)
+    application.include_router(google_drive_router)
     return application
 
 

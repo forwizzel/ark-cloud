@@ -55,9 +55,23 @@ class TailscaleSummary(BaseModel):
     collected_at: datetime
 
 
+class GoogleDriveSummary(BaseModel):
+    state: IntegrationState
+    account_email: str | None = None
+    account_name: str | None = None
+    used_bytes: int | None = Field(default=None, ge=0)
+    total_bytes: int | None = Field(default=None, ge=0)
+    available_bytes: int | None = Field(default=None, ge=0)
+    percent: float | None = Field(default=None, ge=0, le=100)
+    message: str
+    checked_at: datetime
+    web_url: str = "https://drive.google.com/"
+
+
 class DashboardResponse(BaseModel):
     platform: HealthResponse
     system: SystemSummary | None
     tailscale: TailscaleSummary
+    google_drive: GoogleDriveSummary
     integrations: list[IntegrationHealth]
     generated_at: datetime

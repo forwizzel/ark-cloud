@@ -56,6 +56,52 @@ a:focus-visible {
   outline-offset: 3px;
 }
 
+.auth-frame {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-panel {
+  display: grid;
+  width: min(100%, 380px);
+  gap: 16px;
+  padding: 34px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.login-panel label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.login-panel input {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+.auth-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+
+.logout-button,
+.quiet-button {
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: transparent;
+}
+
 .app-frame {
   min-height: 100vh;
   display: grid;
@@ -216,6 +262,62 @@ h1 {
   display: flex;
   align-items: center;
   gap: 22px;
+}
+
+.drive-panel {
+  min-height: 250px;
+}
+
+.drive-summary {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin: 20px 0;
+}
+
+.drive-summary p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.drive-quota {
+  display: grid;
+  gap: 10px;
+}
+
+.drive-quota > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.drive-quota strong {
+  color: var(--ink);
+}
+
+.drive-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.drive-actions button,
+.drive-link,
+.drive-connect {
+  min-height: 36px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.drive-link {
+  border: 1px solid var(--line);
+  color: var(--ink);
 }
 
 .last-check {

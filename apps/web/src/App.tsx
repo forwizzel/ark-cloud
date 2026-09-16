@@ -1,8 +1,15 @@
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 import {
   fetchDashboard,
+  fetchSession,
+  login,
+  logout,
+  refreshGoogleDrive,
+  disconnectGoogleDrive,
   type Dashboard,
+  type AuthSession,
+  type GoogleDriveSummary,
   type IntegrationState,
   type ResourceUsage,
   type TailscaleDevice,
@@ -13,6 +20,11 @@ type DashboardState =
   | { phase: "ready"; dashboard: Dashboard }
   | { phase: "error"; message: string };
 
+type SessionState =
+  | { phase: "loading" }
+  | { phase: "unauthenticated" }
+  | { phase: "authenticated"; session: AuthSession };
+
 const stateLabels: Record<IntegrationState, string> = {
   healthy: "Healthy",
   degraded: "Degraded",
@@ -21,12 +33,28 @@ const stateLabels: Record<IntegrationState, string> = {
 };
 
 function App() {
+  const [sessionState, setSessionState] = useState<SessionState>({
+    phase: "loading",
+  });
   const [dashboardState, setDashboardState] = useState<DashboardState>({
     phase: "loading",
   });
   const [requestNumber, setRequestNumber] = useState(0);
 
   useEffect(() => {
+    fetchSession()
+      .then((session) => {
+        setSessionState(
+          session.authenticated
+            ? { phase: "authenticated", session }
+            : { phase: "unauthenticated" },
+        );
+      })
+      .catch(() => setSessionState({ phase: "unauthenticated" }));
+  }, []);
+
+  useEffect(() => {
+    if (sessionState.phase !== "authenticated") return;
     const controller = new AbortController();
     fetchDashboard(controller.signal)
       .then((dashboard) => setDashboardState({ phase: "ready", dashboard }))
@@ -42,12 +70,37 @@ function App() {
         }
       });
     return () => controller.abort();
-  }, [requestNumber]);
+  }, [requestNumber, sessionState.phase]);
 
   const refresh = () => {
     setDashboardState({ phase: "loading" });
     setRequestNumber((value) => value + 1);
   };
+
+  const onLogin = (session: AuthSession) => {
+    setSessionState({ phase: "authenticated", session });
+    setDashboardState({ phase: "loading" });
+    setRequestNumber((value) => value + 1);
+  };
+
+  const onLogout = async () => {
+    if (
+      sessionState.phase !== "authenticated" ||
+      !sessionState.session.csrf_token
+    )
+      return;
+    await logout(sessionState.session.csrf_token);
+    setSessionState({ phase: "unauthenticated" });
+    setDashboardState({ phase: "loading" });
+  };
+
+  if (sessionState.phase === "loading") {
+    return <div className="auth-frame">Checking Ark session</div>;
+  }
+
+  if (sessionState.phase === "unauthenticated") {
+    return <LoginScreen onLogin={onLogin} />;
+  }
 
   return (
     <div className="app-frame">
@@ -97,6 +150,13 @@ function App() {
             <button className="refresh-button" type="button" onClick={refresh}>
               Refresh
             </button>
+            <button
+              className="logout-button"
+              type="button"
+              onClick={() => void onLogout()}
+            >
+              Log out
+            </button>
           </div>
         </header>
 
@@ -105,14 +165,26 @@ function App() {
           <ErrorDashboard message={dashboardState.message} onRetry={refresh} />
         )}
         {dashboardState.phase === "ready" && (
-          <DashboardView dashboard={dashboardState.dashboard} />
+          <DashboardView
+            dashboard={dashboardState.dashboard}
+            csrfToken={sessionState.session.csrf_token ?? ""}
+            onDashboardRefresh={refresh}
+          />
         )}
       </main>
     </div>
   );
 }
 
-function DashboardView({ dashboard }: { dashboard: Dashboard }) {
+function DashboardView({
+  dashboard,
+  csrfToken,
+  onDashboardRefresh,
+}: {
+  dashboard: Dashboard;
+  csrfToken: string;
+  onDashboardRefresh: () => void;
+}) {
   const system = dashboard.system;
   const systemHealth = dashboard.integrations.find(
     (integration) => integration.id === "system",
@@ -202,6 +274,11 @@ function DashboardView({ dashboard }: { dashboard: Dashboard }) {
       </section>
 
       <TailscalePanel tailscale={dashboard.tailscale} />
+      <GoogleDrivePanel
+        drive={dashboard.google_drive}
+        csrfToken={csrfToken}
+        onDashboardRefresh={onDashboardRefresh}
+      />
 
       <p className="scope-note">
         Metrics are the API runtime's view: CPU, memory, and uptime can be
@@ -209,6 +286,64 @@ function DashboardView({ dashboard }: { dashboard: Dashboard }) {
         dedicated host agent is planned for exact host telemetry.
       </p>
     </div>
+  );
+}
+
+function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      onLogin(await login(username, password));
+    } catch (loginError: unknown) {
+      setError(
+        loginError instanceof Error ? loginError.message : "Unable to log in.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <main className="auth-frame">
+      <form className="login-panel" onSubmit={(event) => void submit(event)}>
+        <p className="eyebrow">Ark Cloud</p>
+        <h1>Sign in</h1>
+        <label>
+          Username
+          <input
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+            autoComplete="username"
+            required
+          />
+        </label>
+        <label>
+          Password
+          <input
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete="current-password"
+            required
+          />
+        </label>
+        {error && (
+          <p className="auth-error" role="alert">
+            {error}
+          </p>
+        )}
+        <button className="refresh-button" type="submit" disabled={submitting}>
+          {submitting ? "Signing in" : "Sign in"}
+        </button>
+      </form>
+    </main>
   );
 }
 
@@ -310,6 +445,142 @@ function TailscalePanel({ tailscale }: { tailscale: Dashboard["tailscale"] }) {
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+function GoogleDrivePanel({
+  drive,
+  csrfToken,
+  onDashboardRefresh,
+}: {
+  drive: GoogleDriveSummary;
+  csrfToken: string;
+  onDashboardRefresh: () => void;
+}) {
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [acting, setActing] = useState(false);
+  const connected = drive.state === "healthy" || drive.state === "unavailable";
+
+  const refresh = async () => {
+    setActing(true);
+    setActionError(null);
+    try {
+      await refreshGoogleDrive(csrfToken);
+      onDashboardRefresh();
+    } catch (error: unknown) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Unable to refresh Google Drive.",
+      );
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const disconnect = async () => {
+    setActing(true);
+    setActionError(null);
+    try {
+      await disconnectGoogleDrive(csrfToken);
+      onDashboardRefresh();
+    } catch (error: unknown) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Unable to disconnect Google Drive.",
+      );
+    } finally {
+      setActing(false);
+    }
+  };
+
+  return (
+    <section className="drive-panel panel" aria-labelledby="drive-heading">
+      <PanelHeading
+        eyebrow="External storage"
+        title="Google Drive"
+        aside={stateLabels[drive.state]}
+        id="drive-heading"
+      />
+      <div className="drive-summary">
+        <StatusPill state={drive.state} />
+        <div>
+          <strong>
+            {drive.account_name ?? drive.account_email ?? "Google Drive"}
+          </strong>
+          <p>{drive.message}</p>
+        </div>
+      </div>
+      {drive.used_bytes !== null && drive.total_bytes !== null && (
+        <div className="drive-quota">
+          <div>
+            <span>Storage used</span>
+            <strong>
+              {formatBytes(drive.used_bytes)} / {formatBytes(drive.total_bytes)}
+            </strong>
+          </div>
+          <div
+            className="meter"
+            role="progressbar"
+            aria-label="Google Drive storage used"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={
+              drive.percent === null ? undefined : Math.round(drive.percent)
+            }
+          >
+            <span
+              style={{
+                width: `${Math.min(100, Math.max(0, drive.percent ?? 0))}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
+      {actionError && (
+        <p className="auth-error" role="alert">
+          {actionError}
+        </p>
+      )}
+      <div className="drive-actions">
+        {connected ? (
+          <>
+            <button
+              type="button"
+              className="refresh-button"
+              onClick={() => void refresh()}
+              disabled={acting}
+            >
+              Refresh
+            </button>
+            <a
+              className="drive-link"
+              href={drive.web_url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open Google Drive
+            </a>
+            <button
+              type="button"
+              className="quiet-button"
+              onClick={() => void disconnect()}
+              disabled={acting}
+            >
+              Disconnect
+            </button>
+          </>
+        ) : (
+          <a
+            className="refresh-button drive-connect"
+            href="/api/integrations/google-drive/connect"
+          >
+            Connect Google Drive
+          </a>
+        )}
+      </div>
     </section>
   );
 }

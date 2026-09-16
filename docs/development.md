@@ -22,10 +22,11 @@ out of source code.
 `ARK_SYSTEM_HOSTNAME`, `ARK_SYSTEM_OS_NAME`, and `ARK_SYSTEM_STORAGE_PATH` label the runtime
 metrics shown on the dashboard. Optional `ARK_TAILSCALE_API_KEY` and
 `ARK_TAILSCALE_TAILNET` values enable the Tailscale adapter. Leave the key blank when the
-integration is not needed.
+integration is not needed. `ARK_TAILSCALE_TAILNET=-` uses the tailnet associated with the
+API token. Keep `ARK_BIND_ADDRESS=127.0.0.1`; it is the secure default for the web port.
 
 ```bash
-docker compose up --build
+./scripts/ark up
 ```
 
 Compose performs these steps in dependency order:
@@ -44,35 +45,52 @@ the source mount unchanged. The web container compares a lockfile hash at startu
 `package.json`, `package-lock.json`, or `pyproject.toml`:
 
 ```bash
-docker compose up --build
+./scripts/ark up
 ```
 
 ## Inspect The Stack
 
 ```bash
-docker compose ps
-docker compose logs -f api
-curl http://127.0.0.1:5173/api/health
+./scripts/ark status
+./scripts/ark logs api
+./scripts/ark health
 ```
 
-`logs -f` follows new API log lines until `Ctrl+C`. The `curl` request follows the same
-web-to-API proxy path used by the React application.
+`./scripts/ark logs api` follows new API log lines until `Ctrl+C`. The health command follows
+the same web-to-API proxy path used by the React application.
+
+## Use Tailscale For Remote Access
+
+The Tailscale device integration and remote browser access are separate features. The API
+integration uses `ARK_TAILSCALE_API_KEY` and `ARK_TAILSCALE_TAILNET` to query device status.
+Remote browser access does not require exposing the Compose port on the Tailscale interface.
+
+With the default loopback binding, publish Ark Cloud through Tailscale Serve on the Ark host:
+
+```bash
+sudo tailscale serve --bg http://127.0.0.1:5173
+```
+
+Open the HTTPS hostname reported by `tailscale serve status` from a trusted tailnet device.
+Rootless Docker cannot reliably bind the published port directly to a `100.x.y.z` Tailscale
+address, and binding to `0.0.0.0` would expose the port on every host interface.
 
 ## Stop Or Reset
 
 ```bash
-docker compose down
+./scripts/ark down
 ```
 
 This removes containers and networks but preserves the named PostgreSQL volume. To delete
 all local database data and start from an empty database, use the destructive command:
 
 ```bash
-docker compose down --volumes
+./scripts/ark reset-data --confirm
 ```
 
-The `--volumes` flag permanently removes Compose-managed named volumes. Do not use it when
-the local data must be retained.
+The `--confirm` flag is required because this permanently removes Compose-managed named volumes.
+Do not use it when the local data must be retained. `./scripts/ark restart` is the normal fresh
+restart and preserves volumes.
 
 ## Tests And Static Checks
 
@@ -127,3 +145,25 @@ implicitly at application startup.
 - OpenAPI schema: <http://127.0.0.1:5173/api/openapi.json>
 
 These URLs pass through Vite because the API intentionally has no host port.
+
+## Google Drive Setup
+
+Phase 2 adds optional Google Drive status rather than file storage. Set a local username, Argon2id
+password hash, and random session secret in `.env`, then create a Google Cloud web OAuth client,
+enable the Drive API, and register the exact `ARK_GOOGLE_REDIRECT_URI`. Set
+`ARK_GOOGLE_TOKEN_ENCRYPTION_KEY` to a Fernet-compatible key. The Drive client secret, refresh
+token, and encryption key must remain in `.env`; automated tests use local response doubles and
+must never use a real Google account.
+
+Generate the password hash and token-encryption key inside the API image:
+
+```bash
+docker compose run --rm --no-deps api python -c 'from argon2 import PasswordHasher; import getpass; print(PasswordHasher().hash(getpass.getpass()))'
+docker compose run --rm --no-deps api python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+```
+
+Use a separate random value for `ARK_SESSION_SECRET`.
+
+For local HTTP development retain `ARK_COOKIE_SECURE=false`. Set it to `true` before using an HTTPS
+reverse proxy. Google Drive remains the source of truth: Ark Cloud exposes only normalized
+connection and quota status and opens Drive for all file operations.

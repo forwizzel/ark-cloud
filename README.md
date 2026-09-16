@@ -4,7 +4,7 @@ Ark Cloud is a self-hosted personal cloud control plane. It will provide one pri
 normalized view over the systems and services running on Ark without replacing mature
 specialized applications.
 
-Version 0.1 includes the Phase 0 foundation and the first Phase 1 control-plane features:
+Version 0.2 includes the Phase 0 foundation, Phase 1 infrastructure integrations, and a Phase 2 Google Drive control-plane integration:
 
 - React 19, TypeScript, and Vite web client
 - FastAPI and SQLAlchemy API
@@ -17,6 +17,7 @@ Version 0.1 includes the Phase 0 foundation and the first Phase 1 control-plane 
 - Optional server-side Tailscale device integration
 - Responsive infrastructure dashboard with partial-failure states
 - Backend and frontend tests, linting, formatting, and CI smoke tests
+- Local session authentication and optional server-side Google Drive quota status
 
 ## Quick Start
 
@@ -24,32 +25,50 @@ Requirements: Docker Engine with Docker Compose.
 
 ```bash
 cp .env.example .env
-docker compose up --build
+./scripts/ark up
 ```
 
 Before the first start, replace the example database password in both
 `POSTGRES_PASSWORD` and `ARK_DATABASE_URL`. The two values must match. Then open
 <http://127.0.0.1:5173>.
 
-`docker compose up` creates and starts the services. `--build` rebuilds the application
-images when source or dependencies change. Press `Ctrl+C` to stop attached services, or
-run `docker compose down` from another terminal.
+`./scripts/ark up` builds and recreates the complete stack, applies migrations, and waits for
+all health checks. It preserves named volumes, so changes to `.env` are applied without manually
+choosing which containers to recreate. Use `./scripts/ark restart` for a fresh full restart and
+`./scripts/ark down` for a safe shutdown.
+
+```bash
+./scripts/ark status
+./scripts/ark health
+./scripts/ark logs api
+```
+
+The lifecycle commands always force the web service onto loopback. Use Tailscale Serve for private
+remote access. `./scripts/ark reset-data --confirm` is the only lifecycle helper that removes
+named volumes and permanently deletes local PostgreSQL data.
 
 The only published port is `127.0.0.1:5173`. In the mapping
 `127.0.0.1:5173:5173`, the first address and port belong to Ark and the final port belongs
 to the web container. PostgreSQL and the API have no host port; the web development server
 proxies browser requests to them through Docker's private network.
 
-To use the development UI from another device over Tailscale, first restrict its web port to
-explicitly trusted devices with Tailscale grants. Then set `ARK_BIND_ADDRESS` in `.env` to
-Ark's Tailscale IP and restart Compose. Do not use `0.0.0.0` unless access from every host
-interface is intentional and protected by firewall rules.
+To use the development UI from another device over Tailscale, keep `ARK_BIND_ADDRESS` set to
+`127.0.0.1` and use Tailscale Serve on the Ark host. This keeps the Compose port off the host
+network interfaces and works with the rootless Docker setup:
+
+```bash
+sudo tailscale serve --bg http://127.0.0.1:5173
+tailscale serve status
+```
+
+Open the HTTPS URL shown by `tailscale serve status` from an authorized device on the tailnet.
+Review Tailscale grants before enabling access. Do not use `0.0.0.0` or open router ports.
 
 ## Verify Health
 
 ```bash
 curl http://127.0.0.1:5173/api/health
-docker compose ps
+./scripts/ark status
 ```
 
 Expected response:
@@ -66,12 +85,13 @@ OpenAPI JSON is available through the proxy at
 <http://127.0.0.1:5173/api/openapi.json>, and interactive API documentation is at
 <http://127.0.0.1:5173/api/docs>.
 
-Phase 1 read-only endpoints are:
+Authenticated control-plane endpoints include:
 
 - `GET /api/dashboard`: aggregated data used by the web dashboard
 - `GET /api/system`: normalized runtime system metrics
 - `GET /api/integrations`: health for every configured adapter
 - `GET /api/tailscale/devices`: normalized Tailscale device status
+- `GET /api/integrations/google-drive/status`: normalized Google Drive account and quota status
 
 ## Configure Tailscale
 
@@ -90,7 +110,14 @@ The shorthand tailnet ID `-` uses the tailnet associated with the token. Restart
 after changing configuration:
 
 ```bash
-docker compose up --build -d --wait
+./scripts/ark up
+```
+
+The API calls Tailscale server-side when the dashboard requests device status. The token is
+never sent to the browser. Verify the integration through the normalized endpoint:
+
+```bash
+curl http://127.0.0.1:5173/api/tailscale/devices
 ```
 
 Tailscale access tokens expire after 1 to 90 days. The API sends the token only to the fixed
