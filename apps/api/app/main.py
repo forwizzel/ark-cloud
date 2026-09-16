@@ -30,7 +30,7 @@ def create_app() -> FastAPI:
     application = FastAPI(
         title="Ark Cloud API",
         description="Private personal cloud control plane API",
-        version="0.1.0",
+        version="0.2.0",
         lifespan=lifespan,
         root_path="/api",
     )

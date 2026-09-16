@@ -129,7 +129,7 @@ function App() {
         <div className="rail-foot">
           <span className="rail-pulse" aria-hidden="true" />
           http://127.0.0.1:5173
-          <small>Phase 1 / v0.1</small>
+          <small>Phase 2 / v0.2</small>
         </div>
       </aside>
 

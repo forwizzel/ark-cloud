@@ -125,9 +125,17 @@ HTTPS Tailscale API origin and refuses redirects; it is never included in normal
 responses or browser configuration. Use the shortest practical expiration. The security
 guide documents the least-privilege path for continuous operation.
 
+## Configure Google Drive
+
+Google Drive is optional and metadata-only. It shows the connected account and storage quota;
+Ark Cloud never reads or modifies Drive files. Follow the [Google Drive setup guide](docs/development.md#google-drive-setup)
+to create a Google OAuth web client, then add its client ID, client secret, exact redirect URI,
+and a Fernet encryption key only to the ignored `.env` file. Restart the stack, sign in, and use
+the dashboard's **Connect Google Drive** action to authorize the account.
+
 ## Metric Scope
 
-Version 0.1 reads metrics directly with `psutil` inside the unprivileged API container and
+Version 0.2 reads metrics directly with `psutil` inside the unprivileged API container and
 labels them `api-runtime-view`. CPU, memory, and uptime can reflect host-global kernel data,
 while storage can reflect the container overlay or backing filesystem. These are useful
 signals, but they are not exact host or cgroup measurements. No Docker socket, host root, or
@@ -174,5 +182,6 @@ compose.yaml       Local service topology
 - [Roadmap](docs/roadmap.md)
 - [Security](docs/security.md)
 
-Ark Cloud is currently development software. Authentication is intentionally not invented
-as part of the scaffold, so keep it private and do not expose it to the public Internet.
+Ark Cloud is currently development software. It has a deliberately narrow local single-user
+session boundary, not multi-user authorization or production hardening. Keep it private and do
+not expose it to the public Internet.

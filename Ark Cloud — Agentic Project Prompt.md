@@ -6,7 +6,9 @@ Your job is to help me build this system incrementally while maintaining product
 
 Do not attempt to build the entire project in one pass.
 
-The immediate objective is to **lay the architectural and development groundwork for Ark Cloud**, establish a working local development environment, create the initial application skeleton, document the architecture, and leave the repository in a clean state from which we can begin implementing Version 0.1.
+Version 0.2 finalizes the first authenticated control-plane release: local single-user sessions,
+infrastructure status, and a metadata-only Google Drive integration. Treat the completed Phase 0
+and Phase 1 work as the foundation for later phases rather than rebuilding it.
 
 ---
 
@@ -442,42 +444,30 @@ What is your summary?
 
 ---
 
-## Phase 2 — Personal File Storage
+## Phase 2 — Google Drive Control Plane (v0.2)
 
-Add basic private file storage.
+Integrate Google Drive as the existing personal file-storage system rather than building custom
+storage.
 
-Potential features:
+Deliverables:
 
-- folder browsing
-- uploads
-- downloads
-- rename
-- delete
-- move
-- storage usage
-- file metadata
+- local single-user session authentication with CSRF protection
+- server-side Google OAuth web flow
+- encrypted refresh-token persistence
+- normalized connected-account and storage-quota status on the dashboard
+- direct link to Google Drive for all file operations
 
 Security requirements:
 
-- prevent path traversal
-- validate filenames
-- enforce access controls
-- avoid executing uploaded files
-- maintain clear separation between app data and user files
+- keep OAuth client credentials and refresh tokens server-side
+- request metadata-only Drive access
+- validate OAuth state against the local session
+- never expose raw upstream responses or proxy file content
 
-Do not prematurely attempt Dropbox-level functionality.
+Google Drive remains the file manager and source of truth. Do not add folder browsing, uploads,
+downloads, rename, delete, move, export, or content proxies to Ark Cloud.
 
-Start with reliable basic storage.
-
-Possible future improvements:
-
-- previews
-- file tagging
-- versioning
-- deduplication
-- object storage
-- WebDAV
-- external storage connectors
+Consider richer external-storage control-plane integrations only after a concrete need exists.
 
 ---
 
@@ -823,9 +813,10 @@ Use it as architectural direction.
 
 # 10. Authentication
 
-Authentication is important but should not become a giant project initially.
-
-Eventually Ark Cloud must have proper authentication even if access is restricted through Tailscale.
+Version 0.2 implements a deliberately narrow local username/password session boundary with Argon2id
+password verification, HttpOnly SameSite session cookies, CSRF protection for mutations, and
+logout. It is sufficient for the single local operator but is not a multi-user authorization
+system.
 
 Tailscale is a network security boundary, not a replacement for application authentication.
 
@@ -836,18 +827,9 @@ Potential future options:
 - OAuth/OIDC
 - Tailscale identity integration
 
-For the initial scaffolding, design the backend so authentication can be introduced cleanly.
-
-Do not invent insecure homemade authentication.
-
-When authentication is implemented:
-
-- hash passwords using a respected password hashing algorithm/library
-- secure sessions/tokens appropriately
-- never log credentials
-- protect authentication endpoints
-- support logout/session invalidation
-- consider MFA/passkeys later
+Future authentication work requires a dedicated design review. Preserve the existing local-session
+security properties, never log credentials, and consider MFA/passkeys only when there is a concrete
+multi-user requirement.
 
 ---
 

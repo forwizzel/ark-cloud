@@ -33,7 +33,7 @@ HTTPS are still required before Ark Cloud is treated as more than a trusted priv
 
 ## Phase 2: Version 0.2
 
-Status: implemented.
+Status: finalized.
 
 - Local single-user session authentication with CSRF protection
 - Optional server-side Google OAuth connection and encrypted refresh-token persistence

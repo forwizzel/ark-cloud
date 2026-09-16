@@ -13,8 +13,8 @@ Browser
    v
 Vite web container  -- /api/* proxy -->  FastAPI container
                                           |      |       |
-                                          |      |       +--> Tailscale API
-                                          |      +----------> psutil runtime metrics
+                                          |      |       +--> Google Drive API
+                                          |      +----------> Tailscale API and psutil runtime metrics
                                           +-----------------> PostgreSQL
 ```
 
@@ -75,9 +75,10 @@ class Integration(Protocol):
     def summary(self) -> IntegrationSummary: ...
 ```
 
-`SystemIntegration` and `TailscaleIntegration` implement this boundary. The dashboard route
-aggregates normalized summaries and health records; it does not parse psutil or Tailscale
-payloads. A failed or unconfigured adapter reports its own state without failing unrelated
+`SystemIntegration`, `TailscaleIntegration`, and `GoogleDriveIntegration` implement this
+boundary. The dashboard route aggregates normalized summaries and health records; it does not
+parse psutil, Tailscale, or Google payloads. Drive status is scoped to the authenticated local
+principal. A failed or unconfigured adapter reports its own state without failing unrelated
 integrations. Capabilities such as activity and search will be added only when required.
 
 ### System Integration
@@ -88,7 +89,7 @@ API process. Metrics are explicitly marked `api-runtime-view`. CPU, memory, and 
 come from host-global kernel views, while storage can describe the container overlay or
 backing filesystem. They are useful operational signals, not exact host or cgroup metrics.
 
-Version 0.1 deliberately does not mount `/`, `/proc`, the Docker socket, or privileged host
+Version 0.2 deliberately does not mount `/`, `/proc`, the Docker socket, or privileged host
 namespaces into the API. A future dedicated Ark agent can expose a narrow authenticated
 socket containing normalized host metrics. The API's System adapter can then change data
 sources without changing routes or React components.
@@ -100,7 +101,7 @@ Tailscale API origin with a server-held access token and a five-second timeout. 
 redirects so the authorization header cannot be forwarded to another origin, limits response
 size, maps only approved fields, and never returns raw third-party payloads. Device status
 uses `connectedToControl` when Tailscale provides it. For older or partial responses without
-that boolean, version 0.1 falls back to a `lastSeen` window of five minutes.
+that boolean, Ark Cloud falls back to a `lastSeen` window of five minutes.
 
 This server-side integration is independent of browser network access. The web container is
 published on loopback by default, while Tailscale Serve can proxy that local port to authorized

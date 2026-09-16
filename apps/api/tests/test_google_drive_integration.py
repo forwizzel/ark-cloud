@@ -44,7 +44,7 @@ def test_google_drive_normalizes_cached_quota(monkeypatch, db_session: Session) 
             {"access_token": "access"},
             {
                 "user": {"displayName": "Ark User", "emailAddress": "ark@example.test"},
-                "storageQuota": {"usage": "10", "limit": "100"},
+                "storageQuota": {"usage": "5000000000", "limit": "15000000000"},
             },
         ]
     )
@@ -59,8 +59,8 @@ def test_google_drive_normalizes_cached_quota(monkeypatch, db_session: Session) 
 
     assert summary.state == "healthy"
     assert summary.account_email == "ark@example.test"
-    assert summary.used_bytes == 10
-    assert summary.available_bytes == 90
+    assert summary.used_bytes == 5_000_000_000
+    assert summary.available_bytes == 10_000_000_000
 
 
 def test_google_drive_is_not_configured_without_credentials(db_session: Session) -> None:

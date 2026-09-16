@@ -2,9 +2,10 @@
 
 ## Current Security Posture
 
-Version 0.1 is a development scaffold, not a production deployment. It has no application
-authentication or authorization. Tailscale reduces network exposure but does not replace
-identity checks inside Ark Cloud. Do not publish this stack to the Internet.
+Version 0.2 is development software, not a production deployment. It has a narrow local
+single-user session boundary, not multi-user authentication or authorization. Tailscale reduces
+network exposure but does not replace identity checks inside Ark Cloud. Do not publish this stack
+to the Internet.
 
 ## Trust Boundaries
 
@@ -58,11 +59,10 @@ to Ark's `100.x.y.z` Tailscale address can fail because the rootless Docker netw
 does not own the host interface. Avoid `0.0.0.0`, which listens on every host interface, and do
 not open router ports.
 
-When the integration is configured, authenticated Tailscale requests are initiated by
-unauthenticated dashboard clients and normalized device inventory is visible to every client
-that can reach Ark Cloud. Until application authentication and rate limiting exist, keep the
-loopback default or use restrictive Tailscale grants so only explicitly trusted devices can
-reach the web port.
+When configured, Tailscale requests are initiated server-side for an authenticated dashboard
+session. Normalized device inventory is visible to the configured local user. Keep the loopback
+default or use restrictive Tailscale grants so only explicitly trusted devices can reach the web
+port.
 
 HTTPS is deferred until a reverse proxy is introduced. Plain HTTP is acceptable only for
 loopback or a deliberately reviewed private development path. Sensitive features require
@@ -86,10 +86,8 @@ initial development image but do not lock every transitive package.
 
 ## Before Production Use
 
-- Complete threat modeling and authentication architecture review.
-- Implement respected authentication and session libraries; do not invent cryptography.
-- Add authorization, secure cookies, logout and invalidation, CSRF protection where
-  applicable, strict security headers, and rate limiting.
+- Complete threat modeling and multi-user authentication/authorization architecture review.
+- Add session rotation and expiry cleanup, strict security headers, and rate limiting.
 - Terminate HTTPS at a reviewed reverse proxy.
 - Separate development and production images and remove reload behavior.
 - Use production secret storage and least-privilege database roles.

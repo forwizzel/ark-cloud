@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import BigInteger, DateTime, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -32,8 +32,8 @@ class GoogleDriveConnection(Base):
     account_name: Mapped[str | None] = mapped_column(String(320), nullable=True)
     refresh_token_encrypted: Mapped[str] = mapped_column(Text)
     granted_scopes: Mapped[str] = mapped_column(Text)
-    used_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    total_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    used_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    total_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

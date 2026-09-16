@@ -148,21 +148,36 @@ These URLs pass through Vite because the API intentionally has no host port.
 
 ## Google Drive Setup
 
-Phase 2 adds optional Google Drive status rather than file storage. Set a local username, Argon2id
-password hash, and random session secret in `.env`, then create a Google Cloud web OAuth client,
-enable the Drive API, and register the exact `ARK_GOOGLE_REDIRECT_URI`. Set
-`ARK_GOOGLE_TOKEN_ENCRYPTION_KEY` to a Fernet-compatible key. The Drive client secret, refresh
-token, and encryption key must remain in `.env`; automated tests use local response doubles and
-must never use a real Google account.
+Version 0.2 adds optional Google Drive status rather than file storage. Ark Cloud requests only
+the `https://www.googleapis.com/auth/drive.metadata.readonly` scope for account and quota health.
+It never browses, uploads, downloads, exports, or changes Drive files.
+
+1. In Google Cloud, create or select a project, configure the OAuth consent screen, and enable the
+   Google Drive API.
+2. Create an OAuth client of type **Web application**. Add the exact redirect URI from
+   `ARK_GOOGLE_REDIRECT_URI`; the default is
+   `http://127.0.0.1:5173/api/integrations/google-drive/oauth/callback`.
+3. If the consent screen is in Testing, add the Google account that will connect Drive as a test
+   user.
+4. Set `ARK_AUTH_USERNAME`, `ARK_AUTH_PASSWORD_HASH`, `ARK_SESSION_SECRET`,
+   `ARK_GOOGLE_CLIENT_ID`, `ARK_GOOGLE_CLIENT_SECRET`, and
+   `ARK_GOOGLE_TOKEN_ENCRYPTION_KEY` in ignored `.env`. Retain the redirect URI exactly as
+   registered in Google Cloud.
+5. Run `./scripts/ark up`, sign in locally, and select **Connect Google Drive** in the dashboard.
 
 Generate the password hash and token-encryption key inside the API image:
 
 ```bash
 docker compose run --rm --no-deps api python -c 'from argon2 import PasswordHasher; import getpass; print(PasswordHasher().hash(getpass.getpass()))'
 docker compose run --rm --no-deps api python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+docker compose run --rm --no-deps api python -c 'import secrets; print(secrets.token_urlsafe(32))'
 ```
 
-Use a separate random value for `ARK_SESSION_SECRET`.
+Use the three generated values respectively for `ARK_AUTH_PASSWORD_HASH`,
+`ARK_GOOGLE_TOKEN_ENCRYPTION_KEY`, and `ARK_SESSION_SECRET`. The OAuth client secret and Fernet
+key remain only in `.env`. The Google refresh token is encrypted before PostgreSQL storage; it is
+not an environment variable. Automated tests use local response doubles and must never use a real
+Google account.
 
 For local HTTP development retain `ARK_COOKIE_SECURE=false`. Set it to `true` before using an HTTPS
 reverse proxy. Google Drive remains the source of truth: Ark Cloud exposes only normalized
