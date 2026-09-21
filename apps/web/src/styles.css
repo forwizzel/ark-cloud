@@ -320,6 +320,138 @@ h1 {
   color: var(--ink);
 }
 
+.catalog-panel {
+  grid-column: 1 / -1;
+}
+
+.catalog-body {
+  padding: 24px 26px 28px;
+}
+
+.catalog-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.catalog-toolbar > div {
+  display: grid;
+  gap: 6px;
+}
+
+.catalog-toolbar strong {
+  font-size: 0.8rem;
+}
+
+.catalog-toolbar small,
+.catalog-message {
+  color: var(--muted);
+  font-size: 0.67rem;
+}
+
+.catalog-sync,
+.catalog-more {
+  min-height: 36px;
+  padding: 0 13px;
+  cursor: pointer;
+}
+
+.catalog-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.catalog-search input {
+  min-height: 42px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+.catalog-search input:focus {
+  border-color: #2d7069;
+  outline: 1px solid #2d7069;
+}
+
+.catalog-search input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.catalog-message {
+  margin: 22px 0 0;
+}
+
+.catalog-results {
+  margin-top: 22px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.catalog-result {
+  min-height: 76px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 15px;
+  align-items: center;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.catalog-result:hover {
+  background: rgba(75, 212, 192, 0.035);
+}
+
+.catalog-file-mark {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid var(--line);
+  color: var(--signal);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.54rem;
+}
+
+.catalog-result > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.catalog-result strong,
+.catalog-result small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-result strong {
+  font-size: 0.78rem;
+}
+
+.catalog-result small,
+.catalog-result-meta {
+  color: var(--faint);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.58rem;
+}
+
+.catalog-result-meta {
+  display: grid;
+  gap: 5px;
+  text-align: right;
+}
+
+.catalog-more {
+  margin-top: 18px;
+}
+
 .last-check {
   color: var(--muted);
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
@@ -968,6 +1100,27 @@ h1 {
   .integration-empty {
     min-height: 230px;
     padding: 28px 20px;
+  }
+
+  .catalog-body {
+    padding-inline: 18px;
+  }
+
+  .catalog-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .catalog-result {
+    grid-template-columns: 38px minmax(0, 1fr);
+    padding: 12px 0;
+  }
+
+  .catalog-result-meta {
+    grid-column: 2;
+    display: flex;
+    justify-content: space-between;
+    text-align: left;
   }
 }
 

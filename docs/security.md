@@ -2,7 +2,7 @@
 
 ## Current Security Posture
 
-Version 0.2 is development software, not a production deployment. It has a narrow local
+Version 0.3 is development software, not a production deployment. It has a narrow local
 single-user session boundary, not multi-user authentication or authorization. Tailscale reduces
 network exposure but does not replace identity checks inside Ark Cloud. Do not publish this stack
 to the Internet.
@@ -108,8 +108,15 @@ initial development image but do not lock every transitive package.
   source control. Set `ARK_COOKIE_SECURE=true` whenever access is served over HTTPS.
 - Google OAuth client credentials and Fernet encryption key remain server-side. Refresh tokens are
   encrypted before database storage and are never returned to the browser or written to logs.
-- The OAuth callback validates a short-lived state value bound to the local session, then redirects
-  immediately so authorization parameters do not remain in the browser URL.
-- Google Drive is the designated source of truth for user content, but Ark Cloud currently requests
-  metadata-only Drive access for account/quota health. It is not yet a Drive catalog or file manager
-  and never proxies file content.
+- The OAuth callback validates a short-lived state value bound to the local session, completes the
+  bounded token exchange and initial metadata sync, then redirects so authorization parameters do
+  not remain in the browser URL.
+- Google Drive is the designated source of truth for user content. Ark Cloud requests
+  `drive.metadata.readonly` for account/quota health and a principal-scoped catalog of files owned
+  by the account in My Drive. The database stores selected normalized metadata for filename search,
+  never file content, descriptions, owners, permissions, access tokens, or raw Google responses.
+- Initial catalog synchronization runs after OAuth connection. Manual updates require the local
+  session's CSRF token. Search and catalog status require authentication, and every database query
+  is scoped to the authenticated principal.
+- Search results contain direct Google Drive links. Ark Cloud never proxies file content or performs
+  upload, download, rename, move, export, or delete operations.

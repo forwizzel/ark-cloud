@@ -64,9 +64,9 @@ Ark Cloud uses separate storage boundaries for separate responsibilities:
 - The API container filesystem is operational storage only. Its reported disk usage describes the
   `api-runtime-view`, not Google Drive capacity or user-content storage.
 
-Version 0.2 exposes only normalized Drive connection and quota status. Establishing Drive as the
-content source of truth does not grant Ark Cloud permission to browse or modify files. Catalog and
-search capabilities require a later, explicitly reviewed phase.
+Version 0.3 exposes normalized Drive connection/quota status and a searchable index of selected My
+Drive metadata. Establishing Drive as the content source of truth does not grant Ark Cloud
+permission to retrieve or modify file content.
 
 ## Configuration And Logs
 
@@ -94,7 +94,8 @@ class Integration(Protocol):
 boundary. The dashboard route aggregates normalized summaries and health records; it does not
 parse psutil, Tailscale, or Google payloads. Drive status is scoped to the authenticated local
 principal. A failed or unconfigured adapter reports its own state without failing unrelated
-integrations. Capabilities such as activity and search will be added only when required.
+integrations. Search is implemented as a principal-scoped Drive metadata capability; activity will
+be added only when required.
 
 ### System Integration
 
@@ -138,5 +139,20 @@ network boundary only; it does not replace Ark Cloud application authentication.
 Google Drive is Ark Cloud's primary user-content storage provider and remains the file-management
 system. The API uses a server-side OAuth web flow to request metadata-only access, encrypts its
 refresh token before PostgreSQL storage, and caches normalized account/quota status. Browser
-clients receive no Google credentials or raw upstream responses. Ark Cloud does not currently
-browse, upload, download, export, or modify Drive files.
+clients receive no Google credentials or raw upstream responses. Ark Cloud does not upload,
+download, export, modify, or proxy Drive file content.
+
+### Drive Catalog And Search
+
+After a successful OAuth connection, the API synchronously catalogs selected metadata for files
+owned by the connected account in My Drive. The initial sync captures a Drive change token,
+enumerates bounded pages of metadata, reconciles changes that occurred during enumeration, and
+atomically replaces the principal's catalog. Later user-triggered syncs consume the My Drive changes
+feed to upsert or remove individual records. A failed or time-limited sync preserves the last usable
+catalog and records a normalized error for the dashboard.
+
+PostgreSQL stores only Drive file IDs, names, MIME types, sizes, Drive timestamps, parent IDs,
+derived Drive links, indexing timestamps, and synchronization state. Search is a case-insensitive
+filename query scoped by principal with deterministic cursor pagination. Results link directly to
+Google Drive. Phase 3 does not index descriptions, owners, permissions, file contents, shared
+drives, or raw Google payloads, and it introduces no scheduler or background worker.

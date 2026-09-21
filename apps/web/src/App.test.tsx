@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import App from "./App";
@@ -72,6 +72,13 @@ const dashboard: Dashboard = {
   generated_at: "2026-09-13T12:00:00Z",
 };
 
+const catalogStatus = {
+  state: "ready" as const,
+  item_count: 2,
+  last_synced_at: "2026-09-13T12:00:00Z",
+  message: "The Drive catalog is current.",
+};
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -94,6 +101,12 @@ test("renders normalized system and integration health", async () => {
     )
     .mockResolvedValueOnce(
       new Response(JSON.stringify(dashboard), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify(catalogStatus), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
@@ -151,6 +164,12 @@ test("renders normalized Tailscale devices", async () => {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
+    )
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify(catalogStatus), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
     );
 
   render(<App />);
@@ -158,4 +177,74 @@ test("renders normalized Tailscale devices", async () => {
   expect(await screen.findByText("Laptop")).toBeInTheDocument();
   expect(screen.getByText("100.64.0.2")).toBeInTheDocument();
   expect(screen.getByText("1 / 1 online")).toBeInTheDocument();
+});
+
+test("searches the Drive catalog and links to Drive", async () => {
+  const connected: Dashboard = {
+    ...dashboard,
+    google_drive: {
+      ...dashboard.google_drive,
+      state: "healthy",
+      account_name: "Ark User",
+      message: "Google Drive status is current.",
+    },
+  };
+  vi.spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          authenticated: true,
+          username: "ark",
+          csrf_token: "csrf",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    )
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify(connected), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify(catalogStatus), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          items: [
+            {
+              source: "google_drive",
+              id: "file-1",
+              name: "Tax Return.pdf",
+              mime_type: "application/pdf",
+              size_bytes: 1200,
+              modified_at: "2026-09-12T12:00:00Z",
+              web_url: "https://drive.google.com/open?id=file-1",
+            },
+          ],
+          next_cursor: null,
+          catalog: catalogStatus,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+  render(<App />);
+
+  const input = await screen.findByRole("searchbox", {
+    name: "Search Google Drive catalog",
+  });
+  fireEvent.change(input, { target: { value: "tax return" } });
+  fireEvent.submit(input.closest("form")!);
+
+  const result = await screen.findByRole("link", { name: /Tax Return.pdf/ });
+  expect(result).toHaveAttribute(
+    "href",
+    "https://drive.google.com/open?id=file-1",
+  );
+  expect(result).toHaveAttribute("rel", "noreferrer");
 });

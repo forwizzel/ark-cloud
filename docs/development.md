@@ -148,11 +148,11 @@ These URLs pass through Vite because the API intentionally has no host port.
 
 ## Google Drive Setup
 
-Google Drive is Ark Cloud's designated user-content storage provider. Version 0.2 connects it only
-for normalized account and quota status and requests the
-`https://www.googleapis.com/auth/drive.metadata.readonly` scope. Ark Cloud does not yet browse,
-upload, download, export, or change Drive files. PostgreSQL remains responsible for sessions,
-encrypted tokens, and other control-plane state rather than user file content.
+Google Drive is Ark Cloud's designated user-content storage provider. Version 0.3 requests only the
+`https://www.googleapis.com/auth/drive.metadata.readonly` scope for normalized account/quota status
+and selected metadata for files owned by the connected account in My Drive. Ark Cloud does not
+upload, download, export, change, or proxy Drive file content. PostgreSQL stores sessions, encrypted
+tokens, synchronization state, and the derived metadata search index rather than user file content.
 
 1. In Google Cloud, create or select a project, configure the OAuth consent screen, and enable the
    Google Drive API.
@@ -166,6 +166,12 @@ encrypted tokens, and other control-plane state rather than user file content.
    `ARK_GOOGLE_TOKEN_ENCRYPTION_KEY` in ignored `.env`. Retain the redirect URI exactly as
    registered in Google Cloud.
 5. Run `./scripts/ark up`, sign in locally, and select **Connect Google Drive** in the dashboard.
+
+The OAuth callback runs the initial My Drive catalog synchronization. If that metadata sync fails,
+the Drive connection remains available and the dashboard offers **Sync catalog** to retry. Later
+syncs use Google's changes feed and its persisted page token instead of enumerating the full catalog.
+Search matches normalized filenames and opens results directly in Google Drive. Shared drives and
+scheduled/background synchronization are not part of Version 0.3.
 
 Generate the password hash and token-encryption key inside the API image:
 
@@ -182,5 +188,5 @@ not an environment variable. Automated tests use local response doubles and must
 Google account.
 
 For local HTTP development retain `ARK_COOKIE_SECURE=false`. Set it to `true` before using an HTTPS
-reverse proxy. Google Drive remains the user-content source of truth: the current release exposes
-only normalized connection and quota status and opens Drive for all file operations.
+reverse proxy. Google Drive remains the user-content source of truth: Ark Cloud exposes normalized
+connection, quota, catalog, and search data and opens Drive for all file operations.

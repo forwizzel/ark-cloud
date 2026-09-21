@@ -7,7 +7,7 @@
 - Keep `ARK_BIND_ADDRESS=127.0.0.1`. Remote development access is through Tailscale Serve, not `0.0.0.0` or a direct Tailscale-IP bind.
 - Metrics intentionally describe the unprivileged API runtime view. Do not add host mounts, Docker socket access, privileged namespaces, or claim exact host/cgroup telemetry.
 - Keep Tailscale credentials server-side and normalized. The adapter must not return raw upstream payloads or expose the API key to the browser.
-- Google Drive is the designated user-content storage provider, while PostgreSQL stores only Ark Cloud control-plane state. The current Drive integration remains metadata-only: keep OAuth client secrets and encrypted refresh tokens server-side, and do not add file browsing, upload/download proxies, or raw upstream responses outside an explicitly scoped roadmap phase.
+- Google Drive is the designated user-content storage provider, while PostgreSQL stores only Ark Cloud control-plane state and the normalized Drive metadata search index. Keep OAuth client secrets, encrypted refresh tokens, and access tokens server-side; never store or proxy Drive file content or return raw upstream responses.
 
 ## Run and verify
 

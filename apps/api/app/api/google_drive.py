@@ -18,6 +18,7 @@ from app.integrations.google_drive import (
 )
 from app.models import AuthSession
 from app.schemas.integrations import GoogleDriveSummary
+from app.schemas.search import DriveCatalogStatus
 
 router = APIRouter(prefix="/integrations/google-drive", tags=["google-drive"])
 
@@ -72,8 +73,7 @@ def callback(
     session = get_session(db, settings, request.cookies.get(SESSION_COOKIE))
     if (
         session is None
-        or session.oauth_state_expires_at is None
-        or session.oauth_state_expires_at < datetime.now(UTC)
+        or _oauth_state_expired(session.oauth_state_expires_at)
         or session.oauth_state_hash is None
         or not secrets.compare_digest(
             session.oauth_state_hash, digest(state, settings.session_secret.get_secret_value())
@@ -88,6 +88,10 @@ def callback(
         integration.exchange_code(session.principal_id, code)
     except GoogleDriveError:
         return RedirectResponse("/?google_drive=failed", status_code=303)
+    try:
+        integration.sync_catalog(session.principal_id)
+    except GoogleDriveError:
+        return RedirectResponse("/?google_drive=connected&catalog=failed", status_code=303)
     return RedirectResponse("/?google_drive=connected", status_code=303)
 
 
@@ -107,9 +111,39 @@ def refresh_google_drive(
     return integration.summary(principal.id, force_refresh=True)
 
 
+@router.get("/catalog/status", response_model=DriveCatalogStatus)
+def google_drive_catalog_status(
+    principal: Annotated[Principal, Depends(require_principal)],
+    integration: Annotated[GoogleDriveIntegration, Depends(get_google_drive_integration)],
+) -> DriveCatalogStatus:
+    return integration.catalog_status(principal.id)
+
+
+@router.post("/catalog/sync", response_model=DriveCatalogStatus)
+def sync_google_drive_catalog(
+    principal: Annotated[Principal, Depends(require_csrf)],
+    integration: Annotated[GoogleDriveIntegration, Depends(get_google_drive_integration)],
+) -> DriveCatalogStatus:
+    try:
+        return integration.sync_catalog(principal.id)
+    except GoogleDriveError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(error),
+        ) from error
+
+
 @router.post("/disconnect", status_code=status.HTTP_204_NO_CONTENT)
 def disconnect_google_drive(
     principal: Annotated[Principal, Depends(require_csrf)],
     integration: Annotated[GoogleDriveIntegration, Depends(get_google_drive_integration)],
 ) -> None:
     integration.disconnect(principal.id)
+
+
+def _oauth_state_expired(expires_at: datetime | None) -> bool:
+    if expires_at is None:
+        return True
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    return expires_at < datetime.now(UTC)

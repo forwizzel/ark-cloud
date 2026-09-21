@@ -1,12 +1,29 @@
+import json
 from urllib.parse import parse_qs, urlparse
 
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings, get_settings
+from app.dependencies import get_google_drive_integration
 from app.main import app
+from app.schemas.search import DriveCatalogStatus
 
 client = TestClient(app)
+
+
+class FakeResponse:
+    def __init__(self, payload: dict[str, object]) -> None:
+        self._payload = payload
+
+    def __enter__(self) -> FakeResponse:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        return None
+
+    def read(self, _: int) -> bytes:
+        return json.dumps(self._payload).encode()
 
 
 def google_settings() -> Settings:
@@ -56,3 +73,68 @@ def test_callback_rejects_an_invalid_state() -> None:
 
     assert response.status_code == 303
     assert response.headers["location"] == "/?google_drive=invalid_state"
+
+
+def test_callback_connects_drive_and_builds_catalog(monkeypatch) -> None:
+    login()
+    app.dependency_overrides[get_settings] = google_settings
+    connect_response = client.get("/integrations/google-drive/connect", follow_redirects=False)
+    state = parse_qs(urlparse(connect_response.headers["location"]).query)["state"][0]
+    responses = iter(
+        [
+            {
+                "refresh_token": "refresh",
+                "scope": "https://www.googleapis.com/auth/drive.metadata.readonly",
+            },
+            {"access_token": "access"},
+            {
+                "user": {"displayName": "Ark User", "emailAddress": "ark@example.test"},
+                "storageQuota": {"usage": "10", "limit": "100"},
+            },
+            {"access_token": "access"},
+            {"startPageToken": "changes-1"},
+            {"files": []},
+            {"changes": [], "newStartPageToken": "changes-2"},
+        ]
+    )
+    monkeypatch.setattr(
+        "app.integrations.google_drive.urlopen",
+        lambda *_args, **_kwargs: FakeResponse(next(responses)),
+    )
+
+    response = client.get(
+        "/integrations/google-drive/oauth/callback",
+        params={"code": "authorization-code", "state": state},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/?google_drive=connected"
+    status_response = client.get("/integrations/google-drive/catalog/status")
+    assert status_response.json()["state"] == "ready"
+
+
+class FakeCatalogIntegration:
+    def sync_catalog(self, _: str) -> DriveCatalogStatus:
+        return DriveCatalogStatus(
+            state="ready",
+            item_count=3,
+            message="The Drive catalog is current.",
+        )
+
+
+def test_manual_catalog_sync_requires_csrf() -> None:
+    session = client.post(
+        "/auth/login", json={"username": "ark", "password": "test-password"}
+    ).json()
+    app.dependency_overrides[get_google_drive_integration] = lambda: FakeCatalogIntegration()
+
+    rejected = client.post("/integrations/google-drive/catalog/sync")
+    response = client.post(
+        "/integrations/google-drive/catalog/sync",
+        headers={"X-CSRF-Token": session["csrf_token"]},
+    )
+
+    assert rejected.status_code == 403
+    assert response.status_code == 200
+    assert response.json()["item_count"] == 3

@@ -7,6 +7,7 @@ from app.api.auth import router as auth_router
 from app.api.dashboard import router as dashboard_router
 from app.api.google_drive import router as google_drive_router
 from app.api.health import router as health_router
+from app.api.search import router as search_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 
@@ -30,7 +31,7 @@ def create_app() -> FastAPI:
     application = FastAPI(
         title="Ark Cloud API",
         description="Private personal cloud control plane API",
-        version="0.2.0",
+        version="0.3.0",
         lifespan=lifespan,
         root_path="/api",
     )
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
     application.include_router(dashboard_router)
     application.include_router(auth_router)
     application.include_router(google_drive_router)
+    application.include_router(search_router)
     return application
 
 

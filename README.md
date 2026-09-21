@@ -4,7 +4,8 @@ Ark Cloud is a self-hosted personal cloud control plane. It will provide one pri
 normalized view over the systems and services running on Ark without replacing mature
 specialized applications.
 
-Version 0.2 includes the Phase 0 foundation, Phase 1 infrastructure integrations, and a Phase 2 Google Drive control-plane integration:
+Version 0.3 includes the foundation, infrastructure integrations, Google Drive control plane, and
+the Phase 3 Drive metadata catalog:
 
 - React 19, TypeScript, and Vite web client
 - FastAPI and SQLAlchemy API
@@ -18,6 +19,8 @@ Version 0.2 includes the Phase 0 foundation, Phase 1 infrastructure integrations
 - Responsive infrastructure dashboard with partial-failure states
 - Backend and frontend tests, linting, formatting, and CI smoke tests
 - Local session authentication and server-side status for the Google Drive storage provider
+- Owned My Drive metadata synchronization and principal-scoped filename search
+- Direct Google Drive links for every catalog result; Ark Cloud never proxies file content
 
 ## Quick Start
 
@@ -92,6 +95,9 @@ Authenticated control-plane endpoints include:
 - `GET /api/integrations`: health for every configured adapter
 - `GET /api/tailscale/devices`: normalized Tailscale device status
 - `GET /api/integrations/google-drive/status`: normalized Google Drive account and quota status
+- `GET /api/integrations/google-drive/catalog/status`: normalized catalog state and item count
+- `POST /api/integrations/google-drive/catalog/sync`: CSRF-protected incremental metadata sync
+- `GET /api/search?q=...`: paginated, principal-scoped catalog search
 
 ## Configure Tailscale
 
@@ -128,9 +134,11 @@ guide documents the least-privilege path for continuous operation.
 ## Configure Google Drive
 
 Google Drive is Ark Cloud's designated user-content storage provider and file-management system.
-The current connection is optional at runtime and metadata-only: it shows the connected account
-and storage quota, while all file operations remain in Drive. PostgreSQL stores Ark Cloud
-control-plane state such as sessions and encrypted refresh tokens; it is not a user file store.
+The connection is optional at runtime and metadata-only: it shows the connected account and quota,
+then catalogs selected metadata for files owned by that account in My Drive. The first catalog sync
+runs after OAuth connection; later syncs consume Drive's changes feed and can be started from the dashboard.
+All file operations remain in Drive. PostgreSQL stores Ark Cloud control-plane state, encrypted
+refresh tokens, and the derived metadata index; it is not a user file store.
 Follow the [Google Drive setup guide](docs/development.md#google-drive-setup) to create a Google
 OAuth web client, then add its client ID, client secret, exact redirect URI, and a Fernet encryption
 key only to the ignored `.env` file. Restart the stack, sign in, and use the dashboard's

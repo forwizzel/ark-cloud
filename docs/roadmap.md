@@ -42,7 +42,7 @@ Status: finalized.
 
 ## Phase 3: Drive Catalog and Unified Search
 
-Status: planned.
+Status: implemented.
 
 - Catalog normalized Google Drive file metadata without storing file content in Ark Cloud
 - Search Drive metadata through an authenticated, principal-scoped API
@@ -50,7 +50,12 @@ Status: planned.
 - Keep Google credentials, access tokens, and raw upstream payloads server-side
 - Preserve Google Drive as the source of truth and PostgreSQL as control-plane and search-index
   storage only
-- Review OAuth scopes, pagination, synchronization, indexing, and privacy before implementation
+- Reviewed OAuth scopes, pagination, synchronization, indexing, and privacy boundaries
+
+The Phase 3 implementation retains `drive.metadata.readonly`, catalogs files owned by the connected
+account in My Drive, performs the initial synchronization after OAuth connection, and uses a manual
+incremental sync action backed by Drive change tokens. Shared files, shared drives, file-content
+access, and scheduled workers remain deferred.
 
 ## Later Direction
 

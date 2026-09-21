@@ -72,6 +72,32 @@ export type GoogleDriveSummary = {
   web_url: string;
 };
 
+export type CatalogState =
+  "not_configured" | "not_synced" | "syncing" | "ready" | "error";
+
+export type DriveCatalogStatus = {
+  state: CatalogState;
+  item_count: number;
+  last_synced_at: string | null;
+  message: string;
+};
+
+export type SearchResult = {
+  source: "google_drive";
+  id: string;
+  name: string;
+  mime_type: string;
+  size_bytes: number | null;
+  modified_at: string;
+  web_url: string;
+};
+
+export type SearchResponse = {
+  items: SearchResult[];
+  next_cursor: string | null;
+  catalog: DriveCatalogStatus;
+};
+
 export type AuthSession = {
   authenticated: boolean;
   username: string | null;
@@ -142,4 +168,34 @@ export async function disconnectGoogleDrive(csrfToken: string): Promise<void> {
   if (response.status !== 204) {
     await apiResponse(response);
   }
+}
+
+export async function fetchDriveCatalogStatus(
+  signal?: AbortSignal,
+): Promise<DriveCatalogStatus> {
+  return apiResponse<DriveCatalogStatus>(
+    await fetch("/api/integrations/google-drive/catalog/status", { signal }),
+  );
+}
+
+export async function syncDriveCatalog(
+  csrfToken: string,
+): Promise<DriveCatalogStatus> {
+  return apiResponse<DriveCatalogStatus>(
+    await fetch("/api/integrations/google-drive/catalog/sync", {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken },
+    }),
+  );
+}
+
+export async function searchCatalog(
+  query: string,
+  cursor?: string | null,
+): Promise<SearchResponse> {
+  const parameters = new URLSearchParams({ q: query });
+  if (cursor) parameters.set("cursor", cursor);
+  return apiResponse<SearchResponse>(
+    await fetch(`/api/search?${parameters.toString()}`),
+  );
 }

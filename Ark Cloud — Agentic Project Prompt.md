@@ -6,10 +6,10 @@ Your job is to help me build this system incrementally while maintaining product
 
 Do not attempt to build the entire project in one pass.
 
-Version 0.2 finalizes the first authenticated control-plane release: local single-user sessions,
-infrastructure status, and a metadata-only connection to Google Drive as the designated
-user-content storage provider. Treat the completed Phase 0 and Phase 1 work as the foundation for
-later phases rather than rebuilding it.
+Version 0.3 includes local single-user sessions, infrastructure status, a metadata-only connection
+to Google Drive as the designated user-content storage provider, and a principal-scoped Drive
+catalog with filename search. Treat completed phases as the foundation for later work rather than
+rebuilding them.
 
 ---
 
@@ -477,6 +477,8 @@ and derived metadata. It must not become a duplicate user-content store.
 
 Build a searchable control-plane catalog from normalized Google Drive metadata without copying
 file content into Ark Cloud.
+
+Status: implemented in Version 0.3 for My Drive metadata and filename search.
 
 Deliverables:
 
