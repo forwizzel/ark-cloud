@@ -10,7 +10,7 @@ to the Internet.
 ## Trust Boundaries
 
 ```text
-User device | Tailscale or local host | Web proxy | API | Data network | PostgreSQL
+User device | Tailscale or local host | Web proxy | API | PostgreSQL / Google Drive
 ```
 
 - The browser is untrusted input even on a private network.
@@ -18,6 +18,8 @@ User device | Tailscale or local host | Web proxy | API | Data network | Postgre
 - The API is the only application component allowed to reach PostgreSQL.
 - PostgreSQL and the API have no host port mappings.
 - The web port binds to loopback unless `ARK_BIND_ADDRESS` is explicitly changed.
+- Google Drive is the user-content boundary; PostgreSQL is limited to control-plane state and
+  must not become a duplicate file store.
 
 The API validates its response shape with Pydantic. Future request bodies, paths, and query
 parameters must receive equivalent explicit validation.
@@ -77,6 +79,9 @@ HTTPS even within a private network.
 - SQLAlchemy hides statement parameters to reduce accidental secret or personal-data logs.
 - Health endpoints report component state but no credentials or connection details.
 - Database storage uses a named volume and is never part of the source tree.
+- PostgreSQL stores encrypted credentials and other control-plane state, not Drive file content.
+- Database backups contain sensitive control-plane data. Encrypt and restrict them rather than
+  treating them as ordinary user files in Drive.
 - System collection does not mount the Docker socket, host root filesystem, privileged
   namespaces, or require root.
 
@@ -105,5 +110,6 @@ initial development image but do not lock every transitive package.
   encrypted before database storage and are never returned to the browser or written to logs.
 - The OAuth callback validates a short-lived state value bound to the local session, then redirects
   immediately so authorization parameters do not remain in the browser URL.
-- Ark Cloud requests metadata-only Drive access for account/quota health. It is not a Drive file
-  manager and never proxies file content.
+- Google Drive is the designated source of truth for user content, but Ark Cloud currently requests
+  metadata-only Drive access for account/quota health. It is not yet a Drive catalog or file manager
+  and never proxies file content.

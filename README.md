@@ -17,7 +17,7 @@ Version 0.2 includes the Phase 0 foundation, Phase 1 infrastructure integrations
 - Optional server-side Tailscale device integration
 - Responsive infrastructure dashboard with partial-failure states
 - Backend and frontend tests, linting, formatting, and CI smoke tests
-- Local session authentication and optional server-side Google Drive quota status
+- Local session authentication and server-side status for the Google Drive storage provider
 
 ## Quick Start
 
@@ -127,11 +127,14 @@ guide documents the least-privilege path for continuous operation.
 
 ## Configure Google Drive
 
-Google Drive is optional and metadata-only. It shows the connected account and storage quota;
-Ark Cloud never reads or modifies Drive files. Follow the [Google Drive setup guide](docs/development.md#google-drive-setup)
-to create a Google OAuth web client, then add its client ID, client secret, exact redirect URI,
-and a Fernet encryption key only to the ignored `.env` file. Restart the stack, sign in, and use
-the dashboard's **Connect Google Drive** action to authorize the account.
+Google Drive is Ark Cloud's designated user-content storage provider and file-management system.
+The current connection is optional at runtime and metadata-only: it shows the connected account
+and storage quota, while all file operations remain in Drive. PostgreSQL stores Ark Cloud
+control-plane state such as sessions and encrypted refresh tokens; it is not a user file store.
+Follow the [Google Drive setup guide](docs/development.md#google-drive-setup) to create a Google
+OAuth web client, then add its client ID, client secret, exact redirect URI, and a Fernet encryption
+key only to the ignored `.env` file. Restart the stack, sign in, and use the dashboard's
+**Connect Google Drive** action to authorize the account.
 
 ## Metric Scope
 

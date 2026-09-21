@@ -40,18 +40,29 @@ Status: finalized.
 - Normalized Google Drive connection health and storage quota on the dashboard
 - Google Drive remains the file manager and source of truth; Ark Cloud never proxies file content
 
+## Phase 3: Drive Catalog and Unified Search
+
+Status: planned.
+
+- Catalog normalized Google Drive file metadata without storing file content in Ark Cloud
+- Search Drive metadata through an authenticated, principal-scoped API
+- Open results directly in Google Drive for file operations
+- Keep Google credentials, access tokens, and raw upstream payloads server-side
+- Preserve Google Drive as the source of truth and PostgreSQL as control-plane and search-index
+  storage only
+- Review OAuth scopes, pagination, synchronization, indexing, and privacy before implementation
+
 ## Later Direction
 
-1. Optional richer external-storage integrations when a concrete control-plane need exists.
-2. Immich status and metadata integration rather than custom photo management.
-3. Backup monitoring with documented and tested restoration.
-4. Safe Vaultwarden or Bitwarden metadata only, never custom password cryptography.
-5. Normalized activity and notifications.
-6. Database-backed unified search that excludes secrets.
-7. Observational container and service health.
-8. Focused notes or bookmarks where they support the control-plane purpose.
-9. Mobile and PWA improvements.
-10. Threat modeling, authentication, authorization, audit events, rate limiting, recovery,
+1. Immich status and metadata integration rather than custom photo management.
+2. Backup monitoring with documented and tested restoration.
+3. Safe Vaultwarden or Bitwarden metadata only, never custom password cryptography.
+4. Normalized activity and notifications.
+5. Extend unified search to supported integrations while excluding secrets.
+6. Observational container and service health.
+7. Focused notes or bookmarks where they support the control-plane purpose.
+8. Mobile and PWA improvements.
+9. Threat modeling, authentication, authorization, audit events, rate limiting, recovery,
     and production hardening.
 
 Kubernetes, Kafka, Elasticsearch, Redis, native mobile applications, public exposure, and

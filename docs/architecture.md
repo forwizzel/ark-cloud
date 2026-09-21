@@ -48,10 +48,25 @@ browser-visible paths while the internal route remains `GET /health`.
 
 ### Database
 
-PostgreSQL is the system of record. Phase 0 creates no domain tables because none are yet
-needed. An empty Alembic baseline records the starting revision so every future schema
-change can be reviewed, applied, and rolled back consistently. Compose runs migrations
-before starting the API.
+PostgreSQL is the system of record for Ark Cloud control-plane state, not user file content.
+It stores local sessions, OAuth state, encrypted Google refresh tokens, and normalized cached
+integration status. Google Drive is the source of truth for user files. An empty Alembic baseline
+records the starting revision so every schema change can be reviewed, applied, and rolled back
+consistently. Compose runs migrations before starting the API.
+
+### Storage Boundaries
+
+Ark Cloud uses separate storage boundaries for separate responsibilities:
+
+- Google Drive is the designated user-content storage and file-management system.
+- PostgreSQL contains only Ark Cloud control-plane state and derived metadata needed by the
+  application. It does not contain file bodies or act as a second file store.
+- The API container filesystem is operational storage only. Its reported disk usage describes the
+  `api-runtime-view`, not Google Drive capacity or user-content storage.
+
+Version 0.2 exposes only normalized Drive connection and quota status. Establishing Drive as the
+content source of truth does not grant Ark Cloud permission to browse or modify files. Catalog and
+search capabilities require a later, explicitly reviewed phase.
 
 ## Configuration And Logs
 
@@ -120,7 +135,8 @@ network boundary only; it does not replace Ark Cloud application authentication.
 
 ## Google Drive Integration
 
-Google Drive remains the storage and file-management system. The API uses a server-side OAuth
-web flow to request metadata-only access, encrypts its refresh token before PostgreSQL storage,
-and caches normalized account/quota status. Browser clients receive no Google credentials or raw
-upstream responses. Ark Cloud does not browse, upload, download, export, or modify Drive files.
+Google Drive is Ark Cloud's primary user-content storage provider and remains the file-management
+system. The API uses a server-side OAuth web flow to request metadata-only access, encrypts its
+refresh token before PostgreSQL storage, and caches normalized account/quota status. Browser
+clients receive no Google credentials or raw upstream responses. Ark Cloud does not currently
+browse, upload, download, export, or modify Drive files.

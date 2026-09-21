@@ -499,7 +499,7 @@ function GoogleDrivePanel({
   return (
     <section className="drive-panel panel" aria-labelledby="drive-heading">
       <PanelHeading
-        eyebrow="External storage"
+        eyebrow="Primary storage"
         title="Google Drive"
         aside={stateLabels[drive.state]}
         id="drive-heading"

@@ -107,6 +107,7 @@ test("renders normalized system and integration health", async () => {
   expect(screen.getByText("4d 13h")).toBeInTheDocument();
   expect(screen.getByText("12%")).toBeInTheDocument();
   expect(screen.getByText("PostgreSQL")).toBeInTheDocument();
+  expect(screen.getByText("Primary storage")).toBeInTheDocument();
   expect(screen.getAllByText("Not configured")).toHaveLength(5);
 });
 

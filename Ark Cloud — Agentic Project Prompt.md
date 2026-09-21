@@ -7,8 +7,9 @@ Your job is to help me build this system incrementally while maintaining product
 Do not attempt to build the entire project in one pass.
 
 Version 0.2 finalizes the first authenticated control-plane release: local single-user sessions,
-infrastructure status, and a metadata-only Google Drive integration. Treat the completed Phase 0
-and Phase 1 work as the foundation for later phases rather than rebuilding it.
+infrastructure status, and a metadata-only connection to Google Drive as the designated
+user-content storage provider. Treat the completed Phase 0 and Phase 1 work as the foundation for
+later phases rather than rebuilding it.
 
 ---
 
@@ -184,7 +185,7 @@ Ark Cloud should eventually resemble:
        ├──────────────┐
        ▼              ▼
 
- System Agent     File Storage
+ System Agent     Google Drive
 ```
 
 This will evolve over time.
@@ -467,11 +468,34 @@ Security requirements:
 Google Drive remains the file manager and source of truth. Do not add folder browsing, uploads,
 downloads, rename, delete, move, export, or content proxies to Ark Cloud.
 
-Consider richer external-storage control-plane integrations only after a concrete need exists.
+PostgreSQL remains the control-plane store for sessions, encrypted credentials, connection state,
+and derived metadata. It must not become a duplicate user-content store.
 
 ---
 
-## Phase 3 — Photo Platform
+## Phase 3 — Drive Catalog and Unified Search
+
+Build a searchable control-plane catalog from normalized Google Drive metadata without copying
+file content into Ark Cloud.
+
+Deliverables:
+
+- authenticated, principal-scoped Drive metadata catalog
+- metadata search with pagination and normalized results
+- direct links to Google Drive for file operations
+- reviewed synchronization, indexing, and stale-data behavior
+- PostgreSQL storage only for derived metadata and search indexes, never file bodies
+
+Keep Google credentials, access tokens, and raw upstream payloads server-side. Review the minimum
+OAuth scopes before implementation, and do not add uploads, downloads, destructive file actions,
+or content proxies as part of this phase.
+
+Future integrations may contribute safe results to unified search after their own security review.
+Never place secrets in the general search index.
+
+---
+
+## Phase 4 — Photo Platform
 
 Do NOT build an entire photo platform ourselves.
 
@@ -505,7 +529,7 @@ Keep Immich authentication/secrets isolated from the browser where practical.
 
 ---
 
-## Phase 4 — Backups
+## Phase 5 — Backups
 
 Add first-class backup monitoring.
 
@@ -545,7 +569,7 @@ A backup system is not complete unless restoration is documented and testable.
 
 ---
 
-## Phase 5 — Password Vault
+## Phase 6 — Password Vault
 
 DO NOT implement custom password cryptography.
 
@@ -569,7 +593,7 @@ Any deeper integration involving sensitive secrets requires explicit architectur
 
 ---
 
-## Phase 6 — Unified Activity System
+## Phase 7 — Unified Activity System
 
 Introduce a normalized event model.
 
@@ -597,43 +621,6 @@ metadata
 Integrations should eventually be capable of producing events.
 
 Dashboard displays a unified activity feed.
-
----
-
-## Phase 7 — Unified Search
-
-Introduce search across supported services.
-
-Possible resources:
-
-- files
-- photos
-- notes
-- devices
-
-Example:
-
-```text
-Search: taxes 2025
-
-Files
-- W2.pdf
-- 2025 Tax Return.pdf
-
-Photos
-- W2-photo.jpg
-
-Vault
-- IRS.gov
-```
-
-For password vaults, expose only appropriate safe results.
-
-Do not leak secrets into the general search index.
-
-Start with database-backed search.
-
-Do not introduce Elasticsearch/OpenSearch unless scale or functionality actually requires it.
 
 ---
 

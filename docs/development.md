@@ -148,9 +148,11 @@ These URLs pass through Vite because the API intentionally has no host port.
 
 ## Google Drive Setup
 
-Version 0.2 adds optional Google Drive status rather than file storage. Ark Cloud requests only
-the `https://www.googleapis.com/auth/drive.metadata.readonly` scope for account and quota health.
-It never browses, uploads, downloads, exports, or changes Drive files.
+Google Drive is Ark Cloud's designated user-content storage provider. Version 0.2 connects it only
+for normalized account and quota status and requests the
+`https://www.googleapis.com/auth/drive.metadata.readonly` scope. Ark Cloud does not yet browse,
+upload, download, export, or change Drive files. PostgreSQL remains responsible for sessions,
+encrypted tokens, and other control-plane state rather than user file content.
 
 1. In Google Cloud, create or select a project, configure the OAuth consent screen, and enable the
    Google Drive API.
@@ -180,5 +182,5 @@ not an environment variable. Automated tests use local response doubles and must
 Google account.
 
 For local HTTP development retain `ARK_COOKIE_SECURE=false`. Set it to `true` before using an HTTPS
-reverse proxy. Google Drive remains the source of truth: Ark Cloud exposes only normalized
-connection and quota status and opens Drive for all file operations.
+reverse proxy. Google Drive remains the user-content source of truth: the current release exposes
+only normalized connection and quota status and opens Drive for all file operations.
