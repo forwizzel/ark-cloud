@@ -17,9 +17,19 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.integrations.base import Integration
-from app.models import GoogleDriveCatalogItem, GoogleDriveCatalogSync, GoogleDriveConnection
+from app.models import (
+    GoogleDriveActivity,
+    GoogleDriveCatalogItem,
+    GoogleDriveCatalogSync,
+    GoogleDriveConnection,
+    GoogleDriveParentEdge,
+    GoogleDrivePinnedLocation,
+    GoogleDriveSavedSearch,
+    GoogleDriveSyncAttempt,
+)
 from app.schemas.integrations import GoogleDriveSummary, IntegrationHealth
 from app.schemas.search import DriveCatalogStatus
+from app.services.drive_workspace import drive_kind
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_ABOUT_URL = "https://www.googleapis.com/drive/v3/about"
@@ -27,7 +37,9 @@ GOOGLE_FILES_URL = "https://www.googleapis.com/drive/v3/files"
 GOOGLE_CHANGES_URL = "https://www.googleapis.com/drive/v3/changes"
 GOOGLE_START_PAGE_TOKEN_URL = "https://www.googleapis.com/drive/v3/changes/startPageToken"
 GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.metadata.readonly"
-GOOGLE_FILE_FIELDS = "id,name,mimeType,size,createdTime,modifiedTime,parents,trashed,ownedByMe"
+GOOGLE_FILE_FIELDS = (
+    "id,name,mimeType,size,createdTime,modifiedTime,parents,trashed,ownedByMe,starred"
+)
 
 
 @dataclass(frozen=True)
@@ -39,10 +51,20 @@ class _CatalogRecord:
     created_at: datetime | None
     modified_at: datetime
     parent_ids: list[str]
+    starred: bool
+    owned_by_me: bool
 
 
 class GoogleDriveError(RuntimeError):
     """A safe, normalized Google Drive error."""
+
+
+class ActiveGoogleDriveSyncError(GoogleDriveError):
+    """Raised when another non-stale synchronization owns the catalog."""
+
+
+class _ExpiredChangeTokenError(GoogleDriveError):
+    """The Drive changes cursor is no longer valid."""
 
 
 class GoogleDriveIntegration(Integration):
@@ -50,6 +72,9 @@ class GoogleDriveIntegration(Integration):
     name = "Google Drive"
     _catalog_page_limit = 100
     _catalog_sync_time_limit_seconds = 30
+    _active_sync_timeout = timedelta(minutes=15)
+    _activity_retention = 500
+    _attempt_retention = 100
 
     def __init__(self, settings: Settings, db: Session) -> None:
         self._settings = settings
@@ -139,6 +164,14 @@ class GoogleDriveIntegration(Integration):
             state=state,
             item_count=count or 0,
             last_synced_at=_as_utc(sync.last_completed_at),
+            revision=sync.catalog_revision,
+            last_started_at=_as_utc(sync.last_started_at),
+            mode=sync.mode,  # type: ignore[arg-type]
+            phase=sync.phase,  # type: ignore[arg-type]
+            processed_count=sync.processed_count,
+            total_count=sync.total_count,
+            retryable=sync.retryable,
+            recovery=sync.recovery,
             message=messages[state],  # type: ignore[index]
         )
 
@@ -152,26 +185,73 @@ class GoogleDriveIntegration(Integration):
 
         try:
             access_token = self._access_token(connection)
+            root_folder_id = connection.root_folder_id or self._fetch_root_folder_id(access_token)
             if sync.change_page_token:
-                changes, next_token = self._fetch_changes(
-                    access_token, sync.change_page_token, deadline
-                )
-                completed_sync = self._lock_sync_attempt(principal_id, attempt_id)
-                self._lock_connection(principal_id, generation)
-                self._apply_changes(principal_id, changes, timestamp)
+                try:
+                    changes, next_token = self._fetch_changes(
+                        access_token, sync.change_page_token, deadline, root_folder_id
+                    )
+                except _ExpiredChangeTokenError:
+                    self._mark_recovery(principal_id, attempt_id)
+                    records, next_token = self._fetch_full_catalog(
+                        access_token, deadline, root_folder_id
+                    )
+                    self._mark_applying(principal_id, attempt_id, len(records))
+                    completed_sync = self._lock_sync_attempt(principal_id, attempt_id)
+                    completed_connection = self._lock_connection(principal_id, generation)
+                    self._replace_catalog(principal_id, records, timestamp)
+                    processed_count = len(records)
+                    mode = "recovery"
+                else:
+                    self._mark_applying(principal_id, attempt_id, len(changes))
+                    completed_sync = self._lock_sync_attempt(principal_id, attempt_id)
+                    completed_connection = self._lock_connection(principal_id, generation)
+                    self._apply_changes(principal_id, changes, timestamp)
+                    processed_count = len(changes)
+                    mode = sync.mode or "incremental"
             else:
-                records, next_token = self._fetch_full_catalog(access_token, deadline)
+                records, next_token = self._fetch_full_catalog(
+                    access_token, deadline, root_folder_id
+                )
+                self._mark_applying(principal_id, attempt_id, len(records))
                 completed_sync = self._lock_sync_attempt(principal_id, attempt_id)
-                self._lock_connection(principal_id, generation)
+                completed_connection = self._lock_connection(principal_id, generation)
                 self._replace_catalog(principal_id, records, timestamp)
+                processed_count = len(records)
+                mode = sync.mode or "full"
 
             completed_at = datetime.now(UTC)
+            completed_connection.root_folder_id = root_folder_id
             completed_sync.change_page_token = next_token
             completed_sync.attempt_id = None
             completed_sync.status = "ready"
+            completed_sync.catalog_revision += 1
+            completed_sync.mode = mode
+            completed_sync.phase = "completed"
+            completed_sync.processed_count = processed_count
+            completed_sync.total_count = processed_count
+            completed_sync.retryable = False
             completed_sync.last_completed_at = completed_at
             completed_sync.last_error = None
             completed_sync.updated_at = completed_at
+            attempt = self._db.get(GoogleDriveSyncAttempt, attempt_id)
+            if attempt is None:
+                raise GoogleDriveError("The Drive synchronization history could not be updated.")
+            attempt.mode = mode
+            attempt.status = "success"
+            attempt.phase = "completed"
+            attempt.processed_count = processed_count
+            attempt.total_count = processed_count
+            attempt.retryable = False
+            attempt.completed_at = completed_at
+            self._add_activity(
+                principal_id,
+                "sync_completed",
+                f"{mode.capitalize()} metadata synchronization completed "
+                f"({processed_count} items observed).",
+                completed_at,
+            )
+            self._prune_history(principal_id)
             self._db.commit()
         except (GoogleDriveError, SQLAlchemyError) as error:
             self._db.rollback()
@@ -197,10 +277,28 @@ class GoogleDriveIntegration(Integration):
                     and failed_sync is not None
                     and failed_sync.attempt_id == attempt_id
                 ):
+                    failed_at = datetime.now(UTC)
+                    retryable = _is_retryable_error(error)
                     failed_sync.status = "error"
                     failed_sync.attempt_id = None
+                    failed_sync.phase = "failed"
+                    failed_sync.retryable = retryable
                     failed_sync.last_error = message
-                    failed_sync.updated_at = datetime.now(UTC)
+                    failed_sync.updated_at = failed_at
+                    attempt = self._db.get(GoogleDriveSyncAttempt, attempt_id)
+                    if attempt is not None and attempt.status == "running":
+                        attempt.status = "failed"
+                        attempt.phase = "failed"
+                        attempt.retryable = retryable
+                        attempt.error = message
+                        attempt.completed_at = failed_at
+                    self._add_activity(
+                        principal_id,
+                        "sync_failed",
+                        f"Metadata synchronization failed: {message}",
+                        failed_at,
+                    )
+                    self._prune_history(principal_id)
                     self._db.commit()
             except SQLAlchemyError:
                 self._db.rollback()
@@ -246,11 +344,34 @@ class GoogleDriveIntegration(Integration):
                         "The Google Drive connection changed before synchronization started."
                     )
                 sync = self._db.get(GoogleDriveCatalogSync, principal_id)
+                recovery = False
+                if sync is not None and sync.status == "syncing" and sync.attempt_id is not None:
+                    last_started = _as_utc(sync.last_started_at)
+                    if last_started and last_started > timestamp - self._active_sync_timeout:
+                        raise ActiveGoogleDriveSyncError(
+                            "A Drive catalog synchronization is already in progress."
+                        )
+                    recovery = True
+                    stale_attempt = self._db.get(GoogleDriveSyncAttempt, sync.attempt_id)
+                    if stale_attempt is not None and stale_attempt.status == "running":
+                        stale_attempt.status = "failed"
+                        stale_attempt.phase = "failed"
+                        stale_attempt.retryable = True
+                        stale_attempt.error = "The synchronization became stale and was recovered."
+                        stale_attempt.completed_at = timestamp
+                mode = (
+                    "recovery"
+                    if recovery
+                    else ("incremental" if sync and sync.change_page_token else "full")
+                )
                 if sync is None:
                     sync = GoogleDriveCatalogSync(
                         principal_id=principal_id,
                         attempt_id=attempt_id,
                         status="syncing",
+                        mode=mode,
+                        phase="fetching",
+                        recovery=recovery,
                         last_started_at=timestamp,
                         created_at=timestamp,
                         updated_at=timestamp,
@@ -259,9 +380,26 @@ class GoogleDriveIntegration(Integration):
                 else:
                     sync.attempt_id = attempt_id
                     sync.status = "syncing"
+                    sync.mode = mode
+                    sync.phase = "fetching"
+                    sync.processed_count = 0
+                    sync.total_count = None
+                    sync.retryable = False
+                    sync.recovery = recovery
                     sync.last_started_at = timestamp
                     sync.last_error = None
                     sync.updated_at = timestamp
+                self._db.add(
+                    GoogleDriveSyncAttempt(
+                        id=attempt_id,
+                        principal_id=principal_id,
+                        mode=mode,
+                        status="running",
+                        phase="fetching",
+                        recovery=recovery,
+                        started_at=timestamp,
+                    )
+                )
                 self._db.commit()
                 self._db.refresh(sync)
                 return sync
@@ -271,6 +409,32 @@ class GoogleDriveIntegration(Integration):
             except SQLAlchemyError:
                 self._db.rollback()
         raise GoogleDriveError("The Drive catalog synchronization could not start.")
+
+    def _mark_recovery(self, principal_id: str, attempt_id: str) -> None:
+        sync = self._lock_sync_attempt(principal_id, attempt_id)
+        attempt = self._db.get(GoogleDriveSyncAttempt, attempt_id)
+        if attempt is None:
+            raise GoogleDriveError("The Drive synchronization history could not be updated.")
+        sync.mode = "recovery"
+        sync.phase = "fetching"
+        sync.recovery = True
+        sync.updated_at = datetime.now(UTC)
+        attempt.mode = "recovery"
+        attempt.phase = "fetching"
+        attempt.recovery = True
+        self._db.commit()
+
+    def _mark_applying(self, principal_id: str, attempt_id: str, total: int) -> None:
+        sync = self._lock_sync_attempt(principal_id, attempt_id)
+        attempt = self._db.get(GoogleDriveSyncAttempt, attempt_id)
+        if attempt is None:
+            raise GoogleDriveError("The Drive synchronization history could not be updated.")
+        sync.phase = "applying"
+        sync.total_count = total
+        sync.updated_at = datetime.now(UTC)
+        attempt.phase = "applying"
+        attempt.total_count = total
+        self._db.commit()
 
     def exchange_code(self, principal_id: str, code: str) -> None:
         if not self._settings.google_is_configured:
@@ -331,7 +495,7 @@ class GoogleDriveIntegration(Integration):
         self._db.commit()
 
     def _fetch_full_catalog(
-        self, access_token: str, deadline: float
+        self, access_token: str, deadline: float, root_folder_id: str
     ) -> tuple[dict[str, _CatalogRecord], str]:
         start_payload = self._get_json(
             GOOGLE_START_PAGE_TOKEN_URL,
@@ -357,7 +521,7 @@ class GoogleDriveIntegration(Integration):
             if not isinstance(files, list):
                 raise GoogleDriveError("Google Drive returned an unexpected catalog response.")
             for value in files:
-                record = _catalog_record(value)
+                record = _catalog_record(value, root_folder_id)
                 if record is not None:
                     records[record.file_id] = record
             page_token = _optional_str(payload.get("nextPageToken"))
@@ -366,7 +530,9 @@ class GoogleDriveIntegration(Integration):
         else:
             raise GoogleDriveError("The Drive catalog exceeds the synchronization page limit.")
 
-        changes, next_token = self._fetch_changes(access_token, start_token, deadline)
+        changes, next_token = self._fetch_changes(
+            access_token, start_token, deadline, root_folder_id
+        )
         for removed, file_id, record in changes:
             if removed:
                 records.pop(file_id, None)
@@ -375,7 +541,7 @@ class GoogleDriveIntegration(Integration):
         return records, next_token
 
     def _fetch_changes(
-        self, access_token: str, page_token: str, deadline: float
+        self, access_token: str, page_token: str, deadline: float, root_folder_id: str
     ) -> tuple[list[tuple[bool, str, _CatalogRecord | None]], str]:
         changes: list[tuple[bool, str, _CatalogRecord | None]] = []
         current_token = page_token
@@ -405,7 +571,7 @@ class GoogleDriveIntegration(Integration):
                     raise GoogleDriveError("Google Drive returned invalid change metadata.")
                 file_id = _required_str(value.get("fileId"))
                 removed = value.get("removed") is True
-                record = None if removed else _catalog_record(value.get("file"))
+                record = None if removed else _catalog_record(value.get("file"), root_folder_id)
                 changes.append((removed or record is None, file_id, record))
 
             next_page_token = _optional_str(payload.get("nextPageToken"))
@@ -419,7 +585,15 @@ class GoogleDriveIntegration(Integration):
         if time.monotonic() >= deadline:
             raise GoogleDriveError("The Drive catalog synchronization timed out.")
 
-    def _lock_connection(self, principal_id: str, generation: str) -> None:
+    def _fetch_root_folder_id(self, access_token: str) -> str:
+        payload = self._get_json(
+            f"{GOOGLE_FILES_URL}/root",
+            access_token,
+            {"fields": "id", "supportsAllDrives": "false"},
+        )
+        return _required_str(payload.get("id"))
+
+    def _lock_connection(self, principal_id: str, generation: str) -> GoogleDriveConnection:
         current = self._db.scalar(
             select(GoogleDriveConnection)
             .where(GoogleDriveConnection.principal_id == principal_id)
@@ -428,6 +602,7 @@ class GoogleDriveIntegration(Integration):
         )
         if current is None or current.catalog_generation != generation:
             raise GoogleDriveError("The Google Drive connection changed during synchronization.")
+        return current
 
     def _lock_sync_attempt(self, principal_id: str, attempt_id: str) -> GoogleDriveCatalogSync:
         sync = self._db.scalar(
@@ -444,12 +619,26 @@ class GoogleDriveIntegration(Integration):
         self, principal_id: str, records: dict[str, _CatalogRecord], indexed_at: datetime
     ) -> None:
         self._db.execute(
+            delete(GoogleDriveParentEdge).where(GoogleDriveParentEdge.principal_id == principal_id)
+        )
+        self._db.execute(
             delete(GoogleDriveCatalogItem).where(
                 GoogleDriveCatalogItem.principal_id == principal_id
             )
         )
         self._db.add_all(
             [_catalog_model(principal_id, record, indexed_at) for record in records.values()]
+        )
+        self._db.add_all(
+            [
+                GoogleDriveParentEdge(
+                    principal_id=principal_id,
+                    child_file_id=record.file_id,
+                    parent_file_id=parent_id,
+                )
+                for record in records.values()
+                for parent_id in record.parent_ids
+            ]
         )
         self._db.flush()
 
@@ -463,28 +652,122 @@ class GoogleDriveIntegration(Integration):
             key = (principal_id, file_id)
             existing = self._db.get(GoogleDriveCatalogItem, key)
             if removed:
+                self._db.execute(
+                    delete(GoogleDriveParentEdge).where(
+                        GoogleDriveParentEdge.principal_id == principal_id,
+                        GoogleDriveParentEdge.child_file_id == file_id,
+                    )
+                )
                 if existing is not None:
+                    self._add_activity(
+                        principal_id,
+                        "removed",
+                        f"Removed metadata observed for {existing.name}.",
+                        indexed_at,
+                        file_id=file_id,
+                        name=existing.name,
+                        kind=drive_kind(existing.mime_type),
+                    )
                     self._db.delete(existing)
                 continue
             if record is None:
                 continue
+            event_type = "created" if existing is None else "modified"
             if existing is None:
                 self._db.add(_catalog_model(principal_id, record, indexed_at))
             else:
                 _update_catalog_model(existing, record, indexed_at)
+            self._db.execute(
+                delete(GoogleDriveParentEdge).where(
+                    GoogleDriveParentEdge.principal_id == principal_id,
+                    GoogleDriveParentEdge.child_file_id == file_id,
+                )
+            )
+            self._db.add_all(
+                [
+                    GoogleDriveParentEdge(
+                        principal_id=principal_id,
+                        child_file_id=file_id,
+                        parent_file_id=parent_id,
+                    )
+                    for parent_id in record.parent_ids
+                ]
+            )
+            self._add_activity(
+                principal_id,
+                event_type,
+                f"{event_type.capitalize()} metadata observed for {record.name}.",
+                indexed_at,
+                file_id=file_id,
+                name=record.name,
+                kind=drive_kind(record.mime_type),
+            )
         self._db.flush()
 
     def _delete_catalog(self, principal_id: str) -> None:
-        self._db.execute(
-            delete(GoogleDriveCatalogItem).where(
-                GoogleDriveCatalogItem.principal_id == principal_id
+        for model in (
+            GoogleDriveParentEdge,
+            GoogleDriveCatalogItem,
+            GoogleDriveActivity,
+            GoogleDriveSyncAttempt,
+            GoogleDrivePinnedLocation,
+            GoogleDriveSavedSearch,
+            GoogleDriveCatalogSync,
+        ):
+            self._db.execute(delete(model).where(model.principal_id == principal_id))
+
+    def _add_activity(
+        self,
+        principal_id: str,
+        event_type: str,
+        summary: str,
+        observed_at: datetime,
+        *,
+        file_id: str | None = None,
+        name: str | None = None,
+        kind: str | None = None,
+    ) -> None:
+        self._db.add(
+            GoogleDriveActivity(
+                id=str(uuid.uuid4()),
+                principal_id=principal_id,
+                event_type=event_type,
+                drive_file_id=file_id,
+                name=name,
+                kind=kind,
+                summary=summary[:500],
+                observed_at=observed_at,
             )
         )
-        self._db.execute(
-            delete(GoogleDriveCatalogSync).where(
-                GoogleDriveCatalogSync.principal_id == principal_id
+
+    def _prune_history(self, principal_id: str) -> None:
+        self._db.flush()
+        old_activity_ids = list(
+            self._db.scalars(
+                select(GoogleDriveActivity.id)
+                .where(GoogleDriveActivity.principal_id == principal_id)
+                .order_by(GoogleDriveActivity.observed_at.desc(), GoogleDriveActivity.id.desc())
+                .offset(self._activity_retention)
             )
         )
+        if old_activity_ids:
+            self._db.execute(
+                delete(GoogleDriveActivity).where(GoogleDriveActivity.id.in_(old_activity_ids))
+            )
+        old_attempt_ids = list(
+            self._db.scalars(
+                select(GoogleDriveSyncAttempt.id)
+                .where(GoogleDriveSyncAttempt.principal_id == principal_id)
+                .order_by(
+                    GoogleDriveSyncAttempt.started_at.desc(), GoogleDriveSyncAttempt.id.desc()
+                )
+                .offset(self._attempt_retention)
+            )
+        )
+        if old_attempt_ids:
+            self._db.execute(
+                delete(GoogleDriveSyncAttempt).where(GoogleDriveSyncAttempt.id.in_(old_attempt_ids))
+            )
 
     def _refresh(self, connection: GoogleDriveConnection, commit: bool = True) -> None:
         access_token = self._access_token(connection)
@@ -601,6 +884,10 @@ class GoogleDriveIntegration(Integration):
             with urlopen(request, timeout=5) as response:  # noqa: S310 - fixed Google origins only
                 payload = json.loads(response.read(1_000_000))
         except HTTPError as error:
+            if error.code == 410:
+                raise _ExpiredChangeTokenError(
+                    "The Drive changes cursor expired. Rebuilding the metadata catalog."
+                ) from error
             if error.code in {400, 401}:
                 raise GoogleDriveError(
                     "Google Drive authorization needs to be reconnected."
@@ -649,7 +936,7 @@ def _optional_datetime(value: object) -> datetime | None:
     return _as_utc(parsed)
 
 
-def _catalog_record(value: object) -> _CatalogRecord | None:
+def _catalog_record(value: object, root_folder_id: str) -> _CatalogRecord | None:
     if not isinstance(value, dict):
         raise GoogleDriveError("Google Drive returned invalid file metadata.")
     if value.get("trashed") is True or value.get("ownedByMe") is not True:
@@ -669,7 +956,13 @@ def _catalog_record(value: object) -> _CatalogRecord | None:
         size_bytes=_optional_int(value.get("size")),
         created_at=_optional_datetime(value.get("createdTime")),
         modified_at=modified_at,
-        parent_ids=parent_values,
+        parent_ids=list(
+            dict.fromkeys(
+                "root" if parent == root_folder_id else parent for parent in parent_values
+            )
+        ),
+        starred=value.get("starred") is True,
+        owned_by_me=True,
     )
 
 
@@ -687,6 +980,8 @@ def _catalog_model(
         drive_modified_at=record.modified_at,
         web_url=f"https://drive.google.com/open?id={quote(record.file_id, safe='')}",
         parent_ids=record.parent_ids,
+        starred=record.starred,
+        owned_by_me=record.owned_by_me,
         indexed_at=indexed_at,
     )
 
@@ -702,6 +997,8 @@ def _update_catalog_model(
     item.drive_modified_at = record.modified_at
     item.web_url = f"https://drive.google.com/open?id={quote(record.file_id, safe='')}"
     item.parent_ids = record.parent_ids
+    item.starred = record.starred
+    item.owned_by_me = record.owned_by_me
     item.indexed_at = indexed_at
 
 
@@ -709,3 +1006,10 @@ def _as_utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def _is_retryable_error(error: Exception) -> bool:
+    if isinstance(error, SQLAlchemyError):
+        return True
+    message = str(error).casefold()
+    return not any(value in message for value in ("authorization", "reconnect", "not configured"))

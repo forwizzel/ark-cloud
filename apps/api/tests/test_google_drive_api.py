@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings, get_settings
 from app.dependencies import get_google_drive_integration
+from app.integrations.google_drive import ActiveGoogleDriveSyncError
 from app.main import app
 from app.schemas.search import DriveCatalogStatus
 
@@ -92,6 +93,7 @@ def test_callback_connects_drive_and_builds_catalog(monkeypatch) -> None:
                 "storageQuota": {"usage": "10", "limit": "100"},
             },
             {"access_token": "access"},
+            {"id": "opaque-root-id"},
             {"startPageToken": "changes-1"},
             {"files": []},
             {"changes": [], "newStartPageToken": "changes-2"},
@@ -138,3 +140,22 @@ def test_manual_catalog_sync_requires_csrf() -> None:
     assert rejected.status_code == 403
     assert response.status_code == 200
     assert response.json()["item_count"] == 3
+
+
+class ActiveCatalogIntegration:
+    def sync_catalog(self, _: str) -> DriveCatalogStatus:
+        raise ActiveGoogleDriveSyncError("A Drive catalog synchronization is already in progress.")
+
+
+def test_manual_catalog_sync_maps_active_attempt_to_conflict() -> None:
+    session = client.post(
+        "/auth/login", json={"username": "ark", "password": "test-password"}
+    ).json()
+    app.dependency_overrides[get_google_drive_integration] = lambda: ActiveCatalogIntegration()
+
+    response = client.post(
+        "/integrations/google-drive/catalog/sync",
+        headers={"X-CSRF-Token": session["csrf_token"]},
+    )
+
+    assert response.status_code == 409

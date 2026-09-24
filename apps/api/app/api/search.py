@@ -1,18 +1,15 @@
-import base64
-import json
-from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, or_, select
+from pydantic import AwareDatetime
 from sqlalchemy.orm import Session
 
 from app.auth.service import Principal
 from app.core.database import get_db_session
 from app.dependencies import get_google_drive_integration, require_principal
 from app.integrations.google_drive import GoogleDriveIntegration
-from app.models import GoogleDriveCatalogItem
-from app.schemas.search import SearchResponse, SearchResult
+from app.schemas.search import SearchResponse
+from app.services.drive_workspace import DriveListFilters, DriveWorkspace
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -23,6 +20,19 @@ def search(
     db: Annotated[Session, Depends(get_db_session)],
     drive: Annotated[GoogleDriveIntegration, Depends(get_google_drive_integration)],
     q: Annotated[str, Query(min_length=1, max_length=200)],
+    kind: Annotated[
+        str,
+        Query(pattern="^(all|folder|document|image|video|audio|archive|other)$"),
+    ] = "all",
+    parent_id: Annotated[str | None, Query(min_length=1, max_length=256)] = None,
+    modified_after: AwareDatetime | None = None,
+    modified_before: AwareDatetime | None = None,
+    min_size: Annotated[int | None, Query(ge=0)] = None,
+    max_size: Annotated[int | None, Query(ge=0)] = None,
+    starred: bool | None = None,
+    ownership: Annotated[str, Query(pattern="^owned_by_me$")] = "owned_by_me",
+    sort: Annotated[str, Query(pattern="^(modified|created|name|size)$")] = "modified",
+    direction: Annotated[str, Query(pattern="^(asc|desc)$")] = "desc",
     cursor: Annotated[str | None, Query(max_length=1000)] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
 ) -> SearchResponse:
@@ -32,82 +42,33 @@ def search(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Search query must not be blank.",
         )
-
-    escaped = query_text.casefold().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    statement = (
-        select(GoogleDriveCatalogItem)
-        .where(
-            GoogleDriveCatalogItem.principal_id == principal.id,
-            GoogleDriveCatalogItem.name_search.ilike(f"%{escaped}%", escape="\\"),
-        )
-        .order_by(
-            GoogleDriveCatalogItem.drive_modified_at.desc(),
-            GoogleDriveCatalogItem.drive_file_id.asc(),
-        )
-    )
-    if cursor:
-        cursor_time, cursor_file_id = _decode_cursor(cursor)
-        statement = statement.where(
-            or_(
-                GoogleDriveCatalogItem.drive_modified_at < cursor_time,
-                and_(
-                    GoogleDriveCatalogItem.drive_modified_at == cursor_time,
-                    GoogleDriveCatalogItem.drive_file_id > cursor_file_id,
-                ),
-            )
-        )
-
-    values = list(db.scalars(statement.limit(limit + 1)))
-    has_more = len(values) > limit
-    values = values[:limit]
-    next_cursor = None
-    if has_more and values:
-        last = values[-1]
-        next_cursor = _encode_cursor(last.drive_modified_at, last.drive_file_id)
-
-    return SearchResponse(
-        items=[
-            SearchResult(
-                id=item.drive_file_id,
-                name=item.name,
-                mime_type=item.mime_type,
-                size_bytes=item.size_bytes,
-                modified_at=item.drive_modified_at,
-                web_url=item.web_url,
-            )
-            for item in values
-        ],
-        next_cursor=next_cursor,
-        catalog=drive.catalog_status(principal.id),
-    )
-
-
-def _encode_cursor(modified_at: datetime, file_id: str) -> str:
-    if modified_at.tzinfo is None:
-        modified_at = modified_at.replace(tzinfo=UTC)
-    payload = json.dumps([modified_at.isoformat(), file_id], separators=(",", ":")).encode()
-    return base64.urlsafe_b64encode(payload).decode().rstrip("=")
-
-
-def _decode_cursor(value: str) -> tuple[datetime, str]:
-    try:
-        padding = "=" * (-len(value) % 4)
-        decoded = base64.b64decode(value + padding, altchars=b"-_", validate=True)
-        payload = json.loads(decoded)
-        if (
-            not isinstance(payload, list)
-            or len(payload) != 2
-            or not isinstance(payload[0], str)
-            or not isinstance(payload[1], str)
-            or not payload[1]
-        ):
-            raise ValueError
-        modified_at = datetime.fromisoformat(payload[0])
-        if modified_at.tzinfo is None:
-            raise ValueError
-        return modified_at.astimezone(UTC), payload[1]
-    except (ValueError, TypeError, json.JSONDecodeError) as error:
+    if modified_after and modified_before and modified_after >= modified_before:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Search cursor is invalid.",
-        ) from error
+            status_code=422, detail="modified_after must be before modified_before."
+        )
+    if min_size is not None and max_size is not None and min_size > max_size:
+        raise HTTPException(status_code=422, detail="min_size must not exceed max_size.")
+    result = DriveWorkspace(db).list_items(
+        principal.id,
+        DriveListFilters(
+            q=query_text,
+            kind=kind,
+            parent_id=parent_id,
+            modified_after=modified_after,
+            modified_before=modified_before,
+            min_size=min_size,
+            max_size=max_size,
+            starred=starred,
+            ownership=ownership,
+            sort=sort,
+            direction=direction,
+        ),
+        cursor,
+        limit,
+        drive.catalog_status(principal.id),
+    )
+    return SearchResponse(
+        items=result.items,
+        next_cursor=result.next_cursor,
+        catalog=result.catalog,
+    )

@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import App from "./App";
@@ -76,12 +82,21 @@ const catalogStatus = {
   state: "ready" as const,
   item_count: 2,
   last_synced_at: "2026-09-13T12:00:00Z",
+  revision: 3,
+  last_started_at: "2026-09-13T11:59:00Z",
+  mode: "incremental" as const,
+  phase: "completed" as const,
+  processed_count: 2,
+  total_count: 2,
+  retryable: false,
+  recovery: false,
   message: "The Drive catalog is current.",
 };
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  window.history.replaceState({}, "", "/");
 });
 
 test("renders normalized system and integration health", async () => {
@@ -189,62 +204,92 @@ test("searches the Drive catalog and links to Drive", async () => {
       message: "Google Drive status is current.",
     },
   };
-  vi.spyOn(globalThis, "fetch")
-    .mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          authenticated: true,
-          username: "ark",
-          csrf_token: "csrf",
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
-    )
-    .mockResolvedValueOnce(
-      new Response(JSON.stringify(connected), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    )
-    .mockResolvedValueOnce(
-      new Response(JSON.stringify(catalogStatus), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    )
-    .mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          items: [
-            {
-              source: "google_drive",
-              id: "file-1",
-              name: "Tax Return.pdf",
-              mime_type: "application/pdf",
-              size_bytes: 1200,
-              modified_at: "2026-09-12T12:00:00Z",
-              web_url: "https://drive.google.com/open?id=file-1",
-            },
-          ],
-          next_cursor: null,
-          catalog: catalogStatus,
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
-    );
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url === "/api/auth/session") {
+      return jsonResponse({
+        authenticated: true,
+        username: "ark",
+        csrf_token: "csrf",
+      });
+    }
+    if (url === "/api/dashboard") return jsonResponse(connected);
+    if (url.endsWith("/catalog/status")) return jsonResponse(catalogStatus);
+    if (url.includes("/items?")) {
+      const query = new URL(url, "http://ark.test").searchParams.get("q");
+      return jsonResponse({
+        items:
+          query === "tax return"
+            ? [
+                {
+                  source: "google_drive",
+                  id: "file-1",
+                  name: "Tax Return.pdf",
+                  mime_type: "application/pdf",
+                  size_bytes: 1200,
+                  kind: "document",
+                  created_at: "2025-01-01T12:00:00Z",
+                  modified_at: "2026-09-12T12:00:00Z",
+                  starred: true,
+                  ownership: "owned_by_me",
+                  parent: { id: "root", name: "My Drive", available: true },
+                  status_labels: ["recent"],
+                  web_url: "https://drive.google.com/open?id=file-1",
+                },
+              ]
+            : [],
+        next_cursor: null,
+        catalog: catalogStatus,
+      });
+    }
+    if (url.endsWith("/saved-searches") || url.endsWith("/pinned-locations")) {
+      return jsonResponse({ items: [] });
+    }
+    if (url.endsWith("/insights")) {
+      return jsonResponse({
+        account_used_bytes: null,
+        account_total_bytes: null,
+        catalog_known_size_bytes: 0,
+        catalog_unknown_size_count: 0,
+        by_kind: [],
+        largest_files: [],
+        stale_files: [],
+        freshness_at: null,
+      });
+    }
+    if (url.includes("/catalog/syncs?")) return jsonResponse({ items: [] });
+    if (url.includes("/activity?")) {
+      return jsonResponse({
+        items: [],
+        next_cursor: null,
+        scope: "sync_observed",
+        message: "Activity is sync-observed metadata.",
+      });
+    }
+    return new Response(null, { status: 404 });
+  });
 
   render(<App />);
 
+  fireEvent.click(await screen.findByRole("link", { name: /Drive Workspace/ }));
   const input = await screen.findByRole("searchbox", {
-    name: "Search Google Drive catalog",
+    name: "Search indexed names",
   });
   fireEvent.change(input, { target: { value: "tax return" } });
   fireEvent.submit(input.closest("form")!);
 
-  const result = await screen.findByRole("link", { name: /Tax Return.pdf/ });
+  const result = await screen.findByRole("link", { name: "Tax Return.pdf" });
   expect(result).toHaveAttribute(
     "href",
     "https://drive.google.com/open?id=file-1",
   );
   expect(result).toHaveAttribute("rel", "noreferrer");
+  await waitFor(() => expect(window.location.hash).toBe("#drive-workspace"));
 });
+
+function jsonResponse(value: unknown, status = 200): Response {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}

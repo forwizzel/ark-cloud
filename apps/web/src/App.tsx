@@ -1,25 +1,20 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 import {
   fetchDashboard,
-  fetchDriveCatalogStatus,
   fetchSession,
   login,
   logout,
   refreshGoogleDrive,
-  searchCatalog,
-  syncDriveCatalog,
   disconnectGoogleDrive,
-  type CatalogState,
   type Dashboard,
   type AuthSession,
-  type DriveCatalogStatus,
   type GoogleDriveSummary,
   type IntegrationState,
   type ResourceUsage,
-  type SearchResult,
   type TailscaleDevice,
 } from "./api";
+import DriveWorkspace from "./DriveWorkspace";
 
 type DashboardState =
   | { phase: "loading" }
@@ -38,14 +33,6 @@ const stateLabels: Record<IntegrationState, string> = {
   not_configured: "Not configured",
 };
 
-const catalogStateLabels: Record<CatalogState, string> = {
-  not_configured: "Not configured",
-  not_synced: "Not synced",
-  syncing: "Syncing",
-  ready: "Ready",
-  error: "Sync failed",
-};
-
 function App() {
   const [sessionState, setSessionState] = useState<SessionState>({
     phase: "loading",
@@ -54,6 +41,19 @@ function App() {
     phase: "loading",
   });
   const [requestNumber, setRequestNumber] = useState(0);
+  const [activePage, setActivePage] = useState<"overview" | "drive">(() =>
+    window.location.hash === "#drive-workspace" ? "drive" : "overview",
+  );
+  const [connectionNotice, setConnectionNotice] = useState(readOAuthNotice);
+
+  useEffect(() => {
+    const onHashChange = () =>
+      setActivePage(
+        window.location.hash === "#drive-workspace" ? "drive" : "overview",
+      );
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   useEffect(() => {
     fetchSession()
@@ -131,39 +131,64 @@ function App() {
 
         <nav aria-label="Primary navigation">
           <a
-            className="nav-item nav-item--active"
+            className={`nav-item ${activePage === "overview" ? "nav-item--active" : ""}`}
             href="#overview"
-            aria-current="page"
+            aria-current={activePage === "overview" ? "page" : undefined}
+            onClick={() => setActivePage("overview")}
           >
             <span aria-hidden="true">01</span>
             Overview
+          </a>
+          <a
+            className={`nav-item ${activePage === "drive" ? "nav-item--active" : ""}`}
+            href="#drive-workspace"
+            aria-current={activePage === "drive" ? "page" : undefined}
+            onClick={() => setActivePage("drive")}
+          >
+            <span aria-hidden="true">02</span>
+            Drive Workspace
           </a>
         </nav>
 
         <div className="rail-foot">
           <span className="rail-pulse" aria-hidden="true" />
           http://127.0.0.1:5173
-          <small>Phase 3 / v0.3</small>
+          <small>Phase 4 / v0.4</small>
         </div>
       </aside>
 
-      <main className="main-content" id="overview">
+      <main
+        className="main-content"
+        id={activePage === "overview" ? "overview" : undefined}
+      >
         <header className="topbar">
           <div>
-            <p className="eyebrow">Cloud</p>
-            <h1>Dashboard</h1>
+            <p className="eyebrow">
+              {activePage === "overview" ? "Cloud" : "Catalog"}
+            </p>
+            <h1>
+              {activePage === "overview" ? "Dashboard" : "Drive metadata"}
+            </h1>
           </div>
           <div className="topbar-actions">
             <span className="last-check">
-              {dashboardState.phase === "ready"
-                ? `Checked ${formatTime(dashboardState.dashboard.generated_at)}`
-                : dashboardState.phase === "error"
-                  ? "Collection failed"
-                  : "Collecting telemetry"}
+              {activePage === "drive"
+                ? "Owned My Drive index"
+                : dashboardState.phase === "ready"
+                  ? `Checked ${formatTime(dashboardState.dashboard.generated_at)}`
+                  : dashboardState.phase === "error"
+                    ? "Collection failed"
+                    : "Collecting telemetry"}
             </span>
-            <button className="refresh-button" type="button" onClick={refresh}>
-              Refresh
-            </button>
+            {activePage === "overview" && (
+              <button
+                className="refresh-button"
+                type="button"
+                onClick={refresh}
+              >
+                Refresh
+              </button>
+            )}
             <button
               className="logout-button"
               type="button"
@@ -174,15 +199,40 @@ function App() {
           </div>
         </header>
 
+        {connectionNotice && (
+          <div
+            className={`connection-notice connection-notice--${connectionNotice.tone}`}
+            role="status"
+          >
+            <span>{connectionNotice.message}</span>
+            <button
+              type="button"
+              onClick={() => setConnectionNotice(null)}
+              aria-label="Dismiss connection notice"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {dashboardState.phase === "loading" && <LoadingDashboard />}
         {dashboardState.phase === "error" && (
           <ErrorDashboard message={dashboardState.message} onRetry={refresh} />
         )}
-        {dashboardState.phase === "ready" && (
+        {dashboardState.phase === "ready" && activePage === "overview" && (
           <DashboardView
             dashboard={dashboardState.dashboard}
             csrfToken={sessionState.session.csrf_token ?? ""}
             onDashboardRefresh={refresh}
+          />
+        )}
+        {dashboardState.phase === "ready" && activePage === "drive" && (
+          <DriveWorkspace
+            connected={
+              dashboardState.dashboard.google_drive.state === "healthy" ||
+              dashboardState.dashboard.google_drive.state === "unavailable"
+            }
+            csrfToken={sessionState.session.csrf_token ?? ""}
           />
         )}
       </main>
@@ -293,14 +343,6 @@ function DashboardView({
         csrfToken={csrfToken}
         onDashboardRefresh={onDashboardRefresh}
       />
-      <DriveCatalogPanel
-        connected={
-          dashboard.google_drive.state === "healthy" ||
-          dashboard.google_drive.state === "unavailable"
-        }
-        csrfToken={csrfToken}
-      />
-
       <p className="scope-note">
         Metrics are the API runtime's view: CPU, memory, and uptime can be
         host-global, while storage can reflect the container filesystem. A
@@ -584,6 +626,9 @@ function GoogleDrivePanel({
             >
               Open Google Drive
             </a>
+            <a className="drive-link" href="#drive-workspace">
+              Open Drive workspace
+            </a>
             <button
               type="button"
               className="quiet-button"
@@ -603,290 +648,6 @@ function GoogleDrivePanel({
         )}
       </div>
     </section>
-  );
-}
-
-type CatalogStatusState =
-  | { phase: "loading" }
-  | { phase: "ready"; status: DriveCatalogStatus }
-  | { phase: "error"; message: string };
-
-type CatalogSearchState =
-  | { phase: "idle" }
-  | { phase: "loading" }
-  | {
-      phase: "ready";
-      query: string;
-      items: SearchResult[];
-      nextCursor: string | null;
-    }
-  | { phase: "error"; message: string };
-
-function DriveCatalogPanel({
-  connected,
-  csrfToken,
-}: {
-  connected: boolean;
-  csrfToken: string;
-}) {
-  const [statusState, setStatusState] = useState<CatalogStatusState>({
-    phase: "loading",
-  });
-  const [searchState, setSearchState] = useState<CatalogSearchState>({
-    phase: "idle",
-  });
-  const [query, setQuery] = useState("");
-  const [syncing, setSyncing] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const statusRequest = useRef<AbortController | null>(null);
-  const searchRequest = useRef(0);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    statusRequest.current = controller;
-    fetchDriveCatalogStatus(controller.signal)
-      .then((status) => setStatusState({ phase: "ready", status }))
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
-          setStatusState({
-            phase: "error",
-            message:
-              error instanceof Error
-                ? error.message
-                : "Unable to read catalog status.",
-          });
-        }
-      });
-    return () => {
-      controller.abort();
-      if (statusRequest.current === controller) statusRequest.current = null;
-    };
-  }, [connected]);
-
-  const sync = async () => {
-    statusRequest.current?.abort();
-    searchRequest.current += 1;
-    setSearchState({ phase: "idle" });
-    setLoadingMore(false);
-    setSyncing(true);
-    try {
-      setStatusState({
-        phase: "ready",
-        status: await syncDriveCatalog(csrfToken),
-      });
-    } catch (error: unknown) {
-      try {
-        setStatusState({
-          phase: "ready",
-          status: await fetchDriveCatalogStatus(),
-        });
-      } catch {
-        setStatusState({
-          phase: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Unable to synchronize the Drive catalog.",
-        });
-      }
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  const submitSearch = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const normalizedQuery = query.trim();
-    if (!normalizedQuery) return;
-    const request = ++searchRequest.current;
-    setLoadingMore(false);
-    setSearchState({ phase: "loading" });
-    try {
-      const response = await searchCatalog(normalizedQuery);
-      if (request !== searchRequest.current) return;
-      setStatusState({ phase: "ready", status: response.catalog });
-      setSearchState({
-        phase: "ready",
-        query: normalizedQuery,
-        items: response.items,
-        nextCursor: response.next_cursor,
-      });
-    } catch (error: unknown) {
-      if (request !== searchRequest.current) return;
-      setSearchState({
-        phase: "error",
-        message:
-          error instanceof Error ? error.message : "Drive search failed.",
-      });
-    }
-  };
-
-  const loadMore = async () => {
-    if (searchState.phase !== "ready" || !searchState.nextCursor) return;
-    const current = searchState;
-    const request = ++searchRequest.current;
-    setLoadingMore(true);
-    try {
-      const response = await searchCatalog(current.query, current.nextCursor);
-      if (request !== searchRequest.current) return;
-      setSearchState({
-        ...current,
-        items: [...current.items, ...response.items],
-        nextCursor: response.next_cursor,
-      });
-    } catch (error: unknown) {
-      if (request !== searchRequest.current) return;
-      setSearchState({
-        phase: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Unable to load more results.",
-      });
-    } finally {
-      if (request === searchRequest.current) setLoadingMore(false);
-    }
-  };
-
-  const status = statusState.phase === "ready" ? statusState.status : null;
-  return (
-    <section
-      className="catalog-panel panel"
-      id="catalog"
-      aria-labelledby="catalog-heading"
-    >
-      <PanelHeading
-        eyebrow="Drive metadata"
-        title="Catalog search"
-        aside={
-          status
-            ? `${catalogStateLabels[status.state]} · ${status.item_count} items`
-            : statusState.phase === "loading"
-              ? "Loading"
-              : "Unavailable"
-        }
-        id="catalog-heading"
-      />
-      <div className="catalog-body">
-        <div className="catalog-toolbar">
-          <div>
-            <strong>
-              {status?.message ?? "Reading Drive catalog status."}
-            </strong>
-            <small>
-              {status?.last_synced_at
-                ? `Last synced ${formatDateTime(status.last_synced_at)}`
-                : "Owned My Drive metadata only · file content stays in Google Drive"}
-            </small>
-          </div>
-          {connected && (
-            <button
-              type="button"
-              className="quiet-button catalog-sync"
-              onClick={() => void sync()}
-              disabled={syncing}
-            >
-              {syncing ? "Syncing" : "Sync catalog"}
-            </button>
-          )}
-        </div>
-
-        {statusState.phase === "error" && (
-          <p className="auth-error" role="alert">
-            {statusState.message}
-          </p>
-        )}
-
-        <form
-          className="catalog-search"
-          onSubmit={(event) => void submitSearch(event)}
-        >
-          <label className="visually-hidden" htmlFor="catalog-query">
-            Search Google Drive catalog
-          </label>
-          <input
-            id="catalog-query"
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search file names"
-            maxLength={200}
-            disabled={
-              !connected ||
-              syncing ||
-              !status ||
-              (status.state !== "ready" && status.state !== "error")
-            }
-          />
-          <button
-            type="submit"
-            className="refresh-button"
-            disabled={
-              !connected ||
-              syncing ||
-              !query.trim() ||
-              searchState.phase === "loading" ||
-              (status?.state !== "ready" && status?.state !== "error")
-            }
-          >
-            {searchState.phase === "loading" ? "Searching" : "Search"}
-          </button>
-        </form>
-
-        {searchState.phase === "error" && (
-          <p className="auth-error catalog-message" role="alert">
-            {searchState.message}
-          </p>
-        )}
-        {searchState.phase === "ready" && searchState.items.length === 0 && (
-          <p className="catalog-message">
-            No Drive items match "{searchState.query}".
-          </p>
-        )}
-        {searchState.phase === "ready" && searchState.items.length > 0 && (
-          <div className="catalog-results">
-            {searchState.items.map((item) => (
-              <CatalogResultRow key={item.id} item={item} />
-            ))}
-            {searchState.nextCursor && (
-              <button
-                type="button"
-                className="quiet-button catalog-more"
-                onClick={() => void loadMore()}
-                disabled={loadingMore}
-              >
-                {loadingMore ? "Loading" : "Load more"}
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function CatalogResultRow({ item }: { item: SearchResult }) {
-  return (
-    <a
-      className="catalog-result"
-      href={item.web_url}
-      target="_blank"
-      rel="noreferrer"
-    >
-      <span className="catalog-file-mark" aria-hidden="true">
-        {fileKind(item.mime_type)}
-      </span>
-      <span>
-        <strong>{item.name}</strong>
-        <small>{item.mime_type}</small>
-      </span>
-      <span className="catalog-result-meta">
-        {item.size_bytes === null
-          ? "Cloud document"
-          : formatBytes(item.size_bytes)}
-        <small>{formatDateTime(item.modified_at)}</small>
-      </span>
-    </a>
   );
 }
 
@@ -1005,23 +766,6 @@ function formatTime(value: string): string {
   }).format(new Date(value));
 }
 
-function formatDateTime(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
-
-function fileKind(mimeType: string): string {
-  if (mimeType === "application/vnd.google-apps.folder") return "DIR";
-  if (mimeType.startsWith("image/")) return "IMG";
-  if (mimeType === "application/pdf") return "PDF";
-  return "FILE";
-}
-
 function formatLastSeen(value: string | null): string {
   if (!value) return "Never";
   return new Intl.DateTimeFormat(undefined, {
@@ -1033,3 +777,47 @@ function formatLastSeen(value: string | null): string {
 }
 
 export default App;
+
+function readOAuthNotice(): {
+  tone: "success" | "error";
+  message: string;
+} | null {
+  const url = new URL(window.location.href);
+  const outcome = url.searchParams.get("google_drive");
+  const catalog = url.searchParams.get("catalog");
+  if (!outcome) return null;
+
+  url.searchParams.delete("google_drive");
+  url.searchParams.delete("catalog");
+  window.history.replaceState(
+    {},
+    "",
+    `${url.pathname}${url.search}${url.hash}`,
+  );
+
+  if (outcome === "connected") {
+    return catalog === "failed"
+      ? {
+          tone: "error",
+          message:
+            "Google Drive connected, but the initial catalog sync failed. Open Drive Workspace to retry.",
+        }
+      : {
+          tone: "success",
+          message:
+            "Google Drive connected. Ark Cloud is ready to index owned My Drive metadata.",
+        };
+  }
+  const failures: Record<string, string> = {
+    denied:
+      "Google Drive access was not granted. Reconnect when you are ready.",
+    invalid_state:
+      "The Google Drive connection expired or could not be verified. Start the connection again.",
+    failed:
+      "Google Drive could not be connected. Check the server configuration and try again.",
+  };
+  return {
+    tone: "error",
+    message: failures[outcome] ?? "Google Drive connection did not complete.",
+  };
+}

@@ -151,8 +151,33 @@ atomically replaces the principal's catalog. Later user-triggered syncs consume 
 feed to upsert or remove individual records. A failed or time-limited sync preserves the last usable
 catalog and records a normalized error for the dashboard.
 
-PostgreSQL stores only Drive file IDs, names, MIME types, sizes, Drive timestamps, parent IDs,
-derived Drive links, indexing timestamps, and synchronization state. Search is a case-insensitive
-filename query scoped by principal with deterministic cursor pagination. Results link directly to
-Google Drive. Phase 3 does not index descriptions, owners, permissions, file contents, shared
-drives, or raw Google payloads, and it introduces no scheduler or background worker.
+PostgreSQL stores only Drive file IDs, names, MIME types, sizes, Drive timestamps, starred state,
+normalized parent relationships, derived Drive links, indexing timestamps, and synchronization
+state. It also stores principal-scoped local preferences such as saved searches and pinned folder
+IDs. It does not store file bodies, previews, descriptions, owners, permissions, or raw Google
+payloads.
+
+### Drive Workspace
+
+Version 0.4 resolves Drive's opaque root folder ID during synchronization and normalizes it to a
+local `root` sentinel. A parent-edge table supports folder listings and bounded breadcrumbs without
+database-specific JSON queries. Workspace listings support metadata filters and deterministic
+sorting. Opaque pagination cursors bind the filter set and authenticated principal to a catalog
+revision, so a concurrent synchronization causes the next page to restart rather than mixing two
+catalog snapshots.
+
+Manual synchronization remains synchronous and bounded. Each attempt records its mode, phase,
+progress, result, and normalized error. Incremental changes atomically update the catalog, parent
+edges, activity, change token, and revision. An expired change token switches the same attempt to
+one full recovery scan; failure preserves the prior usable catalog. Activity is bounded metadata
+observed during synchronization, not a complete or real-time Google Drive audit log.
+
+Saved searches and pins are local control-plane state. Storage reports are derived from indexed
+metadata and are explicitly advisory because Google-native files may not report a size and account
+quota can include data outside the catalog. Results and reports link directly to Google Drive.
+
+Scheduled synchronization remains deferred because it needs durable job ownership, locking,
+shutdown recovery, backoff, and quota controls. Shared files and shared drives remain excluded
+pending explicit visibility and per-drive cursor rules. Write actions remain excluded pending OAuth
+scope, confirmation, audit, conflict, and recovery reviews. Version 0.4 introduces no scheduler,
+background worker, Drive write scope, or content proxy.

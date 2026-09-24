@@ -113,10 +113,18 @@ initial development image but do not lock every transitive package.
   not remain in the browser URL.
 - Google Drive is the designated source of truth for user content. Ark Cloud requests
   `drive.metadata.readonly` for account/quota health and a principal-scoped catalog of files owned
-  by the account in My Drive. The database stores selected normalized metadata for filename search,
-  never file content, descriptions, owners, permissions, access tokens, or raw Google responses.
+  by the account in My Drive. The database stores selected normalized metadata, folder edges,
+  saved searches, pinned folder IDs, sync history, and bounded sync-observed activity. It never
+  stores file content, descriptions, owners, permissions, access tokens, or raw Google responses.
 - Initial catalog synchronization runs after OAuth connection. Manual updates require the local
-  session's CSRF token. Search and catalog status require authentication, and every database query
-  is scoped to the authenticated principal.
+  session's CSRF token. Saved-search and pin mutations also require CSRF. Browsing, search, reports,
+  activity, preferences, and synchronization records require authentication, and every database
+  query is scoped to the authenticated principal.
+- Folder names, filenames, saved query terms, pins, insights, and activity are sensitive personal
+  metadata. They are excluded from routine logs, but they are present in PostgreSQL backups and
+  require the same access controls as other control-plane data.
+- Pagination cursors contain only encoded catalog position, revision, filter signature, and
+  principal-binding data. They grant no access and are always validated before a principal-scoped
+  query.
 - Search results contain direct Google Drive links. Ark Cloud never proxies file content or performs
   upload, download, rename, move, export, or delete operations.

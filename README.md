@@ -4,8 +4,8 @@ Ark Cloud is a self-hosted personal cloud control plane. It will provide one pri
 normalized view over the systems and services running on Ark without replacing mature
 specialized applications.
 
-Version 0.3 includes the foundation, infrastructure integrations, Google Drive control plane, and
-the Phase 3 Drive metadata catalog:
+Version 0.4 includes the foundation, infrastructure integrations, and a metadata-only Google Drive
+workspace:
 
 - React 19, TypeScript, and Vite web client
 - FastAPI and SQLAlchemy API
@@ -19,7 +19,9 @@ the Phase 3 Drive metadata catalog:
 - Responsive infrastructure dashboard with partial-failure states
 - Backend and frontend tests, linting, formatting, and CI smoke tests
 - Local session authentication and server-side status for the Google Drive storage provider
-- Owned My Drive metadata synchronization and principal-scoped filename search
+- Owned My Drive folder browsing, filtered search, recent and starred views
+- Saved searches, pinned folders, advisory storage insights, and sync-observed activity
+- Observable synchronization with history, retries, and expired-change-token recovery
 - Direct Google Drive links for every catalog result; Ark Cloud never proxies file content
 
 ## Quick Start
@@ -95,9 +97,16 @@ Authenticated control-plane endpoints include:
 - `GET /api/integrations`: health for every configured adapter
 - `GET /api/tailscale/devices`: normalized Tailscale device status
 - `GET /api/integrations/google-drive/status`: normalized Google Drive account and quota status
-- `GET /api/integrations/google-drive/catalog/status`: normalized catalog state and item count
-- `POST /api/integrations/google-drive/catalog/sync`: CSRF-protected incremental metadata sync
-- `GET /api/search?q=...`: paginated, principal-scoped catalog search
+- `GET /api/integrations/google-drive/items`: filtered, sorted Drive metadata workspace listing
+- `GET /api/integrations/google-drive/folders/{id}`: normalized folder and breadcrumb metadata
+- `GET /api/integrations/google-drive/insights`: advisory quota, type, large-file, and stale-file data
+- `GET /api/integrations/google-drive/saved-searches`: principal-scoped local search preferences
+- `GET /api/integrations/google-drive/pinned-locations`: principal-scoped local folder shortcuts
+- `GET /api/integrations/google-drive/catalog/status`: normalized sync state and progress
+- `GET /api/integrations/google-drive/catalog/syncs`: bounded synchronization history
+- `POST /api/integrations/google-drive/catalog/sync`: CSRF-protected metadata sync or recovery
+- `GET /api/integrations/google-drive/activity`: activity observed during catalog synchronization
+- `GET /api/search?q=...`: filtered, paginated, principal-scoped catalog search
 
 ## Configure Tailscale
 
@@ -136,9 +145,11 @@ guide documents the least-privilege path for continuous operation.
 Google Drive is Ark Cloud's designated user-content storage provider and file-management system.
 The connection is optional at runtime and metadata-only: it shows the connected account and quota,
 then catalogs selected metadata for files owned by that account in My Drive. The first catalog sync
-runs after OAuth connection; later syncs consume Drive's changes feed and can be started from the dashboard.
-All file operations remain in Drive. PostgreSQL stores Ark Cloud control-plane state, encrypted
-refresh tokens, and the derived metadata index; it is not a user file store.
+runs after OAuth connection; later syncs consume Drive's changes feed and can be started from the
+Drive Workspace. Ark Cloud can browse folders, filter metadata, save local workspace preferences,
+and report advisory storage insights. All file operations remain in Drive. PostgreSQL stores Ark
+Cloud control-plane state, encrypted refresh tokens, and the derived metadata index; it is not a
+user file store.
 Follow the [Google Drive setup guide](docs/development.md#google-drive-setup) to create a Google
 OAuth web client, then add its client ID, client secret, exact redirect URI, and a Fernet encryption
 key only to the ignored `.env` file. Restart the stack, sign in, and use the dashboard's
