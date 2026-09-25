@@ -108,6 +108,15 @@ tests, and the Tailscale HTTP opener is replaced with local response doubles. Te
 contact a real tailnet. The running Compose health check provides PostgreSQL integration
 verification.
 
+Phase 5 System Information is available after signing in at `#system-information`. The API
+exposes authenticated `GET /api/system/information` through the web proxy. Its detailed runtime
+view shows CPU/memory/storage, optional GPU names from kernel-visible DRM/driver metadata, and
+temperature readings with readable labels and original sensor identifiers. Missing GPU or sensors
+are normal unavailable states; a kernel-visible GPU is not necessarily accessible to the API.
+The page can load independently of dashboard integrations. The container-only process endpoint
+and listing were removed. Backend tests cover sensor naming, GPU model and PCI-ID fallback,
+missing devices, authentication, and partial collection failures.
+
 Frontend:
 
 ```bash

@@ -1896,6 +1896,280 @@ select:disabled {
   }
 }
 
+.system-overview-link {
+  grid-column: 1 / -1;
+  width: max-content;
+  color: var(--signal);
+  font-size: 0.8rem;
+  text-underline-offset: 4px;
+}
+
+.system-page {
+  display: grid;
+  gap: 20px;
+  padding-top: 28px;
+}
+
+.system-source,
+.system-detail dt {
+  color: var(--muted);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.68rem;
+}
+
+.system-temperatures {
+  padding: 26px 30px;
+  border-left: 3px solid var(--signal);
+  background: linear-gradient(
+    110deg,
+    rgba(75, 212, 192, 0.045),
+    rgba(13, 25, 35, 0.94) 65%
+  );
+}
+
+.system-temperatures-head,
+.system-temperatures-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.system-temperatures-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: -12px -14px 0;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(13, 25, 35, 0.98);
+}
+
+.system-temperatures-head h2 {
+  margin: 0;
+  font-family: "Arial Narrow", "Roboto Condensed", Arial, sans-serif;
+  font-size: clamp(1.7rem, 3vw, 2.25rem);
+  letter-spacing: -0.04em;
+}
+
+.system-temperatures-actions span {
+  color: var(--muted);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.67rem;
+  white-space: nowrap;
+}
+
+.system-temperatures-actions button {
+  min-width: 142px;
+}
+
+.system-temperatures-actions button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.system-temperature-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px 38px;
+  margin-top: 24px;
+}
+
+.system-temperature-columns > div {
+  display: grid;
+  align-content: start;
+  gap: 20px;
+}
+
+.system-temperature-group h3 {
+  margin: 0 0 7px;
+  color: var(--signal);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.system-temperature-group dl,
+.system-sensor-details dl {
+  margin: 0;
+}
+
+.system-temperature-reading,
+.system-sensor-details dl > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 0.78rem;
+}
+
+.system-temperature-reading dt {
+  color: var(--muted);
+}
+
+.system-temperature-reading dd {
+  margin: 0;
+  color: var(--ink);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.system-sensor-details {
+  margin-top: 22px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.system-sensor-details summary {
+  width: max-content;
+  cursor: pointer;
+}
+
+.system-sensor-details dl {
+  margin-top: 12px;
+  max-width: 600px;
+}
+
+.system-sensor-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.system-scope-note {
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  color: var(--faint);
+  font-size: 0.72rem;
+  line-height: 1.6;
+}
+
+.system-section-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.system-section {
+  min-width: 0;
+  padding: 26px;
+}
+
+.system-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.system-section h2 {
+  margin-bottom: 0;
+  font-family: "Arial Narrow", "Roboto Condensed", Arial, sans-serif;
+  font-size: 1.55rem;
+  letter-spacing: -0.035em;
+}
+
+.system-availability {
+  color: var(--signal);
+  font-size: 0.7rem;
+  text-transform: capitalize;
+}
+
+.system-availability--partial {
+  color: var(--warning);
+}
+
+.system-availability--unavailable {
+  color: var(--danger);
+}
+
+.system-source {
+  margin: 9px 0 16px;
+}
+
+.system-warning {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-left: 2px solid var(--warning);
+  color: var(--muted);
+  background: rgba(237, 178, 97, 0.04);
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+.system-details {
+  display: grid;
+  margin: 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.system-detail {
+  display: grid;
+  grid-template-columns: minmax(105px, 0.8fr) minmax(0, 1.2fr);
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line-soft);
+  align-items: baseline;
+}
+
+.system-detail dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+  text-align: right;
+}
+
+.system-empty,
+.system-message {
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.system-message {
+  padding: 12px 0 0;
+}
+
+@media (max-width: 680px) {
+  .system-page {
+    padding-top: 18px;
+  }
+
+  .system-temperatures {
+    padding: 20px;
+  }
+
+  .system-temperatures-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .system-temperatures-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .system-temperature-columns {
+    grid-template-columns: 1fr;
+    margin-top: 18px;
+  }
+
+  .system-section-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .system-section {
+    padding: 20px;
+  }
+}
+
 @media (max-width: 980px) {
   .app-frame {
     grid-template-columns: 78px minmax(0, 1fr);

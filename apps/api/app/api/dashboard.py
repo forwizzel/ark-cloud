@@ -23,6 +23,7 @@ from app.schemas.integrations import (
     SystemSummary,
     TailscaleSummary,
 )
+from app.schemas.system import SystemInformation
 
 router = APIRouter(tags=["dashboard"])
 
@@ -79,6 +80,14 @@ def system_summary(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(error),
         ) from error
+
+
+@router.get("/system/information", response_model=SystemInformation, tags=["system"])
+def system_information(
+    integration: Annotated[SystemIntegration, Depends(get_system_integration)],
+    _: Annotated[Principal, Depends(require_principal)],
+) -> SystemInformation:
+    return integration.information()
 
 
 @router.get("/integrations", response_model=list[IntegrationHealth], tags=["integrations"])

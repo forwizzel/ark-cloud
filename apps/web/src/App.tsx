@@ -15,6 +15,7 @@ import {
   type TailscaleDevice,
 } from "./api";
 import DriveWorkspace from "./DriveWorkspace";
+import SystemInformationPage from "./SystemInformationPage";
 
 type DashboardState =
   | { phase: "loading" }
@@ -41,16 +42,13 @@ function App() {
     phase: "loading",
   });
   const [requestNumber, setRequestNumber] = useState(0);
-  const [activePage, setActivePage] = useState<"overview" | "drive">(() =>
-    window.location.hash === "#drive-workspace" ? "drive" : "overview",
+  const [activePage, setActivePage] = useState<"overview" | "drive" | "system">(
+    pageFromHash,
   );
   const [connectionNotice, setConnectionNotice] = useState(readOAuthNotice);
 
   useEffect(() => {
-    const onHashChange = () =>
-      setActivePage(
-        window.location.hash === "#drive-workspace" ? "drive" : "overview",
-      );
+    const onHashChange = () => setActivePage(pageFromHash());
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
@@ -119,7 +117,7 @@ function App() {
   return (
     <div className="app-frame">
       <aside className="side-rail">
-        <a className="brand" href="/" aria-label="Ark Cloud overview">
+        <a className="brand" href="/" aria-label="Ark Cloud dashboard">
           <span className="brand-mark" aria-hidden="true">
             A
           </span>
@@ -137,7 +135,7 @@ function App() {
             onClick={() => setActivePage("overview")}
           >
             <span aria-hidden="true">01</span>
-            Overview
+            Dashboard
           </a>
           <a
             className={`nav-item ${activePage === "drive" ? "nav-item--active" : ""}`}
@@ -148,12 +146,22 @@ function App() {
             <span aria-hidden="true">02</span>
             Drive Workspace
           </a>
+          <a
+            className={`nav-item ${activePage === "system" ? "nav-item--active" : ""}`}
+            href="#system-information"
+            aria-label="System Information"
+            aria-current={activePage === "system" ? "page" : undefined}
+            onClick={() => setActivePage("system")}
+          >
+            <span aria-hidden="true">03</span>
+            System Information
+          </a>
         </nav>
 
         <div className="rail-foot">
           <span className="rail-pulse" aria-hidden="true" />
           http://127.0.0.1:5173
-          <small>Phase 4 / v0.4</small>
+          <small>Phase 5 / System</small>
         </div>
       </aside>
 
@@ -164,22 +172,32 @@ function App() {
         <header className="topbar">
           <div>
             <p className="eyebrow">
-              {activePage === "overview" ? "Cloud" : "Catalog"}
+              {activePage === "overview"
+                ? "Cloud"
+                : activePage === "drive"
+                  ? "Catalog"
+                  : "System"}
             </p>
             <h1>
-              {activePage === "overview" ? "Dashboard" : "Drive metadata"}
+              {activePage === "overview"
+                ? "Dashboard"
+                : activePage === "drive"
+                  ? "Drive metadata"
+                  : "Runtime information"}
             </h1>
           </div>
           <div className="topbar-actions">
-            <span className="last-check">
-              {activePage === "drive"
-                ? "Owned My Drive index"
-                : dashboardState.phase === "ready"
-                  ? `Checked ${formatTime(dashboardState.dashboard.generated_at)}`
-                  : dashboardState.phase === "error"
-                    ? "Collection failed"
-                    : "Collecting telemetry"}
-            </span>
+            {activePage !== "system" && (
+              <span className="last-check">
+                {activePage === "drive"
+                  ? "Owned My Drive index"
+                  : dashboardState.phase === "ready"
+                    ? `Checked ${formatTime(dashboardState.dashboard.generated_at)}`
+                    : dashboardState.phase === "error"
+                      ? "Collection failed"
+                      : "Collecting telemetry"}
+              </span>
+            )}
             {activePage === "overview" && (
               <button
                 className="refresh-button"
@@ -215,8 +233,11 @@ function App() {
           </div>
         )}
 
-        {dashboardState.phase === "loading" && <LoadingDashboard />}
-        {dashboardState.phase === "error" && (
+        {activePage === "system" && <SystemInformationPage />}
+        {activePage !== "system" && dashboardState.phase === "loading" && (
+          <LoadingDashboard />
+        )}
+        {activePage !== "system" && dashboardState.phase === "error" && (
           <ErrorDashboard message={dashboardState.message} onRetry={refresh} />
         )}
         {dashboardState.phase === "ready" && activePage === "overview" && (
@@ -276,7 +297,7 @@ function DashboardView({
         <div className="system-uptime">
           <span>Uptime</span>
           <strong>{system ? formatUptime(system.uptime_seconds) : "--"}</strong>
-          <small>{system ? "API runtime" : "no telemetry"}</small>
+          <small>{system ? "Kernel boot estimate" : "no telemetry"}</small>
         </div>
       </section>
 
@@ -348,6 +369,9 @@ function DashboardView({
         host-global, while storage can reflect the container filesystem. A
         dedicated host agent is planned for exact host telemetry.
       </p>
+      <a className="system-overview-link" href="#system-information">
+        Open System Information →
+      </a>
     </div>
   );
 }
@@ -777,6 +801,12 @@ function formatLastSeen(value: string | null): string {
 }
 
 export default App;
+
+function pageFromHash(): "overview" | "drive" | "system" {
+  if (window.location.hash === "#drive-workspace") return "drive";
+  if (window.location.hash === "#system-information") return "system";
+  return "overview";
+}
 
 function readOAuthNotice(): {
   tone: "success" | "error";

@@ -30,6 +30,46 @@ export type SystemSummary = {
   collected_at: string;
 };
 
+export type SystemSection = {
+  availability: "available" | "partial" | "unavailable";
+  source: "configured" | "runtime" | "kernel_view" | "filesystem";
+  warning: string | null;
+};
+
+export type SystemInformation = {
+  scope: "api-runtime-view";
+  collected_at: string;
+  identity: SystemSection & {
+    hostname: string;
+    os: string;
+    kernel: string | null;
+    architecture: string | null;
+    python_version: string;
+    api_version: string;
+    host_uptime_seconds: number | null;
+  };
+  compute: SystemSection & {
+    model: string | null;
+    gpus: string[];
+    logical_cores: number | null;
+    percent: number | null;
+    load_average: [number, number, number] | null;
+    frequency_mhz: number | null;
+  };
+  memory: SystemSection & {
+    usage: ResourceUsage | null;
+    swap: ResourceUsage | null;
+  };
+  storage: SystemSection & {
+    path: string;
+    usage: ResourceUsage | null;
+    filesystem_type: string | null;
+  };
+  sensors: SystemSection & {
+    temperatures: { label: string; source_name: string; celsius: number }[];
+  };
+};
+
 export type TailscaleDevice = {
   id: string;
   hostname: string;
@@ -295,6 +335,14 @@ export async function fetchDashboard(signal: AbortSignal): Promise<Dashboard> {
     throw new Error("Ark API could not assemble the dashboard.");
   }
   return (await response.json()) as Dashboard;
+}
+
+export async function fetchSystemInformation(
+  signal?: AbortSignal,
+): Promise<SystemInformation> {
+  return apiResponse<SystemInformation>(
+    await fetch("/api/system/information", { signal }),
+  );
 }
 
 export async function refreshGoogleDrive(

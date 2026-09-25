@@ -103,6 +103,70 @@ shared drives remain excluded until visibility, revoked-access, corpus, and per-
 are designed. Drive write actions remain deferred because they require broader OAuth scopes,
 per-action confirmation, audit records, conflict handling, and recovery semantics.
 
+## Phase 5: System Information
+
+Status: implemented.
+
+Expand the existing System integration into an authenticated Runtime Information page. The Dashboard
+retains compact uptime, CPU, memory, storage, and health cards, with a link to the dedicated page.
+System information remains an `api-runtime-view`: configured labels, host-global kernel views,
+container-visible hardware, and usage of the configured filesystem path are identified separately.
+
+### Delivered Scope
+
+- Identity: configured hostname and OS, kernel, architecture, API/Python versions, and host boot
+  uptime distinguished from API runtime uptime.
+- Compute: CPU model when available from bounded `/proc/cpuinfo`, logical cores, utilization, load
+  averages, frequency, and detected GPUs. Inspect only bounded DRM device metadata under
+  `/sys/class/drm`; where available, match an NVIDIA PCI slot to the bounded driver-reported model
+  under `/proc/driver/nvidia/gpus`. Otherwise show vendor and PCI ID, or `Unavailable`. These are
+  kernel-visible devices, not proof the API can use them or measure GPU utilization.
+- Memory and storage: normalized RAM/swap and configured-path disk usage; filesystem type is
+  optional. Neither metric claims exact cgroup or user-content capacity.
+- Temperatures: normalized Celsius readings labeled by meaning rather than raw driver identifiers.
+  `Package id 0` becomes CPU package 0, `jc42` a memory module, and `acpitz` an ACPI thermal zone;
+  recognized motherboard labels distinguish chipset, motherboard CPU sensor, VRM, and external
+  header;
+  unfamiliar identifiers become Other temperature sensor. Keep the original identifier as supporting
+  context. Do not infer ambient temperature or a precise physical location from an ACPI zone.
+- Read-only `GET /api/system/information` with explicit section availability, source, safe warnings,
+  and collection time; `GET /api/system` remains the compact dashboard contract. The System page
+  fetches independently of dashboard integrations and offers retry and manual refresh.
+
+The page leads with grouped temperature readings and a nearby refresh control. It keeps the prior
+readings visible during refresh or failure, so checking new temperatures does not lose the user's
+place. Raw sensor IDs are available in a disclosure, while metric-scope guidance sits at the bottom.
+API package version and unqualified 1/5/15-minute load averages remain in the API contract for
+diagnostics but are omitted from the daily-use page.
+
+Missing sensors and GPU metadata are normal unavailable states, not page failures. No process list,
+process API, or background polling is provided: container-only processes did not give useful host
+information. No system snapshots are stored in PostgreSQL, and Phase 5 requires no database
+migration, host mounts, Docker socket, privileged namespaces, or root access.
+
+Backend checks cover normalized data, sensor naming and unknown labels, GPU model/PCI fallback and
+missing devices, partial collection failures, authentication, and dashboard compatibility. Frontend
+checks cover independent navigation and retry, meaningful labels, GPU availability, and empty
+sensor states. Run the standard backend/frontend checks and a loopback-proxy Compose smoke test.
+
+### Future Host Telemetry
+
+Exact host-wide processes, physical hardware, temperatures, and disks are not guaranteed from the
+API container. A later dedicated host agent may collect an allowlisted set of normalized metrics and
+expose them through a narrow authenticated local socket. The agent must be reviewed separately for
+privileges, authentication, authorization, freshness, failure behavior, and disclosure risk.
+
+### Out Of Scope
+
+- Exact host telemetry without a dedicated authenticated agent.
+- Container-only process listings or a process-control API.
+- Killing, restarting, pausing, or otherwise controlling processes.
+- Real-time process streaming or historical metric storage.
+- Charts, alerts, notifications, or automated remediation.
+- Network packet capture or unrestricted network inspection.
+- Filesystem browsing or file-content access.
+- Docker socket access, host-root mounts, privileged containers, and root-only collection.
+
 ## Later Direction
 
 1. Immich status and metadata integration rather than custom photo management, once local or NAS

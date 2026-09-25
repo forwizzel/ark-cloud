@@ -128,3 +128,16 @@ initial development image but do not lock every transitive package.
   query.
 - Search results contain direct Google Drive links. Ark Cloud never proxies file content or performs
   upload, download, rename, move, export, or delete operations.
+
+## Runtime Information
+
+- Detailed system information requires the same authenticated local session as the dashboard. It
+  is a read-only request and requires no CSRF token. The container-only process endpoint and view
+  were removed; no process data is collected or stored.
+- CPU model, optional GPU metadata, and sensor readings use bounded reads of container-visible
+  `/proc/cpuinfo`, `/sys/class/drm`, and (when available) `/proc/driver/nvidia/gpus`. No GPU device
+  access, driver commands, or arbitrary filesystem paths are exposed. GPU names and sensor identifiers
+  are operational metadata and should not be written to routine logs.
+- Section-level provenance and warnings prevent host-global values from being presented as precise
+  host/container measurements. The API remains unprivileged: no host-root or `/proc` mount, Docker
+  socket, or privileged namespace is required for Phase 5.

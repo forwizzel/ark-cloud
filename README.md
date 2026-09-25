@@ -94,6 +94,7 @@ Authenticated control-plane endpoints include:
 
 - `GET /api/dashboard`: aggregated data used by the web dashboard
 - `GET /api/system`: normalized runtime system metrics
+- `GET /api/system/information`: detailed runtime information with per-section scope and availability
 - `GET /api/integrations`: health for every configured adapter
 - `GET /api/tailscale/devices`: normalized Tailscale device status
 - `GET /api/integrations/google-drive/status`: normalized Google Drive account and quota status
@@ -157,12 +158,15 @@ key only to the ignored `.env` file. Restart the stack, sign in, and use the das
 
 ## Metric Scope
 
-Version 0.2 reads metrics directly with `psutil` inside the unprivileged API container and
-labels them `api-runtime-view`. CPU, memory, and uptime can reflect host-global kernel data,
-while storage can reflect the container overlay or backing filesystem. These are useful
-signals, but they are not exact host or cgroup measurements. No Docker socket, host root, or
-privileged namespace is mounted. A narrow, authenticated local system agent is the planned
-path to exact host telemetry.
+Ark Cloud reads metrics with `psutil` inside the unprivileged API container and labels them
+`api-runtime-view`. The dedicated **System Information** page separates configured identity
+labels, kernel views, configured-path storage, optional GPU detection, and temperatures labeled
+by sensor purpose with their original identifiers shown as context. GPU models may be visible
+through DRM and NVIDIA driver metadata even without device access; missing GPUs or sensors show
+as unavailable. CPU, memory, and uptime can reflect host-global kernel data, while storage can
+reflect the container overlay or backing filesystem. These signals are not exact host or cgroup
+measurements. No Docker socket, host root, or privileged namespace is mounted. A narrow,
+authenticated local system agent is the planned path to exact host telemetry.
 
 ## Quality Checks
 

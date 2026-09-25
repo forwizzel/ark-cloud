@@ -110,6 +110,24 @@ namespaces into the API. A future dedicated Ark agent can expose a narrow authen
 socket containing normalized host metrics. The API's System adapter can then change data
 sources without changing routes or React components.
 
+Phase 5 adds an authenticated Runtime Information page backed by `GET /system/information` (browser
+path `/api/system/information`). The existing `/system` and dashboard summaries remain compact.
+Detailed information is collected on demand and divided into identity, compute, memory, storage,
+and optional sensor sections. Each section reports availability and source; configured hostname/OS
+labels are not measurements, host boot uptime and kernel CPU/memory views may reflect the host,
+and storage usage refers only to the configured path. The CPU model is read from the bounded
+container-visible `/proc/cpuinfo` interface when available.
+
+Compute optionally detects up to eight GPUs using PCI IDs visible in `/sys/class/drm`. A matching
+NVIDIA driver model under `/proc/driver/nvidia/gpus` provides a friendly name where available;
+otherwise the adapter reports vendor and PCI ID. GPU visibility does not imply device access or
+utilization telemetry. Temperature readings from psutil have normalized labels (CPU package,
+memory module, ACPI thermal zone, and recognized motherboard sensor locations) and retain their
+source identifiers; unknown sensors use a generic label, not a guessed physical location. Unavailable
+GPU and sensor data do not fail the page. The page loads independently of the dashboard, and there is
+no container-only process view
+or process endpoint. No host filesystem or Docker socket is mounted.
+
 ### Tailscale Integration
 
 The Tailscale adapter calls `GET /api/v2/tailnet/{tailnet}/devices` at the fixed HTTPS
