@@ -14,6 +14,7 @@ import {
   type ResourceUsage,
   type TailscaleDevice,
 } from "./api";
+import AppearanceControls from "./AppearanceControls";
 import DriveWorkspace from "./DriveWorkspace";
 import SystemInformationPage from "./SystemInformationPage";
 
@@ -134,7 +135,7 @@ function App() {
             aria-current={activePage === "overview" ? "page" : undefined}
             onClick={() => setActivePage("overview")}
           >
-            <span aria-hidden="true">01</span>
+            <span className="nav-symbol" aria-hidden="true" />
             Dashboard
           </a>
           <a
@@ -143,7 +144,7 @@ function App() {
             aria-current={activePage === "drive" ? "page" : undefined}
             onClick={() => setActivePage("drive")}
           >
-            <span aria-hidden="true">02</span>
+            <span className="nav-symbol" aria-hidden="true" />
             Drive Workspace
           </a>
           <a
@@ -153,15 +154,17 @@ function App() {
             aria-current={activePage === "system" ? "page" : undefined}
             onClick={() => setActivePage("system")}
           >
-            <span aria-hidden="true">03</span>
+            <span className="nav-symbol" aria-hidden="true" />
             System Information
           </a>
         </nav>
 
+        <AppearanceControls />
+
         <div className="rail-foot">
           <span className="rail-pulse" aria-hidden="true" />
-          http://127.0.0.1:5173
-          <small>Phase 5 / System</small>
+          Private control plane
+          <small>Ark Cloud</small>
         </div>
       </aside>
 
@@ -292,6 +295,7 @@ function DashboardView({
                 ? `${system.os} · Kernel ${system.kernel}`
                 : systemHealth?.message || "System telemetry is unavailable."}
             </p>
+            <p className="system-scope-label">API runtime view</p>
           </div>
         </div>
         <div className="system-uptime">
@@ -400,6 +404,9 @@ function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
   return (
     <main className="auth-frame">
       <form className="login-panel" onSubmit={(event) => void submit(event)}>
+        <span className="login-brand" aria-hidden="true">
+          A
+        </span>
         <p className="eyebrow">Ark Cloud</p>
         <h1>Sign in</h1>
         <label>
@@ -429,6 +436,7 @@ function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
         <button className="refresh-button" type="submit" disabled={submitting}>
           {submitting ? "Signing in" : "Sign in"}
         </button>
+        <AppearanceControls />
       </form>
     </main>
   );

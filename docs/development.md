@@ -41,12 +41,28 @@ change. The `:Z` mount suffix gives each source directory a private SELinux labe
 containers can read the bind mounts on Fedora without disabling host security controls.
 Vite writes its generated development cache to the container's `/tmp` directory, leaving
 the source mount unchanged. The web container compares a lockfile hash at startup and runs
-`npm ci` only when its named dependency volume does not match `package-lock.json`. Rebuild after changing
-`package.json`, `package-lock.json`, or `pyproject.toml`:
+`npm ci` only when its named dependency volume does not match `package-lock.json`. Rebuild after
+changing `package.json`, `package-lock.json`, or `pyproject.toml`:
 
 ```bash
 ./scripts/ark up
 ```
+
+## Local Sign-In
+
+The starter `.env.example` leaves authentication credentials blank. After the first `./scripts/ark up`
+has built the API image, generate an Argon2id password hash and a random session secret inside it:
+
+```bash
+docker compose run --rm --no-deps api python -c 'from argon2 import PasswordHasher; import getpass; print(PasswordHasher().hash(getpass.getpass()))'
+docker compose run --rm --no-deps api python -c 'import secrets; print(secrets.token_urlsafe(32))'
+```
+
+The first command prompts for the password without printing it; copy only its hash into
+`ARK_AUTH_PASSWORD_HASH`. Set `ARK_AUTH_USERNAME` to the name you will sign in with and copy the
+second output into `ARK_SESSION_SECRET`. Keep all three values in ignored `.env`, rerun
+`./scripts/ark up`, and sign in at <http://127.0.0.1:5173>. `--rm` cleans up each one-off
+container and `--no-deps` avoids starting PostgreSQL for these generators.
 
 ## Inspect The Stack
 
@@ -108,7 +124,7 @@ tests, and the Tailscale HTTP opener is replaced with local response doubles. Te
 contact a real tailnet. The running Compose health check provides PostgreSQL integration
 verification.
 
-Phase 5 System Information is available after signing in at `#system-information`. The API
+System Information is available after signing in at `#system-information`. The API
 exposes authenticated `GET /api/system/information` through the web proxy. Its detailed runtime
 view shows CPU/memory/storage, optional GPU names from kernel-visible DRM/driver metadata, and
 temperature readings with readable labels and original sensor identifiers. Missing GPU or sensors
@@ -157,11 +173,21 @@ These URLs pass through Vite because the API intentionally has no host port.
 
 ## Google Drive Setup
 
-Google Drive is Ark Cloud's designated user-content storage provider. Version 0.3 requests only the
-`https://www.googleapis.com/auth/drive.metadata.readonly` scope for normalized account/quota status
+Google Drive is Ark Cloud's designated user-content storage provider. The integration requests only
+the `https://www.googleapis.com/auth/drive.metadata.readonly` scope for normalized account/quota status
 and selected metadata for files owned by the connected account in My Drive. Ark Cloud does not
 upload, download, export, change, or proxy Drive file content. PostgreSQL stores sessions, encrypted
 tokens, synchronization state, and the derived metadata search index rather than user file content.
+
+Generate the Drive token-encryption key inside the API image (after the first stack build):
+
+```bash
+docker compose run --rm --no-deps api python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+```
+
+Use the generated value for `ARK_GOOGLE_TOKEN_ENCRYPTION_KEY` in ignored `.env`. The OAuth client
+secret and Fernet key remain only in `.env`. The Google refresh token is encrypted before PostgreSQL
+storage; it is not an environment variable.
 
 1. In Google Cloud, create or select a project, configure the OAuth consent screen, and enable the
    Google Drive API.
@@ -170,31 +196,18 @@ tokens, synchronization state, and the derived metadata search index rather than
    `http://127.0.0.1:5173/api/integrations/google-drive/oauth/callback`.
 3. If the consent screen is in Testing, add the Google account that will connect Drive as a test
    user.
-4. Set `ARK_AUTH_USERNAME`, `ARK_AUTH_PASSWORD_HASH`, `ARK_SESSION_SECRET`,
-   `ARK_GOOGLE_CLIENT_ID`, `ARK_GOOGLE_CLIENT_SECRET`, and
-   `ARK_GOOGLE_TOKEN_ENCRYPTION_KEY` in ignored `.env`. Retain the redirect URI exactly as
-   registered in Google Cloud.
+4. Configure [local sign-in](#local-sign-in), then set `ARK_GOOGLE_CLIENT_ID`,
+   `ARK_GOOGLE_CLIENT_SECRET`, and `ARK_GOOGLE_TOKEN_ENCRYPTION_KEY` in ignored `.env`.
+   Retain the redirect URI exactly as registered in Google Cloud.
 5. Run `./scripts/ark up`, sign in locally, and select **Connect Google Drive** in the dashboard.
 
 The OAuth callback runs the initial My Drive catalog synchronization. If that metadata sync fails,
-the Drive connection remains available and the dashboard offers **Sync catalog** to retry. Later
+the Drive connection remains available and **Drive Workspace** offers **Retry sync**. Later
 syncs use Google's changes feed and its persisted page token instead of enumerating the full catalog.
 Search matches normalized filenames and opens results directly in Google Drive. Shared drives and
-scheduled/background synchronization are not part of Version 0.3.
+scheduled/background synchronization are not supported.
 
-Generate the password hash and token-encryption key inside the API image:
-
-```bash
-docker compose run --rm --no-deps api python -c 'from argon2 import PasswordHasher; import getpass; print(PasswordHasher().hash(getpass.getpass()))'
-docker compose run --rm --no-deps api python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
-docker compose run --rm --no-deps api python -c 'import secrets; print(secrets.token_urlsafe(32))'
-```
-
-Use the three generated values respectively for `ARK_AUTH_PASSWORD_HASH`,
-`ARK_GOOGLE_TOKEN_ENCRYPTION_KEY`, and `ARK_SESSION_SECRET`. The OAuth client secret and Fernet
-key remain only in `.env`. The Google refresh token is encrypted before PostgreSQL storage; it is
-not an environment variable. Automated tests use local response doubles and must never use a real
-Google account.
+Automated tests use local response doubles and must never use a real Google account.
 
 For local HTTP development retain `ARK_COOKIE_SECURE=false`. Set it to `true` before using an HTTPS
 reverse proxy. Google Drive remains the user-content source of truth: Ark Cloud exposes normalized

@@ -167,6 +167,113 @@ privileges, authentication, authorization, freshness, failure behavior, and disc
 - Filesystem browsing or file-content access.
 - Docker socket access, host-root mounts, privileged containers, and root-only collection.
 
+## Phase 6: Version 0.6 UI/UX Overhaul
+
+Status: implemented. This phase covers the presentation and usability of sign-in, Dashboard,
+Drive Workspace, and System Information. The original project prompt proposed a password-vault
+integration for Phase 6; the current roadmap defers that work to a later phase.
+
+### Scope and Constraints
+
+Make Ark Cloud a coherent, readable, professional private infrastructure console on desktop,
+tablet, and phone. Improve visual hierarchy, navigation clarity, interaction feedback, responsive
+layouts, and accessibility **without changing functionality**. Preserve all existing routes and
+hash links, API contracts and requests, authentication and OAuth flows, Drive sync and search
+semantics, mutation behavior, and the accuracy of data-source and availability labels. Do not add
+new pages, integrations, settings, actions, telemetry, charts, polling, theme toggles, or backend
+work. Google Drive remains the source of truth for file content and operations; system readings
+remain the API runtime's view, not exact host telemetry.
+
+### Design Direction
+
+Use a dark-first operations-console aesthetic specific to Ark's three daily tasks: checking system
+health, finding indexed Drive items, and understanding the provenance of readings. Keep the
+information density, but give primary readings and actions more prominence than supporting
+metadata. Start with a compact, reusable design system rather than introducing a component
+framework:
+
+- Foundation: midnight canvas `#0B1420`, slate surfaces `#132333`, raised surface `#1B3041`,
+  primary text `#E8F0F2`, signal blue `#89A8FF` in dark mode and `#174EA6` in light mode, and
+  restrained amber/red for existing warning and failure states. The stronger blue and thicker
+  horizontal indicators avoid the cyan-green shift seen while scrolling in Chrome.
+- Pair Barlow Condensed headings with IBM Plex Sans interface text and IBM Plex Mono readings,
+  timestamps, and source labels. Fonts are bundled locally with system fallbacks, without a
+  third-party font request.
+- Make the Dashboard's Ark server banner the signature **runtime readout**: compose its existing
+  hostname, health state, uptime, and measurement-scope context in a scannable hierarchy. Do not
+  imply that container-visible values are exact host measurements.
+- Use spacing, typography, and restrained dividers to organize content. Reduce decorative grids,
+  glow, and perpetual motion; reserve color for status, focus, and actionable information. Keep
+  reduced-motion support.
+
+### Implementation Record
+
+The original delivery checklist is retained below for future UI regressions:
+
+1. **Shared visual foundation:** Refine color, type, spacing, borders, density, buttons, inputs,
+   status treatments, and focus states in `apps/web/src/styles.css`. Consolidate repeated visual
+   rules as useful without obscuring the existing components. Give loading, error, unavailable,
+   and empty states consistent hierarchy and actionable wording where an existing action exists.
+2. **Sign-in and application shell:** Polish the login form, brand, sidebar, page titles, and action
+   placement in `apps/web/src/App.tsx`. Keep named navigation visible and operable at narrow widths:
+   the former tablet and phone layouts reduced the three links to `01`, `02`, and `03`. Keep the
+   Dashboard's existing Refresh control accessible below 400 px instead of hiding it. Retain the
+   same `#overview`, `#drive-workspace`, and `#system-information` destinations and logout flow.
+3. **Dashboard:** Establish a clear scan order from Ark health and runtime scope to CPU, memory,
+   and storage, then services, Tailscale devices, and Google Drive. Align card anatomy and state
+   labels; distinguish healthy, degraded, unavailable, and not-configured states by text as well
+   as color. Preserve the existing Drive actions, System Information link, timestamps, metrics,
+   and partial-failure behavior.
+4. **Drive Workspace:** Rebalance the sync console, My Drive/Recent/Starred modes, breadcrumbs,
+   filters, results, saved searches, pins, storage insights, sync history, and sync-observed
+   activity in `apps/web/src/DriveWorkspace.tsx`. Make the desktop listing efficiently scannable
+   and its phone layout a readable record with name, location, modified time, size, and Drive
+   action. Retain timestamps in the mobile history and activity views rather than hiding them.
+   Preserve draft-versus-applied filters, pagination, retries, sync progress, saved preferences,
+   and direct Google Drive links exactly as they work today.
+5. **System Information:** Keep grouped temperatures first and manual refresh nearby in
+   `apps/web/src/SystemInformationPage.tsx`. Improve alignment and wrapping for long sensor and
+   hardware names, source descriptions, partial/unavailable states, and the Sensor IDs disclosure.
+   Preserve independent fetching and the prior readings during a failed refresh.
+6. **Copy and accessibility pass:** Use consistent, plain-language action labels and feedback;
+   make errors and empty states explain the available next step. Review landmarks, control names,
+   keyboard navigation, visible focus, status announcements, contrast, touch targets, zoom,
+   overflow, and reduced motion. Avoid using color alone to communicate state.
+
+### Regression Checklist
+
+- Visually inspect signed-out and signed-in screens at desktop, tablet, and phone widths, including
+  a narrow phone and a long-content/zoom case. Review configured, disconnected, loading, empty,
+  partial, failure, and refreshing states using representative data; check that no important
+  information or existing control disappears at a breakpoint.
+- Exercise the existing journeys: sign in/out; navigate all three views and their links; refresh
+  Dashboard and System Information; connect, refresh, and disconnect Drive; browse folders,
+  search/filter, paginate, use saved searches and pins, sync and retry, and open items in Drive.
+  Verify the behavior and resulting requests remain unchanged.
+- Check keyboard-only operation, accessible names and status text, contrast, text enlargement,
+  screen-reader reading order, and reduced-motion preference. Keep API-runtime scope and
+  sync-observed/activity qualifiers visible and accurate.
+- Run the frontend checks from `apps/web`: `npm test`, `npm run lint`,
+  `npm run format:check`, and `npm run build`. Update focused frontend tests only where changed
+  markup or navigation warrants regression coverage. No API migration or backend change is
+  expected.
+
+The implementation uses locally bundled fonts and shared appearance tokens; it preserves named
+navigation and Dashboard refresh at phone widths, makes Drive result metadata and activity times
+readable at narrow widths, and shows partial System Information warnings. Existing frontend tests
+cover the links, controls, and Drive result labels without changing request behavior.
+
+## Version 0.6 Appearance Preferences (Post-Phase 6)
+
+Status: implemented. Light/dark mode and high contrast are two independent browser-local controls,
+available on both the sign-in and signed-in screens. The four combinations share the same layout,
+data, and actions. When a choice has not been saved, Ark Cloud follows the device's color-scheme
+or contrast preference, including changes while the page is open. Explicit choices persist across
+reloads and sign-in/out; unavailable browser storage does not prevent switching for the current
+page. A small script applies saved preferences before the app loads to prevent a theme flash.
+Theme tokens cover all existing screens and states, including status colors, focus rings, browser
+controls, and the page theme color. No backend or account-preference storage is involved.
+
 ## Later Direction
 
 1. Immich status and metadata integration rather than custom photo management, once local or NAS

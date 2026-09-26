@@ -1,5 +1,9 @@
 # Ark Cloud — Personal Cloud Control Plane
 
+> **Historical project brief.** The Phase 0 assignment and numbered phase proposals below are
+> retained for context. For current implementation status and phase numbering, use
+> [README.md](README.md) and [docs/roadmap.md](docs/roadmap.md).
+
 You are acting as the senior software engineer, systems architect, DevOps engineer, and technical mentor for a new project called **Ark Cloud**.
 
 Your job is to help me build this system incrementally while maintaining production-quality architecture, security practices, documentation, and code quality.

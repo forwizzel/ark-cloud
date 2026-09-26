@@ -1,7 +1,7 @@
 {
   "name": "@ark-cloud/web",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite --configLoader runner",
@@ -12,6 +12,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource/barlow-condensed": "5.3.0",
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@fontsource/ibm-plex-sans": "5.3.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

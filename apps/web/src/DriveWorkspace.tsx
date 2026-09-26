@@ -1092,13 +1092,22 @@ function LedgerRow({
         </div>
       </div>
       <span className="ledger-parent" role="cell" aria-label="Location">
+        <span className="mobile-label" aria-hidden="true">
+          Location
+        </span>
         {item.parent ? item.parent.name : "My Drive"}
         {item.parent && !item.parent.available ? " (unavailable)" : ""}
       </span>
       <span role="cell" aria-label="Modified">
+        <span className="mobile-label" aria-hidden="true">
+          Modified
+        </span>
         {formatDateTime(item.modified_at)}
       </span>
       <span role="cell" aria-label="Size">
+        <span className="mobile-label" aria-hidden="true">
+          Size
+        </span>
         {item.size_bytes === null
           ? "Cloud document"
           : formatBytes(item.size_bytes)}

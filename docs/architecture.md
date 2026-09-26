@@ -1,15 +1,15 @@
 # Architecture
 
-## Phase 0 Context
+## Current Topology
 
-Ark Cloud starts as a modular monolith: one browser application, one API application, and
+Ark Cloud is a modular monolith: one browser application, one API application, and
 one PostgreSQL database. This is the smallest architecture that cleanly separates user
 experience, application logic, and persistence while leaving room for integrations.
 
 ```text
-Browser
+Browser (127.0.0.1:5173 locally; HTTPS via Tailscale Serve remotely)
    |
-   | http://Ark:5173
+   | same-origin /api/*
    v
 Vite web container  -- /api/* proxy -->  FastAPI container
                                           |      |       |
@@ -31,10 +31,15 @@ IP addresses. PostgreSQL needs no published host port because only the API consu
 
 ### Web
 
-The React application owns presentation and browser interaction. It requests
-`/api/health` from its own origin. Vite removes the `/api` prefix and forwards the request
-to `http://api:8000/health` inside Docker. Browser code therefore knows nothing about
-container addresses, and the same-origin request needs no permissive CORS policy.
+The React application owns presentation and browser interaction. It requests `/api/*` from
+its own origin: session state, the dashboard, Drive Workspace, and System Information. Vite
+removes the `/api` prefix and forwards requests to `http://api:8000` inside Docker. The
+browser-facing `/api/health` uses the same proxy path. Browser code therefore knows nothing
+about container addresses, and same-origin requests need no permissive CORS policy.
+
+Appearance is entirely browser-side. Light/dark and high-contrast preferences follow device
+settings until explicitly changed, then persist in localStorage. The selected palette is applied
+before React loads; neither PostgreSQL nor the API stores appearance preferences.
 
 ### API
 
@@ -49,10 +54,10 @@ browser-visible paths while the internal route remains `GET /health`.
 ### Database
 
 PostgreSQL is the system of record for Ark Cloud control-plane state, not user file content.
-It stores local sessions, OAuth state, encrypted Google refresh tokens, and normalized cached
-integration status. Google Drive is the source of truth for user files. An empty Alembic baseline
-records the starting revision so every schema change can be reviewed, applied, and rolled back
-consistently. Compose runs migrations before starting the API.
+It stores local sessions, OAuth state, encrypted Google refresh tokens, cached Drive account/quota
+status, the derived Drive metadata index, sync history, and local Drive workspace preferences.
+Google Drive is the source of truth for user files. An Alembic migration history tracks schema
+changes; Compose applies migrations before starting the API.
 
 ### Storage Boundaries
 
@@ -64,7 +69,7 @@ Ark Cloud uses separate storage boundaries for separate responsibilities:
 - The API container filesystem is operational storage only. Its reported disk usage describes the
   `api-runtime-view`, not Google Drive capacity or user-content storage.
 
-Version 0.3 exposes normalized Drive connection/quota status and a searchable index of selected My
+Ark Cloud exposes normalized Drive connection/quota status and a searchable index of selected My
 Drive metadata. Establishing Drive as the content source of truth does not grant Ark Cloud
 permission to retrieve or modify file content.
 
@@ -94,8 +99,8 @@ class Integration(Protocol):
 boundary. The dashboard route aggregates normalized summaries and health records; it does not
 parse psutil, Tailscale, or Google payloads. Drive status is scoped to the authenticated local
 principal. A failed or unconfigured adapter reports its own state without failing unrelated
-integrations. Search is implemented as a principal-scoped Drive metadata capability; activity will
-be added only when required.
+integrations. Search is a principal-scoped Drive metadata capability; Drive activity is limited to
+changes observed during catalog synchronization, not a unified activity feed.
 
 ### System Integration
 
@@ -105,12 +110,12 @@ API process. Metrics are explicitly marked `api-runtime-view`. CPU, memory, and 
 come from host-global kernel views, while storage can describe the container overlay or
 backing filesystem. They are useful operational signals, not exact host or cgroup metrics.
 
-Version 0.2 deliberately does not mount `/`, `/proc`, the Docker socket, or privileged host
+The API deliberately does not mount `/`, `/proc`, the Docker socket, or privileged host
 namespaces into the API. A future dedicated Ark agent can expose a narrow authenticated
 socket containing normalized host metrics. The API's System adapter can then change data
 sources without changing routes or React components.
 
-Phase 5 adds an authenticated Runtime Information page backed by `GET /system/information` (browser
+Phase 5 adds an authenticated System Information page backed by `GET /system/information` (browser
 path `/api/system/information`). The existing `/system` and dashboard summaries remain compact.
 Detailed information is collected on demand and divided into identity, compute, memory, storage,
 and optional sensor sections. Each section reports availability and source; configured hostname/OS
@@ -124,9 +129,8 @@ otherwise the adapter reports vendor and PCI ID. GPU visibility does not imply d
 utilization telemetry. Temperature readings from psutil have normalized labels (CPU package,
 memory module, ACPI thermal zone, and recognized motherboard sensor locations) and retain their
 source identifiers; unknown sensors use a generic label, not a guessed physical location. Unavailable
-GPU and sensor data do not fail the page. The page loads independently of the dashboard, and there is
-no container-only process view
-or process endpoint. No host filesystem or Docker socket is mounted.
+GPU and sensor data do not fail the page. The page loads independently of the dashboard, and there
+is no container-only process view or process endpoint. No host filesystem or Docker socket is mounted.
 
 ### Tailscale Integration
 
@@ -142,15 +146,6 @@ published on loopback by default, while Tailscale Serve can proxy that local por
 tailnet devices. The development environment uses rootless Docker, so publishing the port
 directly on the host's `100.x.y.z` Tailscale address is not supported. Tailscale provides a
 network boundary only; it does not replace Ark Cloud application authentication.
-
-## Deferred Decisions
-
-- Multi-user authentication and authorization require a dedicated design review. Version 0.2 has
-  a deliberately narrow local single-user session boundary.
-- Caddy and HTTPS belong to deployment work, not the local scaffold.
-- Async database access is not justified by the Phase 0 workload. FastAPI safely runs the
-  synchronous route in its worker thread pool.
-- Redis, workers, queues, WebSockets, and microservices have no current use case.
 
 ## Google Drive Integration
 
@@ -199,3 +194,13 @@ shutdown recovery, backoff, and quota controls. Shared files and shared drives r
 pending explicit visibility and per-drive cursor rules. Write actions remain excluded pending OAuth
 scope, confirmation, audit, conflict, and recovery reviews. Version 0.4 introduces no scheduler,
 background worker, Drive write scope, or content proxy.
+
+## Deferred Decisions
+
+- Multi-user authentication and authorization require a dedicated design review. The current
+  implementation has a deliberately narrow local single-user session boundary.
+- A general-purpose reverse proxy such as Caddy and production HTTPS remain deployment work;
+  Tailscale Serve provides HTTPS for private remote development.
+- Async database access is not justified by the current workload. FastAPI safely runs synchronous
+  routes in its worker thread pool.
+- Redis, workers, queues, WebSockets, and microservices have no current use case.

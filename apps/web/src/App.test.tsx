@@ -97,6 +97,24 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   window.history.replaceState({}, "", "/");
+  window.localStorage.removeItem("ark-cloud-theme");
+  window.localStorage.removeItem("ark-cloud-contrast");
+});
+
+test("offers appearance controls before signing in", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+    jsonResponse({ authenticated: false, username: null, csrf_token: null }),
+  );
+
+  render(<App />);
+  expect(
+    await screen.findByRole("heading", { name: "Sign in" }),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("switch", { name: "High contrast" }));
+  expect(document.documentElement).toHaveAttribute("data-contrast", "more");
+  expect(
+    screen.getByRole("switch", { name: "Light mode" }),
+  ).toBeInTheDocument();
 });
 
 test("renders normalized system and integration health", async () => {
@@ -137,6 +155,25 @@ test("renders normalized system and integration health", async () => {
   expect(screen.getByText("PostgreSQL")).toBeInTheDocument();
   expect(screen.getByText("Primary storage")).toBeInTheDocument();
   expect(screen.getAllByText("Not configured")).toHaveLength(5);
+  expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
+    "href",
+    "#overview",
+  );
+  expect(screen.getByRole("link", { name: "Drive Workspace" })).toHaveAttribute(
+    "href",
+    "#drive-workspace",
+  );
+  expect(
+    screen.getByRole("link", { name: "System Information" }),
+  ).toHaveAttribute("href", "#system-information");
+  expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
+  expect(screen.getByText("API runtime view")).toBeInTheDocument();
+  expect(
+    screen.getByRole("switch", { name: "Light mode" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("switch", { name: "High contrast" }),
+  ).toBeInTheDocument();
 });
 
 test("renders normalized Tailscale devices", async () => {
@@ -284,6 +321,15 @@ test("searches the Drive catalog and links to Drive", async () => {
     "https://drive.google.com/open?id=file-1",
   );
   expect(result).toHaveAttribute("rel", "noreferrer");
+  expect(
+    screen.getByText("Location", { selector: ".mobile-label" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("Modified", { selector: ".mobile-label" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("Size", { selector: ".mobile-label" }),
+  ).toBeInTheDocument();
   await waitFor(() => expect(window.location.hash).toBe("#drive-workspace"));
 });
 

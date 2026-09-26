@@ -2,7 +2,7 @@
 
 ## Current Security Posture
 
-Version 0.3 is development software, not a production deployment. It has a narrow local
+Version 0.6 is development software, not a production deployment. It has a narrow local
 single-user session boundary, not multi-user authentication or authorization. Tailscale reduces
 network exposure but does not replace identity checks inside Ark Cloud. Do not publish this stack
 to the Internet.
@@ -17,12 +17,14 @@ User device | Tailscale or local host | Web proxy | API | PostgreSQL / Google Dr
 - The web container can reach the API but cannot join the database network.
 - The API is the only application component allowed to reach PostgreSQL.
 - PostgreSQL and the API have no host port mappings.
-- The web port binds to loopback unless `ARK_BIND_ADDRESS` is explicitly changed.
+- `./scripts/ark up` forces the web port onto loopback (`127.0.0.1`).
 - Google Drive is the user-content boundary; PostgreSQL is limited to control-plane state and
   must not become a duplicate file store.
+- Appearance choices live only in browser localStorage; they contain no credentials and are not
+  sent to the API.
 
-The API validates its response shape with Pydantic. Future request bodies, paths, and query
-parameters must receive equivalent explicit validation.
+The API validates response shapes with Pydantic and validates request bodies, paths, and query
+parameters through explicit route schemas.
 
 ## Secrets
 

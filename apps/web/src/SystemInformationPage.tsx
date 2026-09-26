@@ -133,7 +133,7 @@ function Section({
         )}
       </header>
       <p className="system-source">Source / {sources[section.source]}</p>
-      {section.availability === "unavailable" && section.warning && (
+      {section.availability !== "available" && section.warning && (
         <p className="system-warning">{section.warning}</p>
       )}
       {children}

@@ -1,11 +1,11 @@
 # Ark Cloud
 
-Ark Cloud is a self-hosted personal cloud control plane. It will provide one private,
+Ark Cloud is a self-hosted personal cloud control plane. It provides one private,
 normalized view over the systems and services running on Ark without replacing mature
 specialized applications.
 
-Version 0.4 includes the foundation, infrastructure integrations, and a metadata-only Google Drive
-workspace:
+Version 0.6 includes the infrastructure integrations, a metadata-only Google Drive workspace,
+detailed system information, and an updated interface:
 
 - React 19, TypeScript, and Vite web client
 - FastAPI and SQLAlchemy API
@@ -23,6 +23,9 @@ workspace:
 - Saved searches, pinned folders, advisory storage insights, and sync-observed activity
 - Observable synchronization with history, retries, and expired-change-token recovery
 - Direct Google Drive links for every catalog result; Ark Cloud never proxies file content
+- Dedicated System Information page with sensor, compute, identity, and storage details scoped to
+  the API runtime view
+- Light/dark and high-contrast appearance controls, with browser-local preferences
 
 ## Quick Start
 
@@ -35,7 +38,9 @@ cp .env.example .env
 
 Before the first start, replace the example database password in both
 `POSTGRES_PASSWORD` and `ARK_DATABASE_URL`. The two values must match. Then open
-<http://127.0.0.1:5173>.
+<http://127.0.0.1:5173>. To sign in, follow [Local sign-in](docs/development.md#local-sign-in)
+to set `ARK_AUTH_USERNAME`, an Argon2id password hash, and a session secret in `.env`, then run
+`./scripts/ark up` again. Google Drive and Tailscale are optional.
 
 `./scripts/ark up` builds and recreates the complete stack, applies migrations, and waits for
 all health checks. It preserves named volumes, so changes to `.env` are applied without manually
@@ -195,7 +200,7 @@ PostgreSQL connectivity is verified by the running stack.
 
 ```text
 apps/api/          FastAPI application, migrations, and backend tests
-apps/web/          React application and frontend test
+apps/web/          React application and frontend tests
 docs/              Architecture, development, roadmap, and security notes
 compose.yaml       Local service topology
 .env.example       Safe configuration template
