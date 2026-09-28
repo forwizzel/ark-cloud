@@ -506,14 +506,43 @@ export default function DriveWorkspace({
   );
 
   return (
-    <div className="drive-workspace" id="drive-workspace">
-      <SyncConsole
-        status={status}
-        error={statusError}
-        syncing={syncing}
-        connected={connected}
-        onSync={() => void startSync()}
-      />
+    <div className="drive-workspace">
+      <div
+        className="sync-toolbar sync-readout"
+        role="group"
+        aria-label="Catalog sync controls"
+      >
+        <span
+          className={`sync-state sync-state--${status?.state ?? "unknown"}`}
+          aria-hidden="true"
+        />
+        <div>
+          <strong>
+            {status
+              ? titleCase(status.phase ?? status.state)
+              : "Reading status"}
+          </strong>
+          {status?.state === "syncing" && status.mode && (
+            <small>
+              {titleCase(status.mode)} sync
+              {status.recovery ? " / recovery path" : ""}
+            </small>
+          )}
+        </div>
+        <button
+          className="sync-action-button"
+          type="button"
+          onClick={() => void startSync()}
+          disabled={!connected || syncing || status?.state === "syncing"}
+        >
+          {status?.state === "syncing" || syncing
+            ? "Sync in progress"
+            : status?.retryable
+              ? "Retry sync"
+              : "Sync now"}
+        </button>
+      </div>
+      <SyncConsole status={status} error={statusError} />
 
       <div className="workspace-modebar" aria-label="Drive browser modes">
         {(["all", "recent", "starred"] as const).map((view) => (
@@ -818,15 +847,9 @@ export default function DriveWorkspace({
 function SyncConsole({
   status,
   error,
-  syncing,
-  connected,
-  onSync,
 }: {
   status: DriveCatalogStatus | null;
   error: string | null;
-  syncing: boolean;
-  connected: boolean;
-  onSync: () => void;
 }) {
   const active = status?.state === "syncing";
   const processed = status?.processed_count ?? 0;
@@ -838,28 +861,9 @@ function SyncConsole({
       : 100;
   return (
     <section className="sync-console" aria-label="Catalog sync">
-      <div className="sync-readout">
-        <span
-          className={`sync-state sync-state--${status?.state ?? "unknown"}`}
-          aria-hidden="true"
-        />
-        <div>
-          <strong>
-            {status
-              ? titleCase(status.phase ?? status.state)
-              : "Reading status"}
-          </strong>
-          {active && status?.mode && (
-            <small>
-              {titleCase(status.mode)} sync
-              {status.recovery ? " / recovery path" : ""}
-            </small>
-          )}
-        </div>
-        <span>
-          {total ? `${processed} / ${total}` : `${processed} processed`}
-        </span>
-      </div>
+      <span className="sync-progress-label">
+        {total ? `${processed} / ${total}` : `${processed} processed`}
+      </span>
       <div
         className="sync-progress"
         role="progressbar"
@@ -877,17 +881,6 @@ function SyncConsole({
             ? `Last success ${formatDateTime(status.last_synced_at)}`
             : (status?.message ?? "No catalog sync recorded")}
         </span>
-        <button
-          type="button"
-          onClick={onSync}
-          disabled={!connected || syncing || active}
-        >
-          {active || syncing
-            ? "Sync in progress"
-            : status?.retryable
-              ? "Retry sync"
-              : "Sync now"}
-        </button>
       </div>
       {error && <p role="alert">{error}</p>}
     </section>

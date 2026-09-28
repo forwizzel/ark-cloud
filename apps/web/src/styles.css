@@ -2227,14 +2227,6 @@ select:disabled {
   }
 }
 
-.system-overview-link {
-  grid-column: 1 / -1;
-  width: max-content;
-  color: var(--signal);
-  font-size: 0.8rem;
-  text-underline-offset: 4px;
-}
-
 .system-page {
   display: grid;
   gap: 20px;

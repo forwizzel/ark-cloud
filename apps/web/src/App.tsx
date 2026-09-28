@@ -49,19 +49,33 @@ function App() {
   const [requestNumber, setRequestNumber] = useState(0);
   const [activePage, setActivePage] = useState<
     "overview" | "drive" | "system" | "account"
-  >(pageFromHash);
+  >("overview");
   const [connectionNotice, setConnectionNotice] = useState(readOAuthNotice);
   const [signInNotice, setSignInNotice] = useState("");
 
   useEffect(() => {
-    const onHashChange = () => setActivePage(pageFromHash());
+    const onHashChange = () => {
+      setActivePage(pageFromHash());
+      scrollPageToTop();
+    };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
+  const showDashboard = () => {
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${window.location.search}`,
+    );
+    setActivePage("overview");
+    scrollPageToTop();
+  };
+
   useEffect(() => {
     fetchSession()
       .then((session) => {
+        if (session.authenticated) showDashboard();
         setSessionState(
           session.authenticated
             ? { phase: "authenticated", session }
@@ -99,6 +113,7 @@ function App() {
   };
 
   const onLogin = (session: AuthSession) => {
+    showDashboard();
     setSignInNotice("");
     setSessionState({ phase: "authenticated", session });
     setDashboardState({ phase: "loading" });
@@ -112,6 +127,7 @@ function App() {
     )
       return;
     await logout(sessionState.session.csrf_token);
+    showDashboard();
     setSignInNotice("");
     setSessionState({ phase: "unauthenticated" });
     setDashboardState({ phase: "loading" });
@@ -449,9 +465,6 @@ function DashboardView({
         host-global, while storage can reflect the container filesystem. A
         dedicated host agent is planned for exact host telemetry.
       </p>
-      <a className="system-overview-link" href="#system-information">
-        Open System Information →
-      </a>
     </div>
   );
 }
@@ -760,88 +773,88 @@ function GoogleDrivePanel({
     <section className="drive-panel panel" aria-labelledby="drive-heading">
       <PanelHeading
         title="Google Drive"
-        aside={stateLabels[drive.state]}
+        aside={drive.state === "healthy" ? undefined : stateLabels[drive.state]}
         id="drive-heading"
       />
-      <div className="drive-summary">
-        <StatusPill state={drive.state} />
-        <div>
+      <div className="drive-panel-body">
+        <div className="drive-summary">
           <strong>
             {drive.account_name ?? drive.account_email ?? "Google Drive"}
           </strong>
           <p>{drive.message}</p>
         </div>
-      </div>
-      {drive.used_bytes !== null && drive.total_bytes !== null && (
-        <div className="drive-quota">
-          <div>
-            <span>Storage used</span>
-            <strong>
-              {formatBytes(drive.used_bytes)} / {formatBytes(drive.total_bytes)}
-            </strong>
+        {drive.used_bytes !== null && drive.total_bytes !== null && (
+          <div className="drive-quota">
+            <div>
+              <span>Storage used</span>
+              <strong>
+                {formatBytes(drive.used_bytes)} /{" "}
+                {formatBytes(drive.total_bytes)}
+              </strong>
+            </div>
+            <div
+              className="meter"
+              role="progressbar"
+              aria-label="Google Drive storage used"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={
+                drive.percent === null ? undefined : Math.round(drive.percent)
+              }
+            >
+              <span
+                style={{
+                  width: `${Math.min(100, Math.max(0, drive.percent ?? 0))}%`,
+                }}
+              />
+            </div>
           </div>
-          <div
-            className="meter"
-            role="progressbar"
-            aria-label="Google Drive storage used"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={
-              drive.percent === null ? undefined : Math.round(drive.percent)
-            }
-          >
-            <span
-              style={{
-                width: `${Math.min(100, Math.max(0, drive.percent ?? 0))}%`,
-              }}
-            />
-          </div>
-        </div>
-      )}
-      {actionError && (
-        <p className="auth-error" role="alert">
-          {actionError}
-        </p>
-      )}
-      <div className="drive-actions">
-        {connected ? (
-          <>
-            <button
-              type="button"
-              className="refresh-button"
-              onClick={() => void refresh()}
-              disabled={acting}
-            >
-              Refresh
-            </button>
-            <a
-              className="drive-link"
-              href={drive.web_url}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open Google Drive
-            </a>
-            <a className="drive-link" href="#drive-workspace">
-              Open Drive workspace
-            </a>
-            <button
-              type="button"
-              className="quiet-button"
-              onClick={() => void disconnect()}
-              disabled={acting}
-            >
-              Disconnect
-            </button>
-          </>
-        ) : (
-          <a
-            className="refresh-button drive-connect"
-            href="/api/integrations/google-drive/connect"
-          >
-            Connect Google Drive
-          </a>
         )}
+        {actionError && (
+          <p className="auth-error" role="alert">
+            {actionError}
+          </p>
+        )}
+        <div className="drive-actions">
+          {connected ? (
+            <>
+              <button
+                type="button"
+                className="refresh-button"
+                onClick={() => void refresh()}
+                disabled={acting}
+              >
+                Refresh
+              </button>
+              <a
+                className="drive-link"
+                href={drive.web_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open Google Drive
+              </a>
+              <a className="drive-link" href="#drive-workspace">
+                Open Drive workspace
+              </a>
+              <button
+                type="button"
+                className="quiet-button"
+                onClick={() => void disconnect()}
+                disabled={acting}
+              >
+                Disconnect
+              </button>
+            </>
+          ) : (
+            <a
+              className="refresh-button drive-connect"
+              href="/api/integrations/google-drive/connect"
+            >
+              Connect Google Drive
+            </a>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -877,7 +890,7 @@ function PanelHeading({
 }: {
   description?: string;
   title: string;
-  aside: string;
+  aside?: string;
   id: string;
 }) {
   return (
@@ -886,7 +899,7 @@ function PanelHeading({
         <h2 id={id}>{title}</h2>
         {description && <p className="panel-description">{description}</p>}
       </div>
-      <span>{aside}</span>
+      {aside && <span>{aside}</span>}
     </div>
   );
 }
@@ -979,6 +992,10 @@ function pageFromHash(): "overview" | "drive" | "system" | "account" {
   if (window.location.hash === "#system-information") return "system";
   if (window.location.hash === "#account") return "account";
   return "overview";
+}
+
+function scrollPageToTop() {
+  document.scrollingElement?.scrollTo?.({ top: 0, behavior: "instant" });
 }
 
 function readOAuthNotice(): {

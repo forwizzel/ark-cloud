@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -117,6 +118,70 @@ test("offers appearance controls before signing in", async () => {
   ).toBeInTheDocument();
 });
 
+test("signing in starts on Dashboard instead of the previous page", async () => {
+  window.history.replaceState({}, "", "/#drive-workspace");
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url === "/api/auth/session") {
+      return jsonResponse({
+        authenticated: false,
+        username: null,
+        csrf_token: null,
+      });
+    }
+    if (url === "/api/auth/login") {
+      return jsonResponse({
+        authenticated: true,
+        username: "ark",
+        csrf_token: "csrf",
+      });
+    }
+    if (url === "/api/dashboard") return jsonResponse(dashboard);
+    return new Response(null, { status: 404 });
+  });
+
+  render(<App />);
+  await screen.findByRole("heading", { name: "Sign in" });
+  fireEvent.change(screen.getByLabelText("Username"), {
+    target: { value: "ark" },
+  });
+  fireEvent.change(screen.getByLabelText("Password"), {
+    target: { value: "password" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+  expect(
+    await screen.findByRole("heading", { name: "Dashboard", level: 1 }),
+  ).toBeInTheDocument();
+  expect(window.location.hash).toBe("");
+  expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+});
+
+test("restoring a session also starts on Dashboard", async () => {
+  window.history.replaceState({}, "", "/#drive-workspace");
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    if (String(input) === "/api/auth/session") {
+      return jsonResponse({
+        authenticated: true,
+        username: "ark",
+        csrf_token: "csrf",
+      });
+    }
+    if (String(input) === "/api/dashboard") return jsonResponse(dashboard);
+    return new Response(null, { status: 404 });
+  });
+
+  render(<App />);
+
+  expect(
+    await screen.findByRole("heading", { name: "Dashboard", level: 1 }),
+  ).toBeInTheDocument();
+  expect(window.location.hash).toBe("");
+});
+
 test("renders normalized system and integration health", async () => {
   vi.spyOn(globalThis, "fetch")
     .mockResolvedValueOnce(
@@ -156,7 +221,7 @@ test("renders normalized system and integration health", async () => {
   expect(
     screen.getByRole("heading", { name: "Google Drive" }),
   ).toBeInTheDocument();
-  expect(screen.getAllByText("Not configured")).toHaveLength(5);
+  expect(screen.getAllByText("Not configured")).toHaveLength(4);
   expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
     "href",
     "#overview",
@@ -169,6 +234,9 @@ test("renders normalized system and integration health", async () => {
     screen.getByRole("link", { name: "System Information" }),
   ).toHaveAttribute("href", "#system-information");
   expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
+  expect(
+    screen.queryByRole("link", { name: /Open System Information/ }),
+  ).not.toBeInTheDocument();
   expect(
     screen.getByText(/Metrics are the API runtime's view/),
   ).toBeInTheDocument();
@@ -312,7 +380,19 @@ test("searches the Drive catalog and links to Drive", async () => {
 
   render(<App />);
 
-  fireEvent.click(await screen.findByRole("link", { name: /Drive Workspace/ }));
+  const drivePanel = (
+    await screen.findByRole("heading", { name: "Google Drive" })
+  ).closest("section");
+  expect(drivePanel).not.toBeNull();
+  expect(within(drivePanel!).queryByText("Healthy")).not.toBeInTheDocument();
+  expect(drivePanel!.querySelector(".drive-panel-body")).toContainElement(
+    screen.getByRole("link", { name: "Open Drive workspace" }),
+  );
+  fireEvent.click(screen.getByRole("link", { name: /Drive Workspace/ }));
+  expect(
+    await screen.findByRole("heading", { name: "Drive Workspace", level: 1 }),
+  ).toBeInTheDocument();
+  expect(document.getElementById("drive-workspace")).toBeNull();
   const input = await screen.findByRole("searchbox", {
     name: "Search indexed names",
   });

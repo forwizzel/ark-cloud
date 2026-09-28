@@ -70,6 +70,15 @@ test("loads root items and navigates folders and breadcrumbs inside Ark", async 
   expect(await screen.findByRole("table")).toHaveAccessibleName(
     "Indexed Drive items",
   );
+  const syncButton = screen.getByRole("button", { name: "Sync now" });
+  const syncToolbar = screen.getByRole("group", {
+    name: "Catalog sync controls",
+  });
+  expect(syncButton.parentElement).toBe(syncToolbar);
+  expect(syncToolbar).toHaveTextContent("Completed");
+  expect(
+    screen.getByRole("region", { name: "Catalog sync" }),
+  ).not.toContainElement(syncButton);
   expect(screen.getAllByRole("columnheader")).toHaveLength(5);
   fireEvent.click(await screen.findByRole("button", { name: "Projects" }));
   expect(
@@ -237,6 +246,7 @@ test("disconnected workspace explains unavailable sections without auxiliary req
   ).toBeInTheDocument();
   expect(screen.getByText("Storage insights unavailable")).toBeInTheDocument();
   expect(screen.getByText("Catalog activity unavailable")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Sync now" })).toBeDisabled();
   expect(screen.queryByText(/No saved searches/)).not.toBeInTheDocument();
   expect(screen.queryByText(/No catalog activity/)).not.toBeInTheDocument();
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
