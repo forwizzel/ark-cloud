@@ -61,7 +61,7 @@ def _read_kernel_text(path: Path, limit: int) -> str | None:
 
 def _detected_gpus() -> list[str]:
     """Report DRM-visible PCI devices, optionally enriched by a matching NVIDIA driver label."""
-    detected: list[str] = []
+    detected: list[tuple[bool, str]] = []
     try:
         for card in islice(_DRM_ROOT.glob("card[0-9]*"), 64):
             if not fullmatch(r"card\d+", card.name):
@@ -92,12 +92,13 @@ def _detected_gpus() -> list[str]:
                                 name = model
                             break
                     break
-            detected.append(name)
+            detected.append((vendor == "10de", name))
             if len(detected) >= 8:
                 break
     except OSError:
         pass
-    return detected
+    detected.sort(key=lambda gpu: (not gpu[0], gpu[1].casefold()))
+    return [name for _, name in detected]
 
 
 def _temperature_label(group: str, raw_label: str, index: int) -> str:

@@ -131,9 +131,15 @@ class GoogleDriveIntegration(Integration):
         )
 
     def catalog_status(self, principal_id: str) -> DriveCatalogStatus:
+        count = self._db.scalar(
+            select(func.count())
+            .select_from(GoogleDriveCatalogItem)
+            .where(GoogleDriveCatalogItem.principal_id == principal_id)
+        )
         if not self._settings.google_is_configured:
             return DriveCatalogStatus(
                 state="not_configured",
+                item_count=count or 0,
                 message="Add Google OAuth credentials to enable the Drive catalog.",
             )
         connection = self._db.get(GoogleDriveConnection, principal_id)
@@ -143,11 +149,6 @@ class GoogleDriveIntegration(Integration):
                 message="Connect Google Drive to build the catalog.",
             )
         sync = self._db.get(GoogleDriveCatalogSync, principal_id)
-        count = self._db.scalar(
-            select(func.count())
-            .select_from(GoogleDriveCatalogItem)
-            .where(GoogleDriveCatalogItem.principal_id == principal_id)
-        )
         if sync is None:
             return DriveCatalogStatus(
                 state="not_synced",
