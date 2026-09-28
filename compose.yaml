@@ -97,6 +97,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./apps/web:/app:Z
+      - ./graphics/arkcloud-logo.svg:/graphics/arkcloud-logo.svg:ro,Z
       - web_node_modules:/app/node_modules
     networks:
       - app

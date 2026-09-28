@@ -20,6 +20,7 @@ import AppearanceControls from "./AppearanceControls";
 import AccountPage from "./AccountPage";
 import DriveWorkspace from "./DriveWorkspace";
 import SystemInformationPage from "./SystemInformationPage";
+import arkCloudLogo from "../../../graphics/arkcloud-logo.svg?raw";
 
 type DashboardState =
   | { phase: "loading" }
@@ -134,9 +135,11 @@ function App() {
     <div className="app-frame">
       <aside className="side-rail">
         <a className="brand" href="/" aria-label="Ark Cloud dashboard">
-          <span className="brand-mark" aria-hidden="true">
-            A
-          </span>
+          <span
+            className="brand-logo brand-logo--rail"
+            aria-hidden="true"
+            dangerouslySetInnerHTML={{ __html: arkCloudLogo }}
+          />
           <span className="brand-type">
             <strong>ARK</strong>
             <small>CLOUD</small>
@@ -472,9 +475,11 @@ function LoginScreen({
   return (
     <main className="auth-frame">
       <form className="login-panel" onSubmit={(event) => void submit(event)}>
-        <span className="login-brand" aria-hidden="true">
-          A
-        </span>
+        <span
+          className="brand-logo brand-logo--login"
+          aria-hidden="true"
+          dangerouslySetInnerHTML={{ __html: arkCloudLogo }}
+        />
         <p className="eyebrow">Ark Cloud</p>
         <h1>
           {mode === "setup"

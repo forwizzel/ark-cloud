@@ -174,17 +174,40 @@ summary:focus-visible {
   box-shadow: 0 24px 80px var(--login-shadow);
 }
 
-.login-brand {
+.brand-logo {
   display: grid;
+  flex: 0 0 auto;
+  color: var(--signal);
+}
+
+.brand-logo--rail {
+  --logo-negative: var(--rail);
+  width: 34px;
+  height: 34px;
+}
+
+.brand-logo--login {
+  --logo-negative: var(--panel);
   width: 50px;
   height: 50px;
-  place-items: center;
-  border: 2px solid var(--signal);
-  color: var(--signal);
-  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
-  font-family: var(--display-font);
-  font-size: 1.5rem;
-  font-weight: 700;
+}
+
+.brand-logo svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.brand-logo svg > rect {
+  display: none;
+}
+
+.brand-logo svg g > path:first-child {
+  fill: var(--signal) !important;
+}
+
+.brand-logo svg g > path:not(:first-child) {
+  fill: var(--logo-negative) !important;
 }
 
 .login-panel .eyebrow {
@@ -380,17 +403,10 @@ summary:focus-visible {
   text-decoration: none;
 }
 
-.brand-mark {
+.brand .brand-logo {
   display: grid;
   width: 34px;
   height: 34px;
-  place-items: center;
-  border: 1px solid var(--signal);
-  color: var(--signal);
-  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
-  font-family: var(--display-font);
-  font-size: 1rem;
-  font-weight: 700;
 }
 
 .brand-type {
