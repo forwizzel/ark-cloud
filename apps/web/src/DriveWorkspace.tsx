@@ -512,7 +512,6 @@ export default function DriveWorkspace({
         aria-labelledby="workspace-heading"
       >
         <div>
-          <p className="section-label">Metadata control plane</p>
           <h2 id="workspace-heading">Drive Workspace</h2>
           <p>
             Browse indexed metadata. Content and file operations remain in

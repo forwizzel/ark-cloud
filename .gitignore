@@ -28,7 +28,12 @@ Thumbs.db
 # Runtime data
 *.log
 
+# impeccable docs
+ark-cloud-redesign-brief.md
+PRODUCT.md
+DESIGN.md
 
 # skills
 .agents
 skills-lock.json
+.impeccable

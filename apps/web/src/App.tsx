@@ -118,7 +118,11 @@ function App() {
   };
 
   if (sessionState.phase === "loading") {
-    return <div className="auth-frame">Checking Ark session</div>;
+    return (
+      <main className="auth-frame auth-frame--loading">
+        <p role="status">Checking Ark session…</p>
+      </main>
+    );
   }
 
   if (sessionState.phase === "unauthenticated") {
@@ -147,6 +151,7 @@ function App() {
         </a>
 
         <nav aria-label="Primary navigation">
+          <span className="nav-heading">Workspace</span>
           <a
             className={`nav-item ${activePage === "overview" ? "nav-item--active" : ""}`}
             href="#overview"
@@ -200,15 +205,6 @@ function App() {
       >
         <header className="topbar">
           <div>
-            <p className="eyebrow">
-              {activePage === "overview"
-                ? "Cloud"
-                : activePage === "drive"
-                  ? "Catalog"
-                  : activePage === "system"
-                    ? "System"
-                    : "Account"}
-            </p>
             <h1>
               {activePage === "overview"
                 ? "Dashboard"
@@ -218,6 +214,15 @@ function App() {
                     ? "Runtime information"
                     : "Your account"}
             </h1>
+            <p className="topbar-description">
+              {activePage === "overview"
+                ? "Your private infrastructure at a glance."
+                : activePage === "drive"
+                  ? "Find and review indexed Drive metadata."
+                  : activePage === "system"
+                    ? "Inspect the API runtime view in detail."
+                    : "Manage your access to this instance."}
+            </p>
           </div>
           <div className="topbar-actions">
             {activePage !== "system" && activePage !== "account" && (
@@ -326,6 +331,14 @@ function DashboardView({
   const systemHealth = dashboard.integrations.find(
     (integration) => integration.id === "system",
   );
+  const needsAttention =
+    dashboard.integrations.filter(
+      (integration) =>
+        integration.state === "degraded" || integration.state === "unavailable",
+    ).length + (dashboard.platform.database === "connected" ? 0 : 1);
+  const unconfigured = dashboard.integrations.filter(
+    (integration) => integration.state === "not_configured",
+  ).length;
   return (
     <div className="dashboard-grid">
       <section className="system-banner panel" aria-labelledby="system-heading">
@@ -334,7 +347,6 @@ function DashboardView({
             <span />
           </div>
           <div>
-            <p className="section-label">Server</p>
             <div className="system-title-row">
               <h2 id="system-heading">{system?.hostname ?? "Ark"}</h2>
               <StatusPill state={systemHealth?.state ?? "unavailable"} />
@@ -351,6 +363,45 @@ function DashboardView({
           <span>Uptime</span>
           <strong>{system ? formatUptime(system.uptime_seconds) : "--"}</strong>
           <small>{system ? "Kernel boot estimate" : "no telemetry"}</small>
+        </div>
+      </section>
+
+      <section
+        className="overview-panel panel"
+        aria-labelledby="overview-heading"
+      >
+        <div className="overview-panel-head">
+          <h2 id="overview-heading">Operational state</h2>
+          <span className="overview-count">
+            {dashboard.integrations.length + 2} checks
+          </span>
+        </div>
+        <p className="overview-summary">
+          {needsAttention === 0
+            ? "No active service issues"
+            : `${needsAttention} ${needsAttention === 1 ? "check needs" : "checks need"} attention`}
+        </p>
+        {unconfigured > 0 && (
+          <p className="overview-optional">
+            {unconfigured} optional{" "}
+            {unconfigured === 1 ? "integration" : "integrations"} not configured
+          </p>
+        )}
+        <div className="overview-facts">
+          <span>
+            <i className="status-dot status-dot--healthy" aria-hidden="true" />
+            API online
+          </span>
+          <span>
+            <i
+              className={`status-dot status-dot--${dashboard.platform.database === "connected" ? "healthy" : "unavailable"}`}
+              aria-hidden="true"
+            />
+            Database{" "}
+            {dashboard.platform.database === "connected"
+              ? "connected"
+              : "unavailable"}
+          </span>
         </div>
       </section>
 
@@ -474,13 +525,18 @@ function LoginScreen({
 
   return (
     <main className="auth-frame">
+      <aside className="auth-story" aria-label="Ark Cloud">
+        <span>ARK CLOUD</span>
+        <p>A clear view of what matters.</p>
+        <small>Private infrastructure, one place to operate.</small>
+      </aside>
       <form className="login-panel" onSubmit={(event) => void submit(event)}>
         <span
           className="brand-logo brand-logo--login"
           aria-hidden="true"
           dangerouslySetInnerHTML={{ __html: arkCloudLogo }}
         />
-        <p className="eyebrow">Ark Cloud</p>
+        <p className="auth-identity">Ark Cloud / Private control plane</p>
         <h1>
           {mode === "setup"
             ? "Set up Ark Cloud"
@@ -858,8 +914,8 @@ function PanelHeading({
   return (
     <div className="panel-heading">
       <div>
-        <p className="section-label">{eyebrow}</p>
         <h2 id={id}>{title}</h2>
+        <p className="panel-description">{eyebrow}</p>
       </div>
       <span>{aside}</span>
     </div>

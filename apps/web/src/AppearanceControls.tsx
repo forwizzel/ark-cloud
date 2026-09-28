@@ -42,8 +42,8 @@ function applyAppearance(theme: Theme, highContrast: boolean) {
           ? "#ffffff"
           : "#000000"
         : theme === "light"
-          ? "#f3f7f9"
-          : "#0b1420",
+          ? "#f2f5f2"
+          : "#111b22",
     );
 }
 
