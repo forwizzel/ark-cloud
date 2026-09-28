@@ -197,8 +197,10 @@ background worker, Drive write scope, or content proxy.
 
 ## Deferred Decisions
 
-- Multi-user authentication and authorization require a dedicated design review. The current
-  implementation has a deliberately narrow local single-user session boundary.
+- Version 0.7 stores local users and Argon2id password hashes in PostgreSQL. Stable user IDs scope
+  sessions and Drive metadata; usernames can change without changing ownership. The first
+  administrator uses a one-time locally generated code, and admins invite additional users.
+  Each account manages its own credentials in the app. A terminal-only owner CLI handles recovery.
 - A general-purpose reverse proxy such as Caddy and production HTTPS remain deployment work;
   Tailscale Serve provides HTTPS for private remote development.
 - Async database access is not justified by the current workload. FastAPI safely runs synchronous

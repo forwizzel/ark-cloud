@@ -4,8 +4,8 @@ Ark Cloud is a self-hosted personal cloud control plane. It provides one private
 normalized view over the systems and services running on Ark without replacing mature
 specialized applications.
 
-Version 0.6 includes the infrastructure integrations, a metadata-only Google Drive workspace,
-detailed system information, and an updated interface:
+Version 0.7 includes local account management alongside the infrastructure integrations,
+metadata-only Google Drive workspace, detailed system information, and updated interface:
 
 - React 19, TypeScript, and Vite web client
 - FastAPI and SQLAlchemy API
@@ -19,6 +19,7 @@ detailed system information, and an updated interface:
 - Responsive infrastructure dashboard with partial-failure states
 - Backend and frontend tests, linting, formatting, and CI smoke tests
 - Local session authentication and server-side status for the Google Drive storage provider
+- In-app local username/password changes, administrator-managed invitations, and local recovery
 - Owned My Drive folder browsing, filtered search, recent and starred views
 - Saved searches, pinned folders, advisory storage insights, and sync-observed activity
 - Observable synchronization with history, retries, and expired-change-token recovery
@@ -37,10 +38,12 @@ cp .env.example .env
 ```
 
 Before the first start, replace the example database password in both
-`POSTGRES_PASSWORD` and `ARK_DATABASE_URL`. The two values must match. Then open
-<http://127.0.0.1:5173>. To sign in, follow [Local sign-in](docs/development.md#local-sign-in)
-to set `ARK_AUTH_USERNAME`, an Argon2id password hash, and a session secret in `.env`, then run
-`./scripts/ark up` again. Google Drive and Tailscale are optional.
+`POSTGRES_PASSWORD` and `ARK_DATABASE_URL`. The two values must match. After `./scripts/ark up`,
+run `./scripts/ark bootstrap` to receive a 15-minute setup code. Open
+<http://127.0.0.1:5173> and create the first administrator in the browser using that code.
+Username and password changes are available under **Account**; admins can invite other local
+users there. See [Local accounts](docs/development.md#local-accounts) for upgrading and recovery.
+Google Drive and Tailscale are optional.
 
 `./scripts/ark up` builds and recreates the complete stack, applies migrations, and waits for
 all health checks. It preserves named volumes, so changes to `.env` are applied without manually

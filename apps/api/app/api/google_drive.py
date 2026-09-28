@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth.service import SESSION_COOKIE, Principal, digest, get_session
+from app.auth.service import SESSION_COOKIE, Principal, digest, get_session, session_secret
 from app.core.config import Settings, get_settings
 from app.core.database import get_db_session
 from app.dependencies import get_google_drive_integration, require_csrf, require_principal
@@ -27,6 +27,7 @@ from app.models import (
     GoogleDriveConnection,
     GoogleDrivePinnedLocation,
     GoogleDriveSavedSearch,
+    LocalUser,
 )
 from app.schemas.drive_workspace import (
     DriveActivityResponse,
@@ -66,7 +67,7 @@ def connect(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required."
         )
     state = secrets.token_urlsafe(32)
-    session.oauth_state_hash = digest(state, settings.session_secret.get_secret_value())
+    session.oauth_state_hash = digest(state, session_secret(db, settings))
     session.oauth_state_expires_at = datetime.now(UTC) + timedelta(minutes=10)
     db.commit()
     query = urlencode(
@@ -94,15 +95,18 @@ def callback(
     db: Annotated[Session, Depends(get_db_session)] = None,
     settings: Annotated[Settings, Depends(get_settings)] = None,
 ) -> RedirectResponse:
-    if error or not code or not state or not settings.auth_is_configured:
+    if error or not code or not state:
         return RedirectResponse("/?google_drive=denied", status_code=303)
     session = get_session(db, settings, request.cookies.get(SESSION_COOKIE))
+    user = db.get(LocalUser, session.principal_id) if session is not None else None
     if (
         session is None
+        or user is None
+        or not user.active
         or _oauth_state_expired(session.oauth_state_expires_at)
         or session.oauth_state_hash is None
         or not secrets.compare_digest(
-            session.oauth_state_hash, digest(state, settings.session_secret.get_secret_value())
+            session.oauth_state_hash, digest(state, session_secret(db, settings))
         )
     ):
         return RedirectResponse("/?google_drive=invalid_state", status_code=303)

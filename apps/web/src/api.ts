@@ -165,6 +165,16 @@ export type AuthSession = {
   authenticated: boolean;
   username: string | null;
   csrf_token: string | null;
+  role?: "admin" | "member" | null;
+  setup_required?: boolean;
+};
+
+export type LocalUser = {
+  id: string;
+  username: string;
+  role: "admin" | "member";
+  active: boolean;
+  pending: boolean;
 };
 
 export type DriveView = "all" | "recent" | "starred";
@@ -316,6 +326,127 @@ export async function login(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     }),
+  );
+}
+
+export async function setupAccount(
+  code: string,
+  username: string,
+  password: string,
+): Promise<AuthSession> {
+  return apiResponse<AuthSession>(
+    await fetch("/api/auth/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, username, password }),
+    }),
+  );
+}
+
+export async function redeemInvite(
+  token: string,
+  password: string,
+): Promise<AuthSession> {
+  return apiResponse<AuthSession>(
+    await fetch("/api/auth/invite/redeem", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, password }),
+    }),
+  );
+}
+
+async function accountRequest<T>(
+  path: string,
+  method: string,
+  csrfToken: string,
+  body: object,
+): Promise<T> {
+  const response = await fetch(`/api/auth/${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+    body: JSON.stringify(body),
+  });
+  if (response.status === 204) return undefined as T;
+  return apiResponse<T>(response);
+}
+
+export function changeUsername(
+  username: string,
+  currentPassword: string,
+  csrf: string,
+): Promise<AuthSession> {
+  return accountRequest<AuthSession>("account/username", "PUT", csrf, {
+    username,
+    current_password: currentPassword,
+  });
+}
+
+export function changePassword(
+  currentPassword: string,
+  newPassword: string,
+  csrf: string,
+): Promise<void> {
+  return accountRequest<void>("account/password", "PUT", csrf, {
+    current_password: currentPassword,
+    new_password: newPassword,
+  });
+}
+
+export async function listUsers(): Promise<LocalUser[]> {
+  return apiResponse<LocalUser[]>(await fetch("/api/auth/users"));
+}
+
+export function inviteUser(
+  username: string,
+  role: "admin" | "member",
+  csrf: string,
+): Promise<{ token: string }> {
+  return accountRequest<{ token: string }>("users", "POST", csrf, {
+    username,
+    role,
+  });
+}
+
+export function reissueInvite(
+  id: string,
+  csrf: string,
+): Promise<{ token: string }> {
+  return accountRequest<{ token: string }>(
+    `users/${encodeURIComponent(id)}/invite`,
+    "POST",
+    csrf,
+    {},
+  );
+}
+
+export function updateUser(
+  id: string,
+  changes: { role?: "admin" | "member"; active?: boolean },
+  csrf: string,
+): Promise<LocalUser> {
+  return accountRequest<LocalUser>(
+    `users/${encodeURIComponent(id)}`,
+    "PATCH",
+    csrf,
+    changes,
+  );
+}
+
+export function deleteUser(
+  id: string,
+  confirmUsername: string,
+  currentPassword: string,
+  csrf: string,
+): Promise<void> {
+  return accountRequest<void>(
+    `users/${encodeURIComponent(id)}`,
+    "DELETE",
+    csrf,
+    {
+      confirm_username: confirmUsername,
+      current_password: currentPassword,
+    },
   );
 }
 

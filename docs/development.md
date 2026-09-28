@@ -48,21 +48,46 @@ changing `package.json`, `package-lock.json`, or `pyproject.toml`:
 ./scripts/ark up
 ```
 
-## Local Sign-In
+## Local Accounts
 
-The starter `.env.example` leaves authentication credentials blank. After the first `./scripts/ark up`
-has built the API image, generate an Argon2id password hash and a random session secret inside it:
+On a new install, start the stack with `./scripts/ark up`, then issue a one-time code from the
+instance owner's terminal:
 
 ```bash
-docker compose run --rm --no-deps api python -c 'from argon2 import PasswordHasher; import getpass; print(PasswordHasher().hash(getpass.getpass()))'
-docker compose run --rm --no-deps api python -c 'import secrets; print(secrets.token_urlsafe(32))'
+./scripts/ark bootstrap
 ```
 
-The first command prompts for the password without printing it; copy only its hash into
-`ARK_AUTH_PASSWORD_HASH`. Set `ARK_AUTH_USERNAME` to the name you will sign in with and copy the
-second output into `ARK_SESSION_SECRET`. Keep all three values in ignored `.env`, rerun
-`./scripts/ark up`, and sign in at <http://127.0.0.1:5173>. `--rm` cleans up each one-off
-container and `--no-deps` avoids starting PostgreSQL for these generators.
+Enter the code on <http://127.0.0.1:5173> and choose the first administrator username and
+password (at least 12 characters). The code expires after 15 minutes; rerun the command to
+replace an unused/expired code. Only an instance with no accounts **and no legacy Drive data** can
+issue a code. No default login exists and the setup page closes after the first account.
+
+Users change their username or password under **Account**. They must supply their current
+password. Password changes revoke every session, including the current browser; sign back in.
+An administrator can create an invitation in **Account → Local accounts** and share its one-time
+code privately. The invitee selects **Redeem invitation** on the sign-in screen to choose a
+password. Invitations expire after 24 hours; an admin can issue a replacement code. Admins can
+change roles, disable/enable accounts, or delete an account with an explicit username and admin
+password confirmation. Deletion permanently removes that user's Drive connection and locally
+indexed metadata, but not Drive files. The last active administrator cannot be removed.
+
+For local recovery when no admin can log in, use `./scripts/ark reset-password USERNAME` or
+`./scripts/ark recover-admin USERNAME`. Both prompt for a new password without showing it in
+command arguments or output, revoke sessions and outstanding invitations, and require terminal
+access to the running stack. Recovery cannot restore a deleted database volume; restore a backup.
+
+Existing single-user installs: **keep** `ARK_AUTH_USERNAME` and `ARK_AUTH_PASSWORD_HASH` in the
+ignored `.env` for the first `./scripts/ark up` on v0.7. The migration imports that existing
+Argon2id hash, assigns a stable account ID, moves the user's Drive control-plane data, and
+invalidates old sessions. Log in with the same password, confirm Drive Workspace data is present,
+then remove those two legacy values from `.env` if desired. Future username/password changes
+are only made in the application. Do not delete the PostgreSQL volume during an upgrade.
+
+If `ARK_SESSION_SECRET` is blank, the first login/setup creates a persistent random signing key
+in PostgreSQL. Existing installations may retain their configured `.env` secret; changing or
+removing it invalidates sessions. Back up the database volume to retain accounts, invitations,
+and the generated signing key across rebuilds or host moves. `./scripts/ark reset-data --confirm`
+deletes all accounts and control-plane data.
 
 ## Inspect The Stack
 

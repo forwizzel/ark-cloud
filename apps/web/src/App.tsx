@@ -5,7 +5,9 @@ import {
   fetchSession,
   login,
   logout,
+  redeemInvite,
   refreshGoogleDrive,
+  setupAccount,
   disconnectGoogleDrive,
   type Dashboard,
   type AuthSession,
@@ -15,6 +17,7 @@ import {
   type TailscaleDevice,
 } from "./api";
 import AppearanceControls from "./AppearanceControls";
+import AccountPage from "./AccountPage";
 import DriveWorkspace from "./DriveWorkspace";
 import SystemInformationPage from "./SystemInformationPage";
 
@@ -25,7 +28,7 @@ type DashboardState =
 
 type SessionState =
   | { phase: "loading" }
-  | { phase: "unauthenticated" }
+  | { phase: "unauthenticated"; setupRequired?: boolean }
   | { phase: "authenticated"; session: AuthSession };
 
 const stateLabels: Record<IntegrationState, string> = {
@@ -43,10 +46,11 @@ function App() {
     phase: "loading",
   });
   const [requestNumber, setRequestNumber] = useState(0);
-  const [activePage, setActivePage] = useState<"overview" | "drive" | "system">(
-    pageFromHash,
-  );
+  const [activePage, setActivePage] = useState<
+    "overview" | "drive" | "system" | "account"
+  >(pageFromHash);
   const [connectionNotice, setConnectionNotice] = useState(readOAuthNotice);
+  const [signInNotice, setSignInNotice] = useState("");
 
   useEffect(() => {
     const onHashChange = () => setActivePage(pageFromHash());
@@ -60,7 +64,10 @@ function App() {
         setSessionState(
           session.authenticated
             ? { phase: "authenticated", session }
-            : { phase: "unauthenticated" },
+            : {
+                phase: "unauthenticated",
+                setupRequired: session.setup_required,
+              },
         );
       })
       .catch(() => setSessionState({ phase: "unauthenticated" }));
@@ -91,6 +98,7 @@ function App() {
   };
 
   const onLogin = (session: AuthSession) => {
+    setSignInNotice("");
     setSessionState({ phase: "authenticated", session });
     setDashboardState({ phase: "loading" });
     setRequestNumber((value) => value + 1);
@@ -103,6 +111,7 @@ function App() {
     )
       return;
     await logout(sessionState.session.csrf_token);
+    setSignInNotice("");
     setSessionState({ phase: "unauthenticated" });
     setDashboardState({ phase: "loading" });
   };
@@ -112,7 +121,13 @@ function App() {
   }
 
   if (sessionState.phase === "unauthenticated") {
-    return <LoginScreen onLogin={onLogin} />;
+    return (
+      <LoginScreen
+        onLogin={onLogin}
+        setupRequired={sessionState.setupRequired ?? false}
+        notice={signInNotice}
+      />
+    );
   }
 
   return (
@@ -157,6 +172,14 @@ function App() {
             <span className="nav-symbol" aria-hidden="true" />
             System Information
           </a>
+          <a
+            className={`nav-item ${activePage === "account" ? "nav-item--active" : ""}`}
+            href="#account"
+            aria-current={activePage === "account" ? "page" : undefined}
+            onClick={() => setActivePage("account")}
+          >
+            Account
+          </a>
         </nav>
 
         <AppearanceControls />
@@ -179,18 +202,22 @@ function App() {
                 ? "Cloud"
                 : activePage === "drive"
                   ? "Catalog"
-                  : "System"}
+                  : activePage === "system"
+                    ? "System"
+                    : "Account"}
             </p>
             <h1>
               {activePage === "overview"
                 ? "Dashboard"
                 : activePage === "drive"
                   ? "Drive metadata"
-                  : "Runtime information"}
+                  : activePage === "system"
+                    ? "Runtime information"
+                    : "Your account"}
             </h1>
           </div>
           <div className="topbar-actions">
-            {activePage !== "system" && (
+            {activePage !== "system" && activePage !== "account" && (
               <span className="last-check">
                 {activePage === "drive"
                   ? "Owned My Drive index"
@@ -237,12 +264,31 @@ function App() {
         )}
 
         {activePage === "system" && <SystemInformationPage />}
-        {activePage !== "system" && dashboardState.phase === "loading" && (
-          <LoadingDashboard />
+        {activePage === "account" && (
+          <AccountPage
+            session={sessionState.session}
+            onUpdate={(session) =>
+              setSessionState({ phase: "authenticated", session })
+            }
+            onPasswordChanged={() => {
+              setSignInNotice(
+                "Password changed. Sign in with your new password.",
+              );
+              setSessionState({ phase: "unauthenticated" });
+            }}
+          />
         )}
-        {activePage !== "system" && dashboardState.phase === "error" && (
-          <ErrorDashboard message={dashboardState.message} onRetry={refresh} />
-        )}
+        {activePage !== "system" &&
+          activePage !== "account" &&
+          dashboardState.phase === "loading" && <LoadingDashboard />}
+        {activePage !== "system" &&
+          activePage !== "account" &&
+          dashboardState.phase === "error" && (
+            <ErrorDashboard
+              message={dashboardState.message}
+              onRetry={refresh}
+            />
+          )}
         {dashboardState.phase === "ready" && activePage === "overview" && (
           <DashboardView
             dashboard={dashboardState.dashboard}
@@ -380,9 +426,22 @@ function DashboardView({
   );
 }
 
-function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
+function LoginScreen({
+  onLogin,
+  setupRequired,
+  notice,
+}: {
+  onLogin: (session: AuthSession) => void;
+  setupRequired: boolean;
+  notice: string;
+}) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [code, setCode] = useState("");
+  const [mode, setMode] = useState<"login" | "setup" | "invite">(
+    setupRequired ? "setup" : "login",
+  );
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -391,7 +450,16 @@ function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
     setSubmitting(true);
     setError(null);
     try {
-      onLogin(await login(username, password));
+      if (mode !== "login" && password !== confirmation) {
+        throw new Error("Passwords do not match.");
+      }
+      onLogin(
+        mode === "setup"
+          ? await setupAccount(code, username, password)
+          : mode === "invite"
+            ? await redeemInvite(code, password)
+            : await login(username, password),
+      );
     } catch (loginError: unknown) {
       setError(
         loginError instanceof Error ? loginError.message : "Unable to log in.",
@@ -408,34 +476,100 @@ function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => void }) {
           A
         </span>
         <p className="eyebrow">Ark Cloud</p>
-        <h1>Sign in</h1>
+        <h1>
+          {mode === "setup"
+            ? "Set up Ark Cloud"
+            : mode === "invite"
+              ? "Accept invitation"
+              : "Sign in"}
+        </h1>
+        {notice && <p role="status">{notice}</p>}
+        {mode === "setup" && (
+          <p>
+            From this machine, run <code>./scripts/ark bootstrap</code> and
+            enter the one-time code to create the first administrator.
+          </p>
+        )}
+        {mode === "invite" && (
+          <p>
+            Ask your administrator for an invitation code. Choose a password for
+            your new account.
+          </p>
+        )}
+        {mode !== "invite" && (
+          <label>
+            Username
+            <input
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              autoComplete="username"
+              maxLength={mode === "setup" ? 64 : 128}
+              required
+            />
+          </label>
+        )}
+        {mode !== "login" && (
+          <label>
+            {mode === "setup" ? "Setup code" : "Invitation code"}
+            <input
+              required
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              autoComplete="off"
+            />
+          </label>
+        )}
         <label>
-          Username
-          <input
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            autoComplete="username"
-            required
-          />
-        </label>
-        <label>
-          Password
+          {mode === "login" ? "Password" : "New password"}
           <input
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            autoComplete="current-password"
+            autoComplete={
+              mode === "login" ? "current-password" : "new-password"
+            }
+            minLength={mode === "login" ? undefined : 12}
             required
           />
         </label>
+        {mode !== "login" && (
+          <label>
+            Confirm password
+            <input
+              required
+              type="password"
+              autoComplete="new-password"
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+            />
+          </label>
+        )}
         {error && (
           <p className="auth-error" role="alert">
             {error}
           </p>
         )}
         <button className="refresh-button" type="submit" disabled={submitting}>
-          {submitting ? "Signing in" : "Sign in"}
+          {submitting
+            ? "Please wait"
+            : mode === "setup"
+              ? "Create administrator"
+              : mode === "invite"
+                ? "Create account"
+                : "Sign in"}
         </button>
+        {!setupRequired && (
+          <button
+            type="button"
+            className="auth-mode-switch"
+            onClick={() => {
+              setMode(mode === "invite" ? "login" : "invite");
+              setError(null);
+            }}
+          >
+            {mode === "invite" ? "Back to sign in" : "Redeem invitation"}
+          </button>
+        )}
         <AppearanceControls />
       </form>
     </main>
@@ -810,9 +944,10 @@ function formatLastSeen(value: string | null): string {
 
 export default App;
 
-function pageFromHash(): "overview" | "drive" | "system" {
+function pageFromHash(): "overview" | "drive" | "system" | "account" {
   if (window.location.hash === "#drive-workspace") return "drive";
   if (window.location.hash === "#system-information") return "system";
+  if (window.location.hash === "#account") return "account";
   return "overview";
 }
 

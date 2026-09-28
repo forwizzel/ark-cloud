@@ -19,11 +19,50 @@ class Base(DeclarativeBase):
     pass
 
 
+class LocalUser(Base):
+    __tablename__ = "local_users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    username: Mapped[str] = mapped_column(String(128), unique=True)
+    password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    role: Mapped[str] = mapped_column(String(16))
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    invite_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    invite_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class BootstrapCode(Base):
+    __tablename__ = "bootstrap_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class LocalSessionKey(Base):
+    __tablename__ = "local_session_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    secret: Mapped[str] = mapped_column(String(128))
+
+
+class LoginAttempt(Base):
+    __tablename__ = "login_attempts"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    failures: Mapped[int] = mapped_column(Integer)
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class AuthSession(Base):
     __tablename__ = "auth_sessions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    principal_id: Mapped[str] = mapped_column(String(128), index=True)
+    principal_id: Mapped[str] = mapped_column(
+        String(128), ForeignKey("local_users.id", ondelete="CASCADE"), index=True
+    )
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     csrf_hash: Mapped[str] = mapped_column(String(64))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
@@ -38,7 +77,9 @@ class AuthSession(Base):
 class GoogleDriveConnection(Base):
     __tablename__ = "google_drive_connections"
 
-    principal_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    principal_id: Mapped[str] = mapped_column(
+        String(128), ForeignKey("local_users.id", ondelete="CASCADE"), primary_key=True
+    )
     account_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     account_name: Mapped[str | None] = mapped_column(String(320), nullable=True)
     refresh_token_encrypted: Mapped[str] = mapped_column(Text)
@@ -58,7 +99,7 @@ class GoogleDriveCatalogSync(Base):
 
     principal_id: Mapped[str] = mapped_column(
         String(128),
-        ForeignKey("google_drive_connections.principal_id", ondelete="CASCADE"),
+        ForeignKey("google_drive_connections.principal_id", ondelete="CASCADE", onupdate="CASCADE"),
         primary_key=True,
     )
     change_page_token: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -95,7 +136,7 @@ class GoogleDriveCatalogItem(Base):
 
     principal_id: Mapped[str] = mapped_column(
         String(128),
-        ForeignKey("google_drive_connections.principal_id", ondelete="CASCADE"),
+        ForeignKey("google_drive_connections.principal_id", ondelete="CASCADE", onupdate="CASCADE"),
         primary_key=True,
     )
     drive_file_id: Mapped[str] = mapped_column(String(256), primary_key=True)
@@ -127,7 +168,7 @@ class GoogleDriveParentEdge(Base):
 
     principal_id: Mapped[str] = mapped_column(
         String(128),
-        ForeignKey("google_drive_connections.principal_id", ondelete="CASCADE"),
+        ForeignKey("google_drive_connections.principal_id", ondelete="CASCADE", onupdate="CASCADE"),
         primary_key=True,
     )
     child_file_id: Mapped[str] = mapped_column(String(256), primary_key=True)
@@ -142,7 +183,8 @@ class GoogleDriveSavedSearch(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     principal_id: Mapped[str] = mapped_column(
-        String(128), ForeignKey("google_drive_connections.principal_id", ondelete="CASCADE")
+        String(128),
+        ForeignKey("google_drive_connections.principal_id", ondelete="CASCADE", onupdate="CASCADE"),
     )
     name: Mapped[str] = mapped_column(String(100))
     query: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -171,7 +213,8 @@ class GoogleDrivePinnedLocation(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     principal_id: Mapped[str] = mapped_column(
-        String(128), ForeignKey("google_drive_connections.principal_id", ondelete="CASCADE")
+        String(128),
+        ForeignKey("google_drive_connections.principal_id", ondelete="CASCADE", onupdate="CASCADE"),
     )
     drive_folder_id: Mapped[str] = mapped_column(String(256))
     label: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -186,7 +229,8 @@ class GoogleDriveSyncAttempt(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     principal_id: Mapped[str] = mapped_column(
-        String(128), ForeignKey("google_drive_connections.principal_id", ondelete="CASCADE")
+        String(128),
+        ForeignKey("google_drive_connections.principal_id", ondelete="CASCADE", onupdate="CASCADE"),
     )
     mode: Mapped[str] = mapped_column(String(32))
     status: Mapped[str] = mapped_column(String(16))
@@ -208,7 +252,8 @@ class GoogleDriveActivity(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     principal_id: Mapped[str] = mapped_column(
-        String(128), ForeignKey("google_drive_connections.principal_id", ondelete="CASCADE")
+        String(128),
+        ForeignKey("google_drive_connections.principal_id", ondelete="CASCADE", onupdate="CASCADE"),
     )
     event_type: Mapped[str] = mapped_column(String(32))
     drive_file_id: Mapped[str | None] = mapped_column(String(256), nullable=True)

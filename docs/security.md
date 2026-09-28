@@ -2,10 +2,10 @@
 
 ## Current Security Posture
 
-Version 0.6 is development software, not a production deployment. It has a narrow local
-single-user session boundary, not multi-user authentication or authorization. Tailscale reduces
-network exposure but does not replace identity checks inside Ark Cloud. Do not publish this stack
-to the Internet.
+Version 0.7 is development software, not a production deployment. It supports local accounts,
+administrator-managed invitations, and principal-scoped Drive data. Tailscale reduces network
+exposure but does not replace identity checks inside Ark Cloud. Do not publish this stack to the
+Internet.
 
 ## Trust Boundaries
 
@@ -93,8 +93,9 @@ initial development image but do not lock every transitive package.
 
 ## Before Production Use
 
-- Complete threat modeling and multi-user authentication/authorization architecture review.
-- Add session rotation and expiry cleanup, strict security headers, and rate limiting.
+- Complete production threat modeling and multi-user authorization review.
+- Add session rotation and expiry cleanup and strict security headers; review login throttling
+  under multi-replica deployments.
 - Terminate HTTPS at a reviewed reverse proxy.
 - Separate development and production images and remove reload behavior.
 - Use production secret storage and least-privilege database roles.
@@ -105,8 +106,10 @@ initial development image but do not lock every transitive package.
 ## Google Drive And Sessions
 
 - Dashboard and integration routes require a local server-side session. The session cookie is
-  HttpOnly and SameSite; mutations also require a session-bound CSRF token.
-- Configure a unique Argon2id password hash and random session secret in ignored `.env`, not in
+  HttpOnly and SameSite; authenticated mutations require a session-bound CSRF token. Signed-out
+  setup and invitation redemption require a one-time secret and same-origin JSON request.
+- Keep a random session secret in ignored `.env` or use the persistent database-generated secret;
+  local account password hashes use Argon2id and are stored in PostgreSQL, not in
   source control. Set `ARK_COOKIE_SECURE=true` whenever access is served over HTTPS.
 - Google OAuth client credentials and Fernet encryption key remain server-side. Refresh tokens are
   encrypted before database storage and are never returned to the browser or written to logs.

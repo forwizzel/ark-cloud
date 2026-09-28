@@ -17,6 +17,9 @@ Commands:
   health                     Check the browser-facing API health endpoint
   logs [service]             Follow logs for all services or one service
   exec SERVICE COMMAND...    Execute a command in a running service
+  bootstrap                  Print a one-time first-administrator setup code
+  reset-password USERNAME    Reset a local user's password (hidden prompt)
+  recover-admin USERNAME     Restore administrator access (hidden prompt)
   reset-data --confirm       Remove the stack and all named volumes
 EOF
 }
@@ -93,6 +96,12 @@ exec_service() {
     compose exec "$@"
 }
 
+account_command() {
+    prepare
+    [[ "$#" -ge 1 ]] || fail "Missing account command."
+    compose run --rm --no-deps api python -m app.auth.cli "$@"
+}
+
 reset_data() {
     [[ "${1:-}" == "--confirm" && "$#" -eq 1 ]] || fail "This destroys PostgreSQL data. Use: ./scripts/ark reset-data --confirm"
     prepare
@@ -112,6 +121,9 @@ main() {
         health) health "$@" ;;
         logs) logs "$@" ;;
         exec) exec_service "$@" ;;
+        bootstrap) account_command bootstrap "$@" ;;
+        reset-password) account_command reset-password "$@" ;;
+        recover-admin) account_command recover-admin "$@" ;;
         reset-data) reset_data "$@" ;;
         help|-h|--help) usage ;;
         *) usage >&2; exit 2 ;;

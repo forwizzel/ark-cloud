@@ -9,6 +9,7 @@ from app.core.database import get_db_session
 from app.integrations.google_drive import GoogleDriveIntegration
 from app.integrations.system import SystemIntegration
 from app.integrations.tailscale import TailscaleIntegration
+from app.models import LocalUser
 
 
 def get_system_integration(
@@ -35,23 +36,18 @@ def get_optional_principal(
     db: Annotated[Session, Depends(get_db_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> Principal | None:
-    if not settings.auth_is_configured:
-        return None
     session = get_session(db, settings, request.cookies.get(SESSION_COOKIE))
     if session is None:
         return None
-    return Principal(id=session.principal_id, username=session.principal_id, session_id=session.id)
+    user = db.get(LocalUser, session.principal_id)
+    if user is None or not user.active or user.password_hash is None:
+        return None
+    return Principal(id=user.id, username=user.username, session_id=session.id, role=user.role)
 
 
 def require_principal(
     principal: Annotated[Principal | None, Depends(get_optional_principal)],
-    settings: Annotated[Settings, Depends(get_settings)],
 ) -> Principal:
-    if not settings.auth_is_configured:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Authentication is not configured.",
-        )
     if principal is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required."
@@ -66,6 +62,14 @@ def require_csrf(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> Principal:
     session = get_session(db, settings, request.cookies.get(SESSION_COOKIE))
-    if session is None or not validate_csrf(settings, session, request.headers.get("X-CSRF-Token")):
+    if session is None or not validate_csrf(
+        db, settings, session, request.headers.get("X-CSRF-Token")
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF validation failed.")
+    return principal
+
+
+def require_admin(principal: Annotated[Principal, Depends(require_csrf)]) -> Principal:
+    if principal.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator required.")
     return principal

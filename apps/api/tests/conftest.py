@@ -1,4 +1,5 @@
 import os
+from datetime import UTC, datetime
 
 import pytest
 from argon2 import PasswordHasher
@@ -18,6 +19,22 @@ def clear_dependency_overrides():
     from app.models import Base
 
     Base.metadata.create_all(engine)
+    from app.core.database import SessionLocal
+    from app.models import LocalUser
+
+    with SessionLocal() as session:
+        session.add(
+            LocalUser(
+                id="ark",
+                username="ark",
+                password_hash=os.environ["ARK_AUTH_PASSWORD_HASH"],
+                role="admin",
+                active=True,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+        )
+        session.commit()
     yield
 
     from app.main import app
