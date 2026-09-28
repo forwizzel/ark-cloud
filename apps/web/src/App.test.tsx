@@ -153,7 +153,9 @@ test("renders normalized system and integration health", async () => {
   expect(screen.getByText("4d 13h")).toBeInTheDocument();
   expect(screen.getByText("12%")).toBeInTheDocument();
   expect(screen.getByText("PostgreSQL")).toBeInTheDocument();
-  expect(screen.getByText("Primary storage")).toBeInTheDocument();
+  expect(
+    screen.getByRole("heading", { name: "Google Drive" }),
+  ).toBeInTheDocument();
   expect(screen.getAllByText("Not configured")).toHaveLength(5);
   expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
     "href",
@@ -167,7 +169,9 @@ test("renders normalized system and integration health", async () => {
     screen.getByRole("link", { name: "System Information" }),
   ).toHaveAttribute("href", "#system-information");
   expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
-  expect(screen.getByText("API runtime view")).toBeInTheDocument();
+  expect(
+    screen.getByText(/Metrics are the API runtime's view/),
+  ).toBeInTheDocument();
   expect(
     screen.getByRole("switch", { name: "Light mode" }),
   ).toBeInTheDocument();

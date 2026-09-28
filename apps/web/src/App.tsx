@@ -151,7 +151,6 @@ function App() {
         </a>
 
         <nav aria-label="Primary navigation">
-          <span className="nav-heading">Workspace</span>
           <a
             className={`nav-item ${activePage === "overview" ? "nav-item--active" : ""}`}
             href="#overview"
@@ -191,12 +190,6 @@ function App() {
         </nav>
 
         <AppearanceControls />
-
-        <div className="rail-foot">
-          <span className="rail-pulse" aria-hidden="true" />
-          Private control plane
-          <small>Ark Cloud</small>
-        </div>
       </aside>
 
       <main
@@ -209,31 +202,20 @@ function App() {
               {activePage === "overview"
                 ? "Dashboard"
                 : activePage === "drive"
-                  ? "Drive metadata"
+                  ? "Drive Workspace"
                   : activePage === "system"
-                    ? "Runtime information"
-                    : "Your account"}
+                    ? "System Information"
+                    : "Account"}
             </h1>
-            <p className="topbar-description">
-              {activePage === "overview"
-                ? "Your private infrastructure at a glance."
-                : activePage === "drive"
-                  ? "Find and review indexed Drive metadata."
-                  : activePage === "system"
-                    ? "Inspect the API runtime view in detail."
-                    : "Manage your access to this instance."}
-            </p>
           </div>
           <div className="topbar-actions">
-            {activePage !== "system" && activePage !== "account" && (
+            {activePage === "overview" && (
               <span className="last-check">
-                {activePage === "drive"
-                  ? "Owned My Drive index"
-                  : dashboardState.phase === "ready"
-                    ? `Checked ${formatTime(dashboardState.dashboard.generated_at)}`
-                    : dashboardState.phase === "error"
-                      ? "Collection failed"
-                      : "Collecting telemetry"}
+                {dashboardState.phase === "ready"
+                  ? `Checked ${formatTime(dashboardState.dashboard.generated_at)}`
+                  : dashboardState.phase === "error"
+                    ? "Collection failed"
+                    : "Collecting telemetry"}
               </span>
             )}
             {activePage === "overview" && (
@@ -356,13 +338,11 @@ function DashboardView({
                 ? `${system.os} · Kernel ${system.kernel}`
                 : systemHealth?.message || "System telemetry is unavailable."}
             </p>
-            <p className="system-scope-label">API runtime view</p>
           </div>
         </div>
         <div className="system-uptime">
           <span>Uptime</span>
           <strong>{system ? formatUptime(system.uptime_seconds) : "--"}</strong>
-          <small>{system ? "Kernel boot estimate" : "no telemetry"}</small>
         </div>
       </section>
 
@@ -372,9 +352,6 @@ function DashboardView({
       >
         <div className="overview-panel-head">
           <h2 id="overview-heading">Operational state</h2>
-          <span className="overview-count">
-            {dashboard.integrations.length + 2} checks
-          </span>
         </div>
         <p className="overview-summary">
           {needsAttention === 0
@@ -431,7 +408,6 @@ function DashboardView({
         aria-labelledby="services-heading"
       >
         <PanelHeading
-          eyebrow="Control panel"
           title="Services"
           aside={`${dashboard.integrations.length + 2} checks`}
           id="services-heading"
@@ -525,18 +501,12 @@ function LoginScreen({
 
   return (
     <main className="auth-frame">
-      <aside className="auth-story" aria-label="Ark Cloud">
-        <span>ARK CLOUD</span>
-        <p>A clear view of what matters.</p>
-        <small>Private infrastructure, one place to operate.</small>
-      </aside>
       <form className="login-panel" onSubmit={(event) => void submit(event)}>
         <span
           className="brand-logo brand-logo--login"
           aria-hidden="true"
           dangerouslySetInnerHTML={{ __html: arkCloudLogo }}
         />
-        <p className="auth-identity">Ark Cloud / Private control plane</p>
         <h1>
           {mode === "setup"
             ? "Set up Ark Cloud"
@@ -699,7 +669,7 @@ function TailscalePanel({ tailscale }: { tailscale: Dashboard["tailscale"] }) {
   return (
     <section className="devices-panel panel" aria-labelledby="devices-heading">
       <PanelHeading
-        eyebrow="Private network"
+        description="Tailscale"
         title="Devices"
         aside={
           tailscale.state === "healthy"
@@ -789,7 +759,6 @@ function GoogleDrivePanel({
   return (
     <section className="drive-panel panel" aria-labelledby="drive-heading">
       <PanelHeading
-        eyebrow="Primary storage"
         title="Google Drive"
         aside={stateLabels[drive.state]}
         id="drive-heading"
@@ -901,12 +870,12 @@ function DeviceRow({ device }: { device: TailscaleDevice }) {
 }
 
 function PanelHeading({
-  eyebrow,
+  description,
   title,
   aside,
   id,
 }: {
-  eyebrow: string;
+  description?: string;
   title: string;
   aside: string;
   id: string;
@@ -915,7 +884,7 @@ function PanelHeading({
     <div className="panel-heading">
       <div>
         <h2 id={id}>{title}</h2>
-        <p className="panel-description">{eyebrow}</p>
+        {description && <p className="panel-description">{description}</p>}
       </div>
       <span>{aside}</span>
     </div>

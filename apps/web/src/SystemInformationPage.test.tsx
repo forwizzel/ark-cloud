@@ -107,8 +107,12 @@ test("system page survives dashboard failure and shows GPU and understandable se
   expect(
     await screen.findByRole("heading", { name: "Temperatures" }),
   ).toBeInTheDocument();
-  expect(await screen.findAllByText("Source / Kernel view")).toHaveLength(2);
-  expect(screen.getByText("NVIDIA GeForce RTX 3070")).toBeInTheDocument();
+  expect(
+    screen.getByText(/Readings come from the API container/),
+  ).toBeInTheDocument();
+  expect(
+    await screen.findByText("NVIDIA GeForce RTX 3070"),
+  ).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "CPU" })).toBeInTheDocument();
   expect(
     screen.getByRole("heading", { name: "Memory", level: 3 }),

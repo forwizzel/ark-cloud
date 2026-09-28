@@ -258,7 +258,10 @@ test("renders separate quota and indexed insights with sync-observed activity", 
   expect(
     screen.getByText(/not a complete real-time audit log/i),
   ).toBeInTheDocument();
-  expect(screen.getByText(/No automatic cleanup/i)).toBeInTheDocument();
+  expect(
+    screen.getByRole("region", { name: "Catalog sync" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("Incremental mode")).not.toBeInTheDocument();
 });
 
 test("creates a named saved search through the inline form with CSRF", async () => {

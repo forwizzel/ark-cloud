@@ -66,13 +66,6 @@ function TemperatureGroup({
   );
 }
 
-const sources: Record<SystemSection["source"], string> = {
-  configured: "Configuration and kernel",
-  runtime: "API runtime",
-  kernel_view: "Kernel view",
-  filesystem: "Measured filesystem",
-};
-
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const units = ["KiB", "MiB", "GiB", "TiB", "PiB"];
@@ -132,7 +125,6 @@ function Section({
           </span>
         )}
       </header>
-      <p className="system-source">Source / {sources[section.source]}</p>
       {section.availability !== "available" && section.warning && (
         <p className="system-warning">{section.warning}</p>
       )}
@@ -191,10 +183,7 @@ export default function SystemInformationPage() {
         aria-labelledby="temperatures-heading"
       >
         <header className="system-temperatures-head">
-          <div>
-            <p className="section-label">System sensors</p>
-            <h2 id="temperatures-heading">Temperatures</h2>
-          </div>
+          <h2 id="temperatures-heading">Temperatures</h2>
           <div className="system-temperatures-actions">
             {information.phase === "ready" && (
               <span>Updated {formatTime(information.value.collected_at)}</span>

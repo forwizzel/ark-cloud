@@ -507,25 +507,13 @@ export default function DriveWorkspace({
 
   return (
     <div className="drive-workspace" id="drive-workspace">
-      <section
-        className="workspace-command"
-        aria-labelledby="workspace-heading"
-      >
-        <div>
-          <h2 id="workspace-heading">Drive Workspace</h2>
-          <p>
-            Browse indexed metadata. Content and file operations remain in
-            Google Drive.
-          </p>
-        </div>
-        <SyncConsole
-          status={status}
-          error={statusError}
-          syncing={syncing}
-          connected={connected}
-          onSync={() => void startSync()}
-        />
-      </section>
+      <SyncConsole
+        status={status}
+        error={statusError}
+        syncing={syncing}
+        connected={connected}
+        onSync={() => void startSync()}
+      />
 
       <div className="workspace-modebar" aria-label="Drive browser modes">
         {(["all", "recent", "starred"] as const).map((view) => (
@@ -540,7 +528,6 @@ export default function DriveWorkspace({
             {view === "all" ? "My Drive" : titleCase(view)}
           </button>
         ))}
-        <span>Ownership: owned by me</span>
       </div>
 
       <div className="workspace-shell">
@@ -850,7 +837,7 @@ function SyncConsole({
       ? 12
       : 100;
   return (
-    <div className="sync-console">
+    <section className="sync-console" aria-label="Catalog sync">
       <div className="sync-readout">
         <span
           className={`sync-state sync-state--${status?.state ?? "unknown"}`}
@@ -862,10 +849,12 @@ function SyncConsole({
               ? titleCase(status.phase ?? status.state)
               : "Reading status"}
           </strong>
-          <small>
-            {status?.mode ? `${titleCase(status.mode)} mode` : "Catalog idle"}
-            {status?.recovery ? " / recovery path" : ""}
-          </small>
+          {active && status?.mode && (
+            <small>
+              {titleCase(status.mode)} sync
+              {status.recovery ? " / recovery path" : ""}
+            </small>
+          )}
         </div>
         <span>
           {total ? `${processed} / ${total}` : `${processed} processed`}
@@ -901,7 +890,7 @@ function SyncConsole({
         </button>
       </div>
       {error && <p role="alert">{error}</p>}
-    </div>
+    </section>
   );
 }
 
@@ -1181,7 +1170,6 @@ function InsightsPanel({
   if (!insights) {
     return (
       <section className="insights-panel panel">
-        <p className="section-label">Advisory</p>
         <h2>Storage insights</h2>
         <p>
           Insights are unavailable until indexed metadata has been collected.
@@ -1202,11 +1190,7 @@ function InsightsPanel({
       aria-labelledby="insights-heading"
     >
       <header>
-        <div>
-          <p className="section-label">Advisory metadata</p>
-          <h2 id="insights-heading">Storage insights</h2>
-        </div>
-        <p>No automatic cleanup. Review files in Drive before taking action.</p>
+        <h2 id="insights-heading">Storage insights</h2>
       </header>
       <div className="insights-grid">
         <div className="quota-readout">
@@ -1300,10 +1284,7 @@ function SyncHistory({
   return (
     <section className="history-panel panel" aria-labelledby="history-heading">
       <header>
-        <div>
-          <p className="section-label">Catalog operations</p>
-          <h2 id="history-heading">Recent sync attempts</h2>
-        </div>
+        <h2 id="history-heading">Recent sync attempts</h2>
         <span>{attempts.length} recorded</span>
       </header>
       {!connected ? (
@@ -1362,11 +1343,7 @@ function ActivityFeed({
       aria-labelledby="activity-heading"
     >
       <header>
-        <div>
-          <p className="section-label">Sync-observed feed</p>
-          <h2 id="activity-heading">Catalog activity</h2>
-        </div>
-        <span>Not real-time</span>
+        <h2 id="activity-heading">Catalog activity</h2>
       </header>
       {connected && <p className="activity-scope">{message}</p>}
       {!connected ? (

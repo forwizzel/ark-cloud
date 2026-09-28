@@ -122,10 +122,6 @@ export default function AccountPage({
 
   return (
     <div className="account-page">
-      <p className="scope-note">
-        Your account is stored on this Ark Cloud instance. Changes to your login
-        do not affect your Drive connection.
-      </p>
       {error && (
         <p className="auth-error" role="alert">
           {error}
@@ -173,9 +169,6 @@ export default function AccountPage({
         >
           <p className="eyebrow">Security</p>
           <h2 id="account-password-title">Password</h2>
-          <p>
-            Changing your password signs out every device, including this one.
-          </p>
           <form onSubmit={savePassword}>
             <label>
               Current password
@@ -389,6 +382,11 @@ export default function AccountPage({
           )}
         </section>
       )}
+      <p className="scope-note account-note">
+        Changing your password signs out every device, including this one. Your
+        account is stored on this Ark Cloud instance. Changes to your login do
+        not affect your Drive connection.
+      </p>
     </div>
   );
 }
