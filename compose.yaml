@@ -29,6 +29,7 @@ services:
       ARK_SYSTEM_HOSTNAME: ${ARK_SYSTEM_HOSTNAME:-Ark}
       ARK_SYSTEM_OS_NAME: ${ARK_SYSTEM_OS_NAME:-Fedora Linux}
       ARK_SYSTEM_STORAGE_PATH: ${ARK_SYSTEM_STORAGE_PATH:-/}
+      ARK_STORAGE_UPLOAD_MAX_BYTES: ${ARK_STORAGE_UPLOAD_MAX_BYTES:-1073741824}
       ARK_TAILSCALE_API_KEY: ${ARK_TAILSCALE_API_KEY:-}
       ARK_TAILSCALE_TAILNET: ${ARK_TAILSCALE_TAILNET:--}
       ARK_AUTH_USERNAME: ${ARK_AUTH_USERNAME:-}
@@ -43,7 +44,7 @@ services:
       PYTHONPATH: /app
     command: >-
       sh -c "alembic upgrade head &&
-      uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --no-access-log"
     depends_on:
       db:
         condition: service_healthy

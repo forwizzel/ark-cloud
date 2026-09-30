@@ -27,6 +27,8 @@ Thumbs.db
 
 # Runtime data
 *.log
+.ark-storage/
+compose.storage.yaml
 
 # impeccable docs
 ark-cloud-redesign-brief.md

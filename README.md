@@ -1,10 +1,9 @@
 # Ark Cloud
 
-Ark Cloud is a self-hosted personal cloud control plane. It provides one private,
-normalized view over the systems and services running on Ark without replacing mature
-specialized applications.
+Ark Cloud is a self-hosted personal cloud for accessing files on your host and reviewing its
+systems and services from a private browser session.
 
-Version 0.7 includes local account management alongside the infrastructure integrations,
+Version 0.9 adds local host file storage alongside local account management, infrastructure integrations,
 metadata-only Google Drive workspace, detailed system information, and updated interface:
 
 - React 19, TypeScript, and Vite web client
@@ -23,7 +22,9 @@ metadata-only Google Drive workspace, detailed system information, and updated i
 - Owned My Drive folder browsing, filtered search, recent and starred views
 - Saved searches, pinned folders, advisory storage insights, and sync-observed activity
 - Observable synchronization with history, retries, and expired-change-token recovery
-- Direct Google Drive links for every catalog result; Ark Cloud never proxies file content
+- Private local account folders and owner-assigned existing host directories
+- Local browsing, streaming uploads/downloads, folders, rename, within-location moves, and deletion
+- Direct Google Drive links for every catalog result; Ark Cloud never proxies Drive file content
 - Dedicated System Information page with sensor, compute, identity, and storage details scoped to
   the API runtime view
 - Light/dark and high-contrast appearance controls, with browser-local preferences
@@ -44,6 +45,19 @@ run `./scripts/ark bootstrap` to receive a 15-minute setup code. Open
 Username and password changes are available under **Account**; admins can invite other local
 users there. See [Local accounts](docs/development.md#local-accounts) for upgrading and recovery.
 Google Drive and Tailscale are optional.
+
+Enable the default local-file workspace after the first build:
+
+```bash
+./scripts/ark storage init
+./scripts/ark up
+./scripts/ark storage check
+```
+
+This provisions a **new** `~/.local/share/ark-cloud/files` directory, grants the API's mapped
+host UID a narrow ACL, and configures its private container label. Select **Local Files** in the
+browser. No Google credentials are required. See [Local storage](docs/local-storage.md) for
+Fedora prerequisites, a custom path, existing directories, account assignment, and recovery.
 
 `./scripts/ark up` builds and recreates the complete stack, applies migrations, and waits for
 all health checks. It preserves named volumes, so changes to `.env` are applied without manually
@@ -151,7 +165,7 @@ guide documents the least-privilege path for continuous operation.
 
 ## Configure Google Drive
 
-Google Drive is Ark Cloud's designated user-content storage provider and file-management system.
+Google Drive is an optional external metadata workspace; local host storage is the default file provider.
 The connection is optional at runtime and metadata-only: it shows the connected account and quota,
 then catalogs selected metadata for files owned by that account in My Drive. The first catalog sync
 runs after OAuth connection; later syncs consume Drive's changes feed and can be started from the

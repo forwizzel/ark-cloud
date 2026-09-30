@@ -19,6 +19,7 @@ import {
 import AppearanceControls from "./AppearanceControls";
 import AccountPage from "./AccountPage";
 import DriveWorkspace from "./DriveWorkspace";
+import LocalFiles, { LocalStorageSummary } from "./LocalFiles";
 import SystemInformationPage from "./SystemInformationPage";
 import arkCloudLogo from "../../../graphics/arkcloud-logo.svg?raw";
 
@@ -48,7 +49,7 @@ function App() {
   });
   const [requestNumber, setRequestNumber] = useState(0);
   const [activePage, setActivePage] = useState<
-    "overview" | "drive" | "system" | "account"
+    "overview" | "files" | "drive" | "system" | "account"
   >("overview");
   const [connectionNotice, setConnectionNotice] = useState(readOAuthNotice);
   const [signInNotice, setSignInNotice] = useState("");
@@ -177,6 +178,15 @@ function App() {
             Dashboard
           </a>
           <a
+            className={`nav-item ${activePage === "files" ? "nav-item--active" : ""}`}
+            href="#local-files"
+            aria-current={activePage === "files" ? "page" : undefined}
+            onClick={() => setActivePage("files")}
+          >
+            <span className="nav-symbol" aria-hidden="true" />
+            Local Files
+          </a>
+          <a
             className={`nav-item ${activePage === "drive" ? "nav-item--active" : ""}`}
             href="#drive-workspace"
             aria-current={activePage === "drive" ? "page" : undefined}
@@ -217,11 +227,13 @@ function App() {
             <h1>
               {activePage === "overview"
                 ? "Dashboard"
-                : activePage === "drive"
-                  ? "Drive Workspace"
-                  : activePage === "system"
-                    ? "System Information"
-                    : "Account"}
+                : activePage === "files"
+                  ? "Local Files"
+                  : activePage === "drive"
+                    ? "Drive Workspace"
+                    : activePage === "system"
+                      ? "System Information"
+                      : "Account"}
             </h1>
           </div>
           <div className="topbar-actions">
@@ -270,6 +282,9 @@ function App() {
         )}
 
         {activePage === "system" && <SystemInformationPage />}
+        {activePage === "files" && (
+          <LocalFiles csrfToken={sessionState.session.csrf_token ?? ""} />
+        )}
         {activePage === "account" && (
           <AccountPage
             session={sessionState.session}
@@ -285,9 +300,11 @@ function App() {
           />
         )}
         {activePage !== "system" &&
+          activePage !== "files" &&
           activePage !== "account" &&
           dashboardState.phase === "loading" && <LoadingDashboard />}
         {activePage !== "system" &&
+          activePage !== "files" &&
           activePage !== "account" &&
           dashboardState.phase === "error" && (
             <ErrorDashboard
@@ -455,6 +472,7 @@ function DashboardView({
       </section>
 
       <TailscalePanel tailscale={dashboard.tailscale} />
+      <LocalStorageSummary />
       <GoogleDrivePanel
         drive={dashboard.google_drive}
         csrfToken={csrfToken}
@@ -987,7 +1005,8 @@ function formatLastSeen(value: string | null): string {
 
 export default App;
 
-function pageFromHash(): "overview" | "drive" | "system" | "account" {
+function pageFromHash(): "overview" | "files" | "drive" | "system" | "account" {
+  if (window.location.hash === "#local-files") return "files";
   if (window.location.hash === "#drive-workspace") return "drive";
   if (window.location.hash === "#system-information") return "system";
   if (window.location.hash === "#account") return "account";

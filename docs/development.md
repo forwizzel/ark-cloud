@@ -198,7 +198,8 @@ These URLs pass through Vite because the API intentionally has no host port.
 
 ## Google Drive Setup
 
-Google Drive is Ark Cloud's designated user-content storage provider. The integration requests only
+Local storage setup and Fedora mount requirements are documented in [Local storage](local-storage.md).
+Google Drive is an optional metadata integration. The integration requests only
 the `https://www.googleapis.com/auth/drive.metadata.readonly` scope for normalized account/quota status
 and selected metadata for files owned by the connected account in My Drive. Ark Cloud does not
 upload, download, export, change, or proxy Drive file content. PostgreSQL stores sessions, encrypted
@@ -235,5 +236,5 @@ scheduled/background synchronization are not supported.
 Automated tests use local response doubles and must never use a real Google account.
 
 For local HTTP development retain `ARK_COOKIE_SECURE=false`. Set it to `true` before using an HTTPS
-reverse proxy. Google Drive remains the user-content source of truth: Ark Cloud exposes normalized
+reverse proxy. Google Drive remains the source of truth for Drive files: Ark Cloud exposes normalized
 connection, quota, catalog, and search data and opens Drive for all file operations.

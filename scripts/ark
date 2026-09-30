@@ -20,6 +20,13 @@ Commands:
   bootstrap                  Print a one-time first-administrator setup code
   reset-password USERNAME    Reset a local user's password (hidden prompt)
   recover-admin USERNAME     Restore administrator access (hidden prompt)
+  storage init [--path DIR]   Provision a NEW local-files directory (owner only)
+  storage add [options]       Assign an existing host directory; see storage add --help
+  storage list               Show host-owned storage configuration
+  storage users              Show immutable account IDs for assignment
+  storage check              Verify mounts and file operations as the API user
+  storage remove ID --confirm Unregister a root without deleting its files
+  storage refresh-identity ID --confirm Accept a reviewed disk/root replacement
   reset-data --confirm       Remove the stack and all named volumes
 EOF
 }
@@ -41,7 +48,11 @@ require_env() {
 
 compose() {
     # Loopback is the supported and safe published address. Use Tailscale Serve for remote access.
-    ARK_BIND_ADDRESS=127.0.0.1 docker compose "$@"
+    local files=(-f "$ROOT/compose.yaml")
+    if [[ -f "$ROOT/compose.storage.yaml" ]]; then
+        files+=(-f "$ROOT/compose.storage.yaml")
+    fi
+    ARK_BIND_ADDRESS=127.0.0.1 docker compose "${files[@]}" "$@"
 }
 
 validate_compose() {
@@ -105,8 +116,15 @@ account_command() {
 reset_data() {
     [[ "${1:-}" == "--confirm" && "$#" -eq 1 ]] || fail "This destroys PostgreSQL data. Use: ./scripts/ark reset-data --confirm"
     prepare
-    printf 'Removing containers, networks, and named volumes...\n'
+    printf 'Removing containers, networks, accounts, and named volumes. Host files survive; restore account IDs and storage configuration to recover access.\n'
     compose down --volumes --remove-orphans
+}
+
+storage() {
+    case "${1:-}" in
+        check|users) prepare; compose exec api python -m app.services.storage_cli "$1" ;;
+        *) python3 "$ROOT/scripts/storage.py" "$@" ;;
+    esac
 }
 
 main() {
@@ -124,6 +142,7 @@ main() {
         bootstrap) account_command bootstrap "$@" ;;
         reset-password) account_command reset-password "$@" ;;
         recover-admin) account_command recover-admin "$@" ;;
+        storage) storage "$@" ;;
         reset-data) reset_data "$@" ;;
         help|-h|--help) usage ;;
         *) usage >&2; exit 2 ;;

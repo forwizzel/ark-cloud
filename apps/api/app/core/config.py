@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     google_redirect_uri: str | None = None
     google_token_encryption_key: SecretStr | None = None
     google_status_cache_seconds: int = 300
+    storage_manifest: str = "/etc/ark-storage/manifest.json"
+    storage_upload_max_bytes: int = Field(default=1_073_741_824, ge=1, le=10_737_418_240)
 
     model_config = SettingsConfigDict(
         env_file=".env",

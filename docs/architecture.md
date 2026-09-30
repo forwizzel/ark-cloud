@@ -11,11 +11,12 @@ Browser (127.0.0.1:5173 locally; HTTPS via Tailscale Serve remotely)
    |
    | same-origin /api/*
    v
-Vite web container  -- /api/* proxy -->  FastAPI container
-                                          |      |       |
-                                          |      |       +--> Google Drive API
-                                          |      +----------> Tailscale API and psutil runtime metrics
-                                          +-----------------> PostgreSQL
+ Vite web container  -- /api/* proxy -->  FastAPI container
+                                           |      |       |       |
+                                           |      |       |       +--> owner-mounted host directories
+                                           |      |       +----------> optional Google Drive API
+                                           |      +------------------> Tailscale API and psutil runtime metrics
+                                           +-------------------------> PostgreSQL
 ```
 
 Compose creates two bridge networks:
@@ -32,7 +33,7 @@ IP addresses. PostgreSQL needs no published host port because only the API consu
 ### Web
 
 The React application owns presentation and browser interaction. It requests `/api/*` from
-its own origin: session state, the dashboard, Drive Workspace, and System Information. Vite
+its own origin: session state, the dashboard, Local Files, Drive Workspace, and System Information. Vite
 removes the `/api` prefix and forwards requests to `http://api:8000` inside Docker. The
 browser-facing `/api/health` uses the same proxy path. Browser code therefore knows nothing
 about container addresses, and same-origin requests need no permissive CORS policy.
@@ -56,18 +57,21 @@ browser-visible paths while the internal route remains `GET /health`.
 PostgreSQL is the system of record for Ark Cloud control-plane state, not user file content.
 It stores local sessions, OAuth state, encrypted Google refresh tokens, cached Drive account/quota
 status, the derived Drive metadata index, sync history, and local Drive workspace preferences.
-Google Drive is the source of truth for user files. An Alembic migration history tracks schema
-changes; Compose applies migrations before starting the API.
+The host filesystem is the source of truth for local files; Google Drive remains authoritative for
+Drive files. An Alembic migration history tracks schema changes; Compose applies migrations before
+starting the API.
 
 ### Storage Boundaries
 
 Ark Cloud uses separate storage boundaries for separate responsibilities:
 
-- Google Drive is the designated user-content storage and file-management system.
+- Local host directories are the default content provider; Google Drive is an optional metadata
+  workspace.
 - PostgreSQL contains only Ark Cloud control-plane state and derived metadata needed by the
   application. It does not contain file bodies or act as a second file store.
-- The API container filesystem is operational storage only. Its reported disk usage describes the
-  `api-runtime-view`, not Google Drive capacity or user-content storage.
+- The API container overlay is operational storage only. Dedicated owner-configured bind mounts
+  hold local user content; missing mounts never fall back to the overlay. Runtime disk usage describes
+  the `api-runtime-view`, not Google Drive capacity or user-content storage.
 
 Ark Cloud exposes normalized Drive connection/quota status and a searchable index of selected My
 Drive metadata. Establishing Drive as the content source of truth does not grant Ark Cloud
@@ -80,8 +84,8 @@ invalid enumerated values, and caches one validated settings object per process.
 loads local values from `.env`; Git ignores that file and tracks only `.env.example`.
 
 Application-owned API events use JSON with fields such as level, timestamp, service, and
-environment. Uvicorn access logs and Alembic migration output retain their standard
-development formats. SQLAlchemy is configured to hide SQL parameter values from its logs.
+environment. Uvicorn access logs are disabled to keep filename-bearing request URLs out of logs;
+Alembic retains its standard output. SQLAlchemy hides SQL parameter values from its logs.
 Production logging can later unify the third-party formats without replacing application
 instrumentation.
 
@@ -130,7 +134,8 @@ utilization telemetry. Temperature readings from psutil have normalized labels (
 memory module, ACPI thermal zone, and recognized motherboard sensor locations) and retain their
 source identifiers; unknown sensors use a generic label, not a guessed physical location. Unavailable
 GPU and sensor data do not fail the page. The page loads independently of the dashboard, and there
-is no container-only process view or process endpoint. No host filesystem or Docker socket is mounted.
+is no container-only process view or process endpoint. Phase 5 introduced no host content mounts;
+Phase 8's explicit content mounts do not expand telemetry collection or provide Docker socket access.
 
 ### Tailscale Integration
 
@@ -149,8 +154,9 @@ network boundary only; it does not replace Ark Cloud application authentication.
 
 ## Google Drive Integration
 
-Google Drive is Ark Cloud's primary user-content storage provider and remains the file-management
-system. The API uses a server-side OAuth web flow to request metadata-only access, encrypts its
+Google Drive is Ark Cloud's optional external metadata provider and remains the file-management
+system for Drive files. The API uses a server-side OAuth web flow to request metadata-only access,
+encrypts its
 refresh token before PostgreSQL storage, and caches normalized account/quota status. Browser
 clients receive no Google credentials or raw upstream responses. Ark Cloud does not upload,
 download, export, modify, or proxy Drive file content.
@@ -194,6 +200,22 @@ shutdown recovery, backoff, and quota controls. Shared files and shared drives r
 pending explicit visibility and per-drive cursor rules. Write actions remain excluded pending OAuth
 scope, confirmation, audit, conflict, and recovery reviews. Version 0.4 introduces no scheduler,
 background worker, Drive write scope, or content proxy.
+
+## Local Storage (v0.9)
+
+`app/services/local_storage.py` reads a bounded, read-only host manifest. A managed mount gives each
+immutable user ID a private directory; assigned mounts are visible only to their configured owner.
+No new database schema is needed. `scripts/storage.py` provisions a new directory or registers an
+existing one, records device/inode identity, and generates `compose.storage.yaml`. Lifecycle helpers
+load the override; isolated API unit checks use base Compose without content mounts.
+
+The `/storage` API streams file bytes and uses Linux `openat2` for no-symlink/no-mount-crossing
+resolution. `renameat2(RENAME_NOREPLACE)` publishes uploads and moves without clobbering targets.
+Lists are bounded to 10,000 entries, returned 100 at a time with directory-revision validation.
+Writes carry current item revisions, serialize their final mutations within the supported single
+API process, and retain descriptors instead of reopening unchecked paths. Deletion removes only
+files or empty folders. Local Files loads independently of dashboard and Drive availability.
+See [Local storage](local-storage.md) for deployment, trust assumptions, limits, and recovery.
 
 ## Deferred Decisions
 

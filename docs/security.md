@@ -2,8 +2,8 @@
 
 ## Current Security Posture
 
-Version 0.7 is development software, not a production deployment. It supports local accounts,
-administrator-managed invitations, and principal-scoped Drive data. Tailscale reduces network
+Version 0.9 is development software, not a production deployment. It supports local accounts,
+administrator-managed invitations, private local files, and principal-scoped Drive data. Tailscale reduces network
 exposure but does not replace identity checks inside Ark Cloud. Do not publish this stack to the
 Internet.
 
@@ -18,8 +18,9 @@ User device | Tailscale or local host | Web proxy | API | PostgreSQL / Google Dr
 - The API is the only application component allowed to reach PostgreSQL.
 - PostgreSQL and the API have no host port mappings.
 - `./scripts/ark up` forces the web port onto loopback (`127.0.0.1`).
-- Google Drive is the user-content boundary; PostgreSQL is limited to control-plane state and
-  must not become a duplicate file store.
+- Explicit host directory mounts are the local-content boundary. The owner-operated manifest and
+  immutable account IDs scope access; Unix permissions and SELinux independently constrain the API.
+  Google Drive is optional and metadata-only. PostgreSQL never stores file bodies.
 - Appearance choices live only in browser localStorage; they contain no credentials and are not
   sent to the API.
 
@@ -116,7 +117,7 @@ initial development image but do not lock every transitive package.
 - The OAuth callback validates a short-lived state value bound to the local session, completes the
   bounded token exchange and initial metadata sync, then redirects so authorization parameters do
   not remain in the browser URL.
-- Google Drive is the designated source of truth for user content. Ark Cloud requests
+- Google Drive is the source of truth for Drive content. Ark Cloud requests
   `drive.metadata.readonly` for account/quota health and a principal-scoped catalog of files owned
   by the account in My Drive. The database stores selected normalized metadata, folder edges,
   saved searches, pinned folder IDs, sync history, and bounded sync-observed activity. It never
@@ -131,10 +132,20 @@ initial development image but do not lock every transitive package.
 - Pagination cursors contain only encoded catalog position, revision, filter signature, and
   principal-binding data. They grant no access and are always validated before a principal-scoped
   query.
-- Search results contain direct Google Drive links. Ark Cloud never proxies file content or performs
+- Drive search results contain direct Google Drive links. Ark Cloud never proxies Drive content or performs
   upload, download, rename, move, export, or delete operations.
 
 ## Runtime Information
+
+Local storage uses a distinct content boundary described in [Local storage](local-storage.md).
+It does not expand the scope or privileges of system telemetry. Local file routes enforce sessions,
+CSRF on writes, root/account authorization, Linux `openat2` confinement, and no-clobber publication.
+Downloads are attachments with no-sniff/sandbox/no-store headers; no active previews are rendered.
+Raw Uvicorn access logging is disabled because URLs contain private filenames. Bounded structured
+mutation events contain only action, root ID, and principal ID. Configure log rotation on the host.
+The API process has filesystem access to all mounted roots: user separation is application-enforced,
+not a separate Unix identity per Ark account. Host owners and processes with write access to these
+trees are trusted. A compromised API process can access its mounts and control-plane credentials.
 
 - Detailed system information requires the same authenticated local session as the dashboard. It
   is a read-only request and requires no CSRF token. The container-only process endpoint and view

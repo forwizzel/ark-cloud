@@ -405,6 +405,176 @@ instance access. SQLite unit tests cover account flows, and disposable PostgreSQ
 fresh setup and preservation of populated Drive ownership. The existing installation was upgraded
 through `./scripts/ark up` and checked through the loopback web proxy.
 
+## Phase 8: Version 0.9 Local Storage
+
+Status: implemented; Fedora with SELinux-confined Docker still needs independent validation.
+Make files on the Ark host usable from a signed-in browser without a Google
+account. Local Files is the default file workspace; keep the existing metadata-only Google Drive
+connection and Drive Workspace as an optional, independent integration. No automatic import,
+sync, or transfer between local files and Drive is implied.
+
+### Product Contract and Trust Boundary
+
+- Give each local account a private Ark-managed directory, identified by its immutable user ID
+  rather than its username. Permit the instance owner to configure one or more additional,
+  **explicitly mounted** host directories and assign each existing-directory root to one account
+  through owner-operated host configuration or a local CLI. Show only that account's authorized
+  roots and contents. Prevent overlapping assignments/roots and implicit sharing; an app admin
+  must not gain access to another account's files simply by changing an assignment in the UI.
+  Renaming, disabling, or deleting an account must not silently reassign or delete its files.
+  Define a deliberate owner-only recovery/reassignment process.
+- Configuration determines which host directories enter the container; the browser and API cannot
+  mount new host paths, accept an arbitrary absolute host path, or widen access by editing an
+  assignment. The owner configures mounts and assignments on the host and recreates the stack.
+  The initial release supports non-root directories, not `/` or arbitrary host-wide file
+  management. A full-host mode needs a separate privilege and authorization design, not a hidden
+  escape hatch in this phase.
+- File bytes stay in the explicitly configured host directories, never in PostgreSQL or the
+  source-code bind mount. PostgreSQL stores only minimal control-plane metadata, including
+  assignments if needed; the host manifest remains authoritative for mounts and their owners.
+  Local listings reflect filesystem state rather than a Drive-style catalog; a missing mount, an
+  unreadable directory, or an out-of-band host edit must have an honest unavailable or changed
+  state. `ARK_SYSTEM_STORAGE_PATH` continues to describe runtime telemetry and must not be
+  repurposed as a user-file root or claimed as exact local-content capacity.
+- Keep same-origin `/api/*`, authenticated sessions, CSRF on mutations, loopback web binding, and
+  Tailscale Serve for private remote access. File-content routes are a new, narrower capability;
+  the Google Drive OAuth scope, content prohibition, and existing Drive routes remain unchanged.
+  Update the earlier Google-only storage statements in `AGENTS.md`, architecture, security,
+  development, product, and user documentation when implementing this phase. Continue to prohibit
+  host-root, Docker-socket, `/proc`, and privileged mounts for telemetry.
+
+### Deployment Audit: Non-Root Docker and Fedora SELinux
+
+1. **Default location and mount contract:** Choose an explicit Ark-owned host data directory
+   outside the repository, PostgreSQL volume, and application source. Provide a documented
+   first-run provisioning/preflight step before `./scripts/ark up`; fail closed if the directory or
+   any configured root is absent, is a symlink, or is not mounted at its expected in-container
+   location. Do not let Compose silently create an empty root-owned directory at a mistyped path
+   or let the API write to its container overlay when a mount is missing. Keep data persistent
+   across `up`, `restart`, and `down`. Use an explicit owner-maintained Compose mount declaration
+   for additional directories and a validated, stable root-ID-to-mount mapping; changing a mount
+   must not silently point an existing account assignment at different host data.
+2. **Unix permissions and rootless UID mapping:** The API image runs as the non-root `arkcloud`
+   user; a bind mount does not change host ownership or confer host access. Document and test the
+   container user's *effective host UID/GID* with the supported rootless Docker setup, including
+   the daemon's user-namespace mapping. Provision the Ark-owned directory with the right owner,
+   group, or narrowly scoped ACL and verify read/write/create/rename/delete from inside the
+   running API container. Existing host directories may belong to another user or require search
+   permission on parent directories; expose a clear permission error and an owner-operated
+   remediation path. Do not default to root containers, privileged mode, host user namespaces,
+   blanket `chmod 777`, or broad ownership changes to make a bind mount work.
+3. **SELinux under Fedora enforcing mode:** Verify both DAC/ACL permissions **and** SELinux file
+   labels in a real Fedora enforcing/rootless Compose smoke test. A private `:Z` bind label can be
+   appropriate for a new Ark-owned directory used by one container, but Docker relabels host
+   files recursively: do not apply `:Z` or `:z` automatically to an existing Documents/Photos
+   tree, another container's data, a home directory, or a system path. `:z` shares a container
+   label; it is not a harmless read-only switch. Document an explicit, reviewed labeling or
+   staging approach for each existing mount, check host-side access still works, and fail with
+   actionable diagnostics rather than disabling SELinux (`setenforce 0` or `--privileged`). If
+   sharing a tree cannot be made safe with its existing use and labels, require a dedicated
+   directory or a copy into Ark-managed storage instead of claiming support for that mount.
+4. **Mount and availability checks:** Verify the effective mount, expected root identity, access
+   mode, and write capability at startup and before mutations; distinguish missing mounts,
+   read-only mounts, disk-full errors, and disconnected underlying drives where detectable in
+   normalized API/UI messages without exposing unrelated host paths. An `EACCES` alone cannot prove
+   whether Unix permissions or SELinux caused denial; offer diagnostics for both without guessing.
+   Define how to handle removable or separately mounted disks disappearing mid-request. Never fall
+   back to writing inside the container, and do not label filesystem usage as an account quota
+   unless one is enforced.
+
+### Implementation Checklist
+
+1. **Control plane and lifecycle:** Define stable root IDs, host-configured mount targets, access
+   mode, and owner-operated account assignments; validate canonical configured paths, uniqueness,
+   overlap, mount identity, and changes on restart. Add an Alembic revision only if
+   assignment/control-plane state is persisted in PostgreSQL; keep the host manifest authoritative
+   for mounted roots and ownership. Per-account directories are created safely and lazily beneath
+   the Ark-owned root.
+   Establish explicit behavior for username changes, disabled accounts, account deletion, DB
+   reset/restore, and assignments to missing roots: retain file bytes, revoke access, and require
+   owner review before reassignment. Avoid orphaned-file surprises and accidental reuse of an
+   old account's directory by a new account.
+2. **Filesystem service and API:** Implement authenticated, account-scoped, paginated/bounded
+   listing and metadata, folder creation, streaming upload/download, rename, within-root move,
+   and confirmed deletion. Use opaque root IDs and relative item identifiers, never client-supplied
+   host absolute paths. For every operation, enforce authorization and root confinement using
+   descriptor-relative filesystem operations (or an equivalently race-safe approach), including
+   during rename and delete; string prefix checks and `Path.resolve()` alone are insufficient
+   when the host can change entries concurrently. Reject traversal, symlinks, special files,
+   directory mount crossings, and unsafe hard-link cases rather than dereferencing into other
+   host data. Define filename, hidden-file, depth, listing-size, and file-size limits; return
+   predictable conflicts for existing targets and changed files. Reject cross-root moves in v0.9
+   instead of silently copying/deleting across devices or permissions boundaries.
+3. **Transfers and destructive actions:** Stream uploads to a bounded temporary file on the
+   destination filesystem, use exclusive creation/atomic finalization and cleanup on cancellation,
+   and never present a partial upload as complete. Bound concurrency and request size, report
+   progress/failure in the browser, and handle disk-full and permission changes without corrupting
+   an existing file. Stream downloads with safe content-disposition and MIME handling; do not
+   render untrusted host content as same-origin active HTML. Make overwrite and recursive deletion
+   rules explicit, require confirmation for destructive actions, and decide/document whether
+   deletion is permanent or recoverable before enabling it. Do not delete files automatically
+   during account deletion, root unmounting, or DB reset. Avoid logging file contents, tokens,
+   or unnecessary full filesystem paths; record bounded audit events for writes and deletions.
+4. **UI and integration:** Add an accessible Local Files view as the primary file destination,
+   with location switching, breadcrumbs, a responsive file list, transfers, and file actions.
+   Make Google Drive visibly optional and separately accessible, including its disconnected and
+   error states. Show an empty/setup state when local storage is unavailable; do not block the
+   dashboard or Drive on a failed local root. Expose normalized local-storage availability and
+   per-root usage only when its source and meaning are accurate. Keep local and Drive search and
+   links distinct until a deliberate cross-provider contract exists.
+5. **Operations and documentation:** Document Fedora/rootless setup and troubleshooting,
+   permissions and SELinux labeling decisions, safe mount configuration, multi-user assignments,
+   Tailscale/HTTPS settings for remote file transfer, backup and tested restore of **both** host
+   file trees and PostgreSQL assignments, and which actions preserve or remove file bytes. Update
+   `./scripts/ark reset-data --confirm` help and warnings: it currently removes named volumes and
+   accounts, whereas bind-mounted files survive and become inaccessible without restored account
+   IDs/assignments. Keep local-file roots out of source control and PostgreSQL backups. Review
+   deployment hardening for a web application now serving host file content.
+
+### Acceptance and Verification
+
+- Fresh Fedora enforcing/rootless Compose install with **no Google credentials**: provision local
+  storage, bootstrap an admin, upload/download/browse/organize/delete from a second device through
+  Tailscale Serve, restart the stack, and verify files remain on the host. Confirm the API stays
+  non-root, the web port remains loopback-only, and no Google flow is required.
+- Mount an existing, explicitly approved directory without relabeling a user's unrelated home
+  tree; assign it to one account through the owner-only workflow. Check both SELinux and Unix
+  permissions, host-side usability, and read/write behavior from inside the container. A second
+  account must not list, download, mutate, or infer that directory's contents, including with
+  guessed root IDs or URLs.
+- Exercise misconfigured or disappearing mounts, read-only roots, mislabeled directories, UID/GID
+  mismatch, full disks, large transfers, interruption, concurrent rename/delete, hostile paths,
+  symlinks/hard links, and external host edits. The API must fail closed without writing to the
+  overlay, overwriting unrelated data, or crossing an assigned root. Verify disabled/deleted
+  accounts lose access while their host files remain recoverable by the instance owner.
+- Keep the existing Google Drive connection, catalog, and Drive Workspace working unchanged for
+  connected users; test local-only, Drive-only, both configured, and one-provider-failed states.
+  Run backend pytest/Ruff and frontend test/lint/format/build checks, PostgreSQL migration tests,
+  and Fedora enforcing Compose smoke tests. SQLite-only tests and a permissive-SELinux CI runner
+  cannot establish host-mount safety.
+
+### Out Of Scope
+
+- Browsing or modifying `/` and arbitrary host paths, privileged host agents, Docker-socket
+  access, and process or system configuration management.
+- Sharing a root across accounts, public file links, ACL editing in the web UI, quotas without
+  enforcement, file versioning, sync clients, automatic Drive import/export, and cross-root moves.
+- Treating an exposed host directory as a sandbox when other host processes can modify it; v0.9
+  must reject unsupported file types and race-prone operations rather than imply universal safety.
+
+Implementation: owner-only `scripts/storage.py` creates a new private root with a mapped-UID ACL,
+and registers assigned existing roots without changing their labels or ownership. Ignored
+`compose.storage.yaml` and `.ark-storage/` carry explicit mounts and the authoritative manifest;
+`./scripts/ark storage check` probes the live non-root API. The API exposes authenticated
+`/storage` routes for bounded listings, streaming uploads/downloads, create, rename, within-root
+move, and confirmed permanent deletion of files/empty folders. The Local Files page is independent
+of the optional Drive Workspace. No Alembic revision was required because root assignments live in
+the host-owned manifest rather than PostgreSQL. Backend, frontend, host-tool, and live rootless
+Compose/proxy checks include real upload/download and host-file persistence. The checked Fedora
+host was enforcing but Docker's `SecurityOptions` did not include SELinux; a separate smoke test
+with **SELinux-confined** rootless Docker and real existing-root policy is still required before
+claiming that deployment combination is verified.
+
 ## Later Direction
 
 1. Immich status and metadata integration rather than custom photo management, once local or NAS

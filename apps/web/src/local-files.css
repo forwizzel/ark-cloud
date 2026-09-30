@@ -1,0 +1,209 @@
+.local-files {
+  display: grid;
+  gap: 20px;
+}
+.local-location-bar,
+.local-browser-header,
+.local-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.local-location-bar label,
+.local-editor label {
+  display: grid;
+  gap: 6px;
+}
+.local-location-bar select {
+  min-width: min(300px, 100%);
+}
+.local-files button,
+.local-files select,
+.local-files input:not([type="file"]) {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 12px;
+  background: var(--panel);
+  color: var(--ink);
+}
+.local-files button:hover:not(:disabled) {
+  background: var(--panel-raised);
+  border-color: var(--signal);
+}
+.local-files button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.local-files .refresh-button {
+  background: var(--signal);
+  color: var(--canvas);
+}
+.local-files .refresh-button:hover:not(:disabled) {
+  background: var(--signal);
+  color: var(--canvas);
+}
+.local-browser {
+  padding: 24px;
+  min-width: 0;
+}
+.local-browser h2,
+.local-summary h2 {
+  margin: 0;
+}
+.local-browser-header p,
+.local-summary p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+.local-summary {
+  padding: 24px;
+  grid-column: 1 / -1;
+}
+.local-summary a,
+.local-actions a {
+  color: var(--signal);
+  text-underline-offset: 3px;
+}
+.local-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.local-actions a {
+  padding: 10px 4px;
+}
+.local-breadcrumbs {
+  padding: 20px 0;
+  overflow-wrap: anywhere;
+}
+.local-breadcrumbs button {
+  padding: 4px 8px;
+  border-color: transparent;
+  background: transparent;
+}
+.local-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.local-file-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.local-file-identity {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  align-items: center;
+}
+.local-file-kind {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  min-width: 40px;
+}
+.local-files .local-name {
+  padding: 0;
+  min-height: 32px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.local-file-meta {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.local-editor {
+  padding: 20px;
+  margin-bottom: 20px;
+  background: var(--panel-raised);
+  border-radius: 7px;
+  display: grid;
+  gap: 12px;
+}
+.local-editor h3,
+.local-editor p {
+  margin: 0;
+}
+.local-editor input {
+  width: 100%;
+  max-width: 600px;
+}
+.local-filename {
+  overflow-wrap: anywhere;
+}
+.local-feedback,
+.local-scope {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.local-error {
+  color: var(--danger);
+  padding: 12px;
+  background: var(--danger-tint);
+  border-radius: 7px;
+}
+.local-transfer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.local-transfer progress {
+  accent-color: var(--signal);
+  max-width: 100%;
+}
+.local-empty {
+  padding: 32px 0;
+}
+section.local-empty {
+  padding: 24px;
+}
+.local-empty h3 {
+  margin: 0 0 8px;
+}
+.local-empty p {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+.local-more {
+  margin-top: 20px;
+}
+@media (max-width: 980px) {
+  .local-file-list li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+@media (max-width: 680px) {
+  .local-browser {
+    padding: 16px;
+  }
+  .local-location-bar {
+    align-items: stretch;
+  }
+  .local-location-bar label {
+    width: 100%;
+    min-width: 0;
+  }
+  .local-file-identity {
+    width: 100%;
+  }
+  .local-browser-header {
+    align-items: flex-start;
+  }
+  .local-editor {
+    padding: 16px;
+  }
+}
