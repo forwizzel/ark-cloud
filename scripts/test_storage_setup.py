@@ -130,7 +130,7 @@ class SetupTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "identity changed"):
             self.run_setup()
         self.path.rmdir()
-        with self.assertRaisesRegex(ValueError, "base is missing"):
+        with self.assertRaisesRegex(ValueError, "location is missing"):
             self.run_setup()
 
     def test_unfinished_manager_operation_is_preserved(self):
@@ -170,6 +170,20 @@ class SetupTests(unittest.TestCase):
             commands.call_args.args[0],
             ["systemctl", "--user", "start", "ark-storage-manager.service"],
         )
+
+    def test_shared_setup_preserves_private_base_and_does_not_create_account_subfolders(self):
+        self.run_setup()
+        private = storage.state()["roots"][0]
+        target = self.base / "Ark-Shared"
+        setup.setup(SimpleNamespace(path=str(target), no_install=True, shared=True))
+        roots = storage.state()["roots"]
+        self.assertEqual(roots[0], private)
+        self.assertEqual(roots[1]["kind"], "shared")
+        self.assertEqual(roots[1]["owner"], None)
+        self.assertNotEqual(roots[1]["registration"], private["registration"])
+        self.assertEqual(list(target.iterdir()), [])
+        setup.setup(SimpleNamespace(path=str(target), no_install=True, shared=True))
+        self.assertEqual(len(storage.state()["roots"]), 2)
 
 
 if __name__ == "__main__":

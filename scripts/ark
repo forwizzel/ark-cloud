@@ -21,7 +21,7 @@ Commands:
   reset-password USERNAME    Reset a local user's password (hidden prompt)
   recover-admin USERNAME     Restore administrator access (hidden prompt)
   storage init [--path DIR]   Provision a NEW local-files directory (owner only)
-  storage setup [--path DIR]  Create, connect and verify Local Files (default ~/Ark-Files)
+  storage setup [--path DIR] [--shared] Create private or shared Local Files storage
   storage add [options]       Assign an existing host directory; see storage add --help
   storage list               Show host-owned storage configuration
   storage users              Show immutable account IDs for assignment

@@ -20,20 +20,14 @@ def main():
             for user in users:
                 print(f"{user.id}  {user.username}  {'active' if user.active else 'disabled'}")
             return
-        storage = LocalStorage(load_manifest(get_settings().storage_manifest))
+        storage = LocalStorage(load_manifest(get_settings().storage_manifest), verification=True)
         if not storage.manifest.roots:
             sys.exit("No local roots configured. Run ./scripts/ark storage init on the host.")
         failed = False
         for config in storage.manifest.roots:
-            owner = config.owner or next((u.id for u in users if u.active), None)
-            if not owner or not any(u.id == owner for u in users):
-                print(f"{config.id}: no matching account. Bootstrap or review the owner UUID.")
-                failed = True
-                continue
+            owner = "host-check"
             try:
-                with storage.root(
-                    config.id, owner, write=not config.read_only, provision=True
-                ) as root:
+                with storage.root(config.id, owner, write=not config.read_only, base=True) as root:
                     if not config.read_only:
                         name = f".ark-probe-{secrets.token_hex(8)}"
                         moved = name + "-moved"

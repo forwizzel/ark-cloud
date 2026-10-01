@@ -6,7 +6,7 @@ export type StorageRoot = {
   message: string;
   total_bytes: number | null;
   available_bytes: number | null;
-  kind?: "managed" | "assigned";
+  kind?: "managed" | "assigned" | "shared";
   needs_setup?: boolean;
 };
 

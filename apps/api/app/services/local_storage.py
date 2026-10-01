@@ -15,6 +15,7 @@ import threading
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -65,9 +66,10 @@ class RootConfig(BaseModel):
     path: str
     device: int = Field(ge=0)
     inode: int = Field(gt=0)
-    kind: Literal["managed", "assigned"] = "assigned"
+    kind: Literal["managed", "assigned", "shared"] = "assigned"
     owner: str | None = None
     read_only: bool = False
+    registration: str | None = None
 
     @model_validator(mode="after")
     def valid_root(self):
@@ -77,6 +79,10 @@ class RootConfig(BaseModel):
             raise ValueError("Assigned roots require an immutable account ID.")
         if self.kind == "managed" and (self.owner or self.read_only):
             raise ValueError("Managed storage is writable and has no shared owner.")
+        if self.kind == "shared" and self.owner:
+            raise ValueError("Shared locations use account grants, not a single owner.")
+        if self.registration is not None and str(UUID(self.registration)) != self.registration:
+            raise ValueError("Storage registration must be a canonical UUID.")
         return self
 
 
@@ -93,6 +99,9 @@ class Manifest(BaseModel):
             raise ValueError("Duplicate filesystem roots.")
         if sum(r.kind == "managed" for r in self.roots) > 1:
             raise ValueError("Only one managed root is supported.")
+        registrations = [r.registration for r in self.roots if r.registration]
+        if len(registrations) != len(set(registrations)):
+            raise ValueError("Duplicate storage registrations.")
         return self
 
 
@@ -174,6 +183,14 @@ class LocalStorage:
     def __init__(self, manifest: Manifest, *, verification: bool = False):
         self.manifest = manifest
         self.verification = verification
+        self.permissions = {}
+
+    def access(self, config, owner):
+        from app.services.storage_access import authorization
+
+        stamp = authorization(config, owner)
+        self.permissions.setdefault((config.id, owner), stamp)
+        return stamp
 
     def config(self, root_id: str, owner: str) -> RootConfig:
         from app.services.storage_control import blocked_roots
@@ -181,7 +198,7 @@ class LocalStorage:
         if not self.verification and root_id in blocked_roots():
             raise StorageError("This location is disconnected or being reconfigured.", 404)
         for root in self.manifest.roots:
-            if root.id == root_id and (root.kind == "managed" or root.owner == owner):
+            if root.id == root_id and (self.verification or self.access(root, owner)[0] != "none"):
                 return root
         raise StorageError("Storage location not found.", 404)
 
@@ -198,8 +215,13 @@ class LocalStorage:
         if platform.machine() not in {"x86_64", "aarch64"}:
             raise StorageError("Local storage requires Linux x86_64 or aarch64.", 503)
         config = self.config(root_id, owner)
-        if write and config.read_only:
+        level = "write" if self.verification else self.access(config, owner)[0]
+        if level == "none":
+            raise StorageError("Storage location not found.", 404)
+        if (write or provision) and (config.read_only or level != "write"):
             raise StorageError("This location is read-only.", 403)
+        if base and not self.verification:
+            raise StorageError("Private storage bases are not browser-accessible.", 403)
         if config.path not in mount_points():
             raise StorageError(
                 "Storage mount is missing. Ask an administrator to reconnect this location.", 503
@@ -239,12 +261,13 @@ class LocalStorage:
     def locations(self, owner: str) -> dict:
         items = []
         for config in self.manifest.roots:
-            if config.kind != "managed" and config.owner != owner:
+            level = self.access(config, owner)[0]
+            if level == "none":
                 continue
             item = {
                 "id": config.id,
                 "label": config.label,
-                "read_only": config.read_only,
+                "read_only": level == "read",
                 "kind": config.kind,
                 "needs_setup": False,
                 "state": "healthy",
@@ -255,13 +278,13 @@ class LocalStorage:
             try:
                 with self.root(config.id, owner) as fd:
                     usage = os.fstatvfs(fd)
-                    if not config.read_only and usage.f_flag & os.ST_RDONLY:
+                    if level == "write" and usage.f_flag & os.ST_RDONLY:
                         raise StorageError("This storage filesystem is read-only.", 403)
                     if not os.access(".", os.R_OK | os.X_OK, dir_fd=fd):
                         raise StorageError(
                             "Storage access denied. Check host permissions and SELinux.", 403
                         )
-                    if not config.read_only and not os.access(".", os.W_OK | os.X_OK, dir_fd=fd):
+                    if level == "write" and not os.access(".", os.W_OK | os.X_OK, dir_fd=fd):
                         raise StorageError(
                             "Storage is not writable. Check host permissions and SELinux.", 403
                         )
@@ -272,10 +295,12 @@ class LocalStorage:
             except FileNotFoundError:
                 item.update(
                     state="unavailable",
-                    needs_setup=config.kind == "managed",
+                    needs_setup=config.kind == "managed" and level == "write",
                     message=(
                         "Your private folder has not been created. "
                         "Choose Create my private folder to set it up."
+                        if config.kind == "managed" and level == "write"
+                        else "Your private folder is missing. Ask an administrator to restore it."
                         if config.kind == "managed"
                         else "This directory is missing. "
                         "Ask your administrator to check the storage location."

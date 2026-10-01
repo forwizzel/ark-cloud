@@ -17,8 +17,9 @@ from app.auth.service import Principal, token_hash
 from app.core.config import Settings, get_settings
 from app.core.database import get_db_session
 from app.dependencies import require_admin, require_csrf, require_principal
-from app.models import LocalUser, StorageJob, StoragePreference
+from app.models import LocalUser, StorageGrant, StorageJob, StoragePreference
 from app.services.local_storage import (
+    MUTATIONS,
     LocalStorage,
     RootConfig,
     StorageError,
@@ -28,6 +29,7 @@ from app.services.local_storage import (
     parts,
     rename_exclusive,
 )
+from app.services.storage_access import ensure_location, retire_missing
 from app.services.storage_control import control, upload_limit
 
 router = APIRouter(tags=["storage-administration"], route_class=StorageRoute)
@@ -71,6 +73,17 @@ class Preference(BaseModel):
     path: str = Field(default="", max_length=2048)
 
 
+class AccountAccess(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    user_id: str = Field(min_length=1, max_length=128)
+    level: Literal["none", "read", "write"]
+
+
+class AccessChange(AccountAccess):
+    revision: int = Field(ge=0)
+    registration: str = Field(min_length=36, max_length=36)
+
+
 class Operation(BaseModel):
     model_config = ConfigDict(extra="forbid")
     action: Literal[
@@ -93,6 +106,9 @@ class Operation(BaseModel):
     confirmed: bool = False
     managed: bool = False
     grant_access: bool = False
+    shared: bool = False
+    create_directory: bool = False
+    grants: list[AccountAccess] | None = Field(default=None, max_length=1000)
 
 
 class HostRoot(RootConfig):
@@ -136,8 +152,12 @@ def job_view(job):
 
 
 def recipient_available(job, db):
+    for grant in job.payload.get("grants") or []:
+        user = db.get(LocalUser, grant["user_id"])
+        if grant["level"] != "none" and (user is None or not user.active):
+            return False
     owner = job.payload.get("owner")
-    if job.action not in {"add", "update"} or not owner:
+    if job.action != "add" or not owner:
         return True
     user = db.get(LocalUser, owner)
     return user is not None and user.active
@@ -203,13 +223,18 @@ def job_presentation(
     return view
 
 
-def begin_setup(db, path, root_id):
+def begin_setup(db, path, root_id, kind="managed"):
     """Called only by the deployment-owner CLI, never a browser request."""
     value = control(db)
     db.execute(select(type(value)).where(type(value).id == 1).with_for_update())
     existing = db.scalar(select(StorageJob).where(StorageJob.state.in_(ACTIVE)))
     if existing:
-        if existing.action == "setup" and existing.payload == {"path": path, "root_id": root_id}:
+        if (
+            existing.action == "setup"
+            and existing.payload.get("path") == path
+            and existing.payload.get("root_id") == root_id
+            and existing.payload.get("kind", "managed") == kind
+        ):
             return job_view(existing)
         raise ValueError("Finish the active storage operation before setup. No files were changed.")
     administrator = db.scalar(
@@ -223,7 +248,7 @@ def begin_setup(db, path, root_id):
         id=str(uuid4()),
         principal_id=administrator.id,
         action="setup",
-        payload={"path": path, "root_id": root_id},
+        payload={"path": path, "root_id": root_id, "kind": kind},
         state="applying",
         message="Preparing host storage.",
         result={},
@@ -270,9 +295,152 @@ def create_private_folder(principal: Writer, settings: Config):
     managed = next((root for root in storage.manifest.roots if root.kind == "managed"), None)
     if managed is None:
         raise HTTPException(409, "Private account folders are not enabled.")
-    with storage.root(managed.id, principal.id, provision=True):
+    with MUTATIONS, storage.root(managed.id, principal.id, provision=True):
         pass
     return {"message": "Your private folder is ready."}
+
+
+def access_root(root_id, value, settings):
+    manifest = load_manifest(settings.storage_manifest)
+    config = next((r for r in manifest.roots if r.id == root_id), None)
+    source = next((r for r in value.snapshot.get("roots", []) if r["id"] == root_id), None)
+    if config is None or source is None:
+        raise HTTPException(404, "Storage location not found.")
+    if config.model_dump() != {k: source.get(k) for k in config.model_dump()}:
+        raise HTTPException(409, "Wait for this location's mount configuration to be verified.")
+    return manifest, config
+
+
+def access_view(db, value, settings, root_id):
+    manifest, config = access_root(root_id, value, settings)
+    location = ensure_location(db, config)
+    if location.retired:
+        raise HTTPException(409, "This storage registration has been disconnected.")
+    grants = {
+        g.principal_id: g
+        for g in db.scalars(select(StorageGrant).where(StorageGrant.location_id == location.id))
+    }
+    accounts = []
+    for user in db.scalars(select(LocalUser).order_by(LocalUser.username)):
+        grant = grants.get(user.id)
+        level = grant.level if grant else "none"
+        effective = (
+            "none"
+            if not user.active or root_id in value.blocked_roots
+            else ("read" if level != "none" and config.read_only else level)
+        )
+        ready, message = False, "No access" if level == "none" else "Access inactive"
+        if root_id in value.blocked_roots:
+            message = "Access paused while this location is configured"
+        if effective != "none":
+            try:
+                with LocalStorage(manifest, verification=True).root(
+                    config.id, user.id, base=config.kind != "managed"
+                ):
+                    pass
+                ready, message = (
+                    True,
+                    "Private folder ready"
+                    if config.kind == "managed"
+                    else "Shared directory ready",
+                )
+            except (StorageError, OSError) as error:
+                message = str(error if isinstance(error, StorageError) else filesystem_error(error))
+        accounts.append(
+            {
+                "id": user.id,
+                "username": user.username,
+                "active": user.active,
+                "pending": user.password_hash is None,
+                "level": level,
+                "effective_level": effective,
+                "ready": ready,
+                "message": message,
+            }
+        )
+    return {
+        "root_id": root_id,
+        "registration": location.id,
+        "kind": config.kind,
+        "host_read_only": config.read_only,
+        "revision": location.revision,
+        "accounts": accounts,
+    }
+
+
+@router.get("/admin/storage/roots/{root_id}/access")
+def read_access(root_id: str, principal: Admin, db: DB, settings: Config):
+    value = control(db)
+    result = access_view(db, value, settings, root_id)
+    db.commit()
+    return result
+
+
+@router.put("/admin/storage/roots/{root_id}/access")
+def change_access(root_id: str, body: AccessChange, principal: Admin, db: DB, settings: Config):
+    with MUTATIONS:
+        value = control(db)
+        manifest, config = access_root(root_id, value, settings)
+        location = ensure_location(db, config)
+        if location.retired or root_id in value.blocked_roots:
+            raise HTTPException(409, "Finish this location's configuration before changing access.")
+        if db.scalar(select(StorageJob).where(StorageJob.state.in_(ACTIVE))):
+            raise HTTPException(409, "Finish the current storage operation before changing access.")
+        if body.registration != location.id or body.revision != location.revision:
+            raise HTTPException(
+                409, "Access changed. Reopen Manage access to review current permissions."
+            )
+        user = db.get(LocalUser, body.user_id)
+        if user is None or (body.level != "none" and not user.active):
+            raise HTTPException(
+                422, "Choose an active account, or revoke a disabled account's access."
+            )
+        if body.level == "write" and config.read_only:
+            raise HTTPException(422, "This host mount is read-only. It cannot grant write access.")
+        grant = db.get(StorageGrant, (location.id, user.id))
+        before = grant.level if grant else "none"
+        if body.level != "none" and config.kind == "managed":
+            # Explicit administrator action, not a status read. The target is
+            # always the immutable account directory beneath the confined base.
+            with LocalStorage(manifest, verification=True).root(config.id, user.id, provision=True):
+                pass
+        if body.level == "none":
+            if grant:
+                db.delete(grant)
+        elif grant:
+            grant.level, grant.version = body.level, str(uuid4())
+        else:
+            db.add(
+                StorageGrant(
+                    location_id=location.id,
+                    principal_id=user.id,
+                    level=body.level,
+                    version=str(uuid4()),
+                )
+            )
+        location.revision += 1
+        db.add(
+            StorageJob(
+                id=str(uuid4()),
+                principal_id=principal.id,
+                action="access",
+                payload={
+                    "root_id": root_id,
+                    "user_id": user.id,
+                    "before": before,
+                    "level": body.level,
+                },
+                state="completed",
+                message=f"Access for {user.username}: {body.level}. Files were preserved.",
+                result={},
+                created_at=now(),
+                updated_at=now(),
+            )
+        )
+        db.flush()
+        result = access_view(db, value, settings, root_id)
+        db.commit()
+        return result
 
 
 @router.get("/admin/storage")
@@ -304,10 +472,8 @@ def inventory(principal: Admin, db: DB, settings: Config):
         config = (
             next((r for r in manifest.roots if r.id == source["id"]), None) if manifest else None
         )
-        if config and config.model_dump() == {k: source[k] for k in config.model_dump()}:
+        if config and config.model_dump() == {k: source.get(k) for k in config.model_dump()}:
             try:
-                if config.kind == "assigned" and owner is None:
-                    raise StorageError("The assigned account no longer exists.")
                 service = LocalStorage(manifest, verification=True)
                 with service.root(config.id, config.owner or principal.id, base=True) as fd:
                     os.fstatvfs(fd)
@@ -326,6 +492,34 @@ def inventory(principal: Admin, db: DB, settings: Config):
                     error if isinstance(error, StorageError) else filesystem_error(error)
                 )
         items.append(item)
+        if config:
+            try:
+                location = ensure_location(db, config)
+            except StorageError as error:
+                item.update(
+                    state="unavailable", message=str(error), access_count=0, access_accounts=[]
+                )
+                continue
+            if location.retired:
+                item.update(
+                    state="unavailable",
+                    message="This registration was disconnected. Register a new location.",
+                    access_count=0,
+                    access_accounts=[],
+                )
+                continue
+            grants = db.scalars(
+                select(StorageGrant).where(StorageGrant.location_id == location.id)
+            ).all()
+            item["access_count"] = len(grants)
+            item["access_accounts"] = [
+                {
+                    "user_id": grant.principal_id,
+                    "level": "read" if config.read_only else grant.level,
+                }
+                for grant in grants
+            ]
+    db.commit()
     recent = db.scalars(select(StorageJob).order_by(StorageJob.created_at.desc()).limit(30)).all()
     pending = db.scalars(select(StorageJob).where(StorageJob.state.in_((*ACTIVE, "failed")))).all()
     jobs = sorted(
@@ -375,6 +569,7 @@ def inventory(principal: Admin, db: DB, settings: Config):
                 "username": user.username,
                 "active": user.active,
                 "pending": user.password_hash is None,
+                "current": user.id == principal.id,
             }
             for user in users
         ],
@@ -424,19 +619,45 @@ def submit(body: Operation, principal: Admin, db: DB, settings: Config):
                 "Private folders already have a base. "
                 "Use Change base directory to copy and switch safely.",
             )
-        if body.action != "init" and not (body.action == "preflight" and body.managed):
+        if (
+            not body.shared
+            and body.action != "init"
+            and not (body.action == "preflight" and body.managed)
+        ):
             user = db.get(LocalUser, body.owner) if body.owner else None
             if user is None or not user.active:
                 raise HTTPException(422, "Choose an active account.")
+    if body.create_directory and (not body.shared or body.action not in {"add", "preflight"}):
+        raise HTTPException(422, "New shared directories use Connect shared folder.")
+    if body.create_directory:
+        body.selinux = "private"
+    if body.shared and body.managed:
+        raise HTTPException(422, "A location cannot be both private and shared.")
+    if body.shared:
+        body.owner = None
+    if body.grants is not None:
+        ids = [grant.user_id for grant in body.grants]
+        if len(ids) != len(set(ids)):
+            raise HTTPException(422, "Choose each account only once.")
+        for grant in body.grants:
+            user = db.get(LocalUser, grant.user_id)
+            if user is None or not user.active:
+                raise HTTPException(422, "Choose active accounts for this location.")
+            if body.read_only and grant.level == "write":
+                raise HTTPException(422, "A read-only host mount cannot grant write access.")
+    if (
+        body.shared
+        and body.action in {"add", "preflight"}
+        and not any(grant.level != "none" for grant in body.grants or [])
+    ):
+        raise HTTPException(422, "Choose at least one account with access.")
     if body.action in {"remove", "update", "refresh-identity", "check"} and current is None:
         raise HTTPException(404, "Unknown storage location.")
     if body.action == "update":
         if not body.label.strip():
             raise HTTPException(422, "Enter a location name.")
-        if current["kind"] == "assigned":
-            user = db.get(LocalUser, body.owner) if body.owner else None
-            if user is None or not user.active:
-                raise HTTPException(422, "Choose an active account.")
+        if current["kind"] == "assigned" and body.owner != current.get("owner"):
+            raise HTTPException(422, "Use Manage access to change account permissions.")
     if body.action == "relocate" and (
         current is None or current["kind"] != "managed" or not body.path.startswith("/")
     ):
@@ -655,6 +876,26 @@ def report(body: Report, manager: Manager, db: DB, settings: Config):
                 raise HTTPException(
                     409, "The running API has not loaded the new mount configuration yet."
                 )
+            locations = {root.id: ensure_location(db, root) for root in manifest.roots}
+            target = locations.get(job.payload.get("root_id"))
+            if target and job.action in {"add", "init"} and job.payload.get("grants") is not None:
+                for grant in db.scalars(
+                    select(StorageGrant).where(StorageGrant.location_id == target.id)
+                ):
+                    db.delete(grant)
+                db.flush()
+                for grant in job.payload["grants"]:
+                    if grant["level"] != "none":
+                        db.add(
+                            StorageGrant(
+                                location_id=target.id,
+                                principal_id=grant["user_id"],
+                                level=grant["level"],
+                                version=str(uuid4()),
+                            )
+                        )
+                target.revision += 1
+                db.flush()
             # Verify mounts independently of the manager's claimed success; allow revoked
             # roots only inside this check, restoring revocation on any failure.
             try:
@@ -670,12 +911,25 @@ def report(body: Report, manager: Manager, db: DB, settings: Config):
                 if job.action != "remove" and not configs:
                     raise StorageError("The requested location is not mounted.")
                 for config in configs:
+                    if (
+                        job.action in {"add", "update"}
+                        and config.kind != "managed"
+                        and config.read_only != job.payload.get("read_only", False)
+                    ):
+                        raise StorageError("The applied host access mode differs from the request.")
+                    if (
+                        job.action == "add"
+                        and job.payload.get("shared")
+                        and config.kind != "shared"
+                    ):
+                        raise StorageError("The requested shared directory was not applied.")
                     if job.action == "setup":
                         source = next(r for r in body.roots if r.id == config.id)
-                        if config.kind != "managed" or source.source != job.payload["path"]:
-                            raise StorageError(
-                                "The applied private-folder base differs from setup."
-                            )
+                        if (
+                            config.kind != job.payload.get("kind", "managed")
+                            or source.source != job.payload["path"]
+                        ):
+                            raise StorageError("The applied storage location differs from setup.")
                     if (
                         job.action in {"add", "update"}
                         and config.kind == "assigned"
@@ -700,11 +954,20 @@ def report(body: Report, manager: Manager, db: DB, settings: Config):
                                 "Check permissions and SELinux."
                             )
                     if config.kind == "managed":
-                        for user in db.scalars(select(LocalUser).where(LocalUser.active.is_(True))):
+                        ids = db.scalars(
+                            select(StorageGrant.principal_id).where(
+                                StorageGrant.location_id == locations[config.id].id
+                            )
+                        ).all()
+                        for user in db.scalars(
+                            select(LocalUser).where(
+                                LocalUser.active.is_(True), LocalUser.id.in_(ids)
+                            )
+                        ):
                             with service.root(config.id, user.id, provision=True):
                                 pass
                     if not config.read_only:
-                        with service.root(config.id, owner, write=True) as fd:
+                        with service.root(config.id, owner, write=True, base=True) as fd:
                             name = ".ark-probe-" + secrets.token_hex(8)
                             try:
                                 target = os.open(
@@ -721,6 +984,7 @@ def report(body: Report, manager: Manager, db: DB, settings: Config):
             value.blocked_roots = [
                 root for root in value.blocked_roots if root != job.payload.get("root_id")
             ]
+            retire_missing(db, manifest)
             for previous in db.scalars(
                 select(StorageJob).where(
                     StorageJob.state == "failed", StorageJob.created_at < job.created_at
@@ -763,6 +1027,7 @@ def reconcile(body: Report, manager: Manager, db: DB, settings: Config):
         if root not in present and f"/srv/ark-storage/{root}" not in mounts
     }
     value.blocked_roots = [root for root in value.blocked_roots if root not in removed]
+    retire_missing(db, manifest)
     for job in db.scalars(select(StorageJob).where(StorageJob.state == "failed")):
         if job.action == "remove" and job.payload.get("root_id") in removed:
             job.result = {**job.result, "resolved": True}

@@ -202,14 +202,16 @@ def execute(config, job):
         return browse(config, body["path"])
     if action in {"add", "init", "preflight"}:
         managed = action == "init" or (action == "preflight" and body.get("managed", False))
-        path = approved(config, body["path"], new=managed)
+        shared = body.get("shared", False)
+        create = body.get("create_directory", False)
+        path = approved(config, body["path"], new=managed or create)
         if root is not None:
             if root["source"] != str(path):
                 raise ValueError("The requested ID already belongs to another location.")
-            if root["kind"] != ("managed" if managed else "assigned") or (
+            if root["kind"] != ("managed" if managed else "shared" if shared else "assigned") or (
                 not managed
                 and (
-                    root["owner"] != body["owner"]
+                    root["owner"] != (None if shared else body["owner"])
                     or root["read_only"] != body["read_only"]
                     or root["selinux"] != body["selinux"]
                 )
@@ -227,11 +229,11 @@ def execute(config, job):
             source = Path(existing["source"])
             if source == path or source in path.parents or path in source.parents:
                 raise ValueError("Storage locations must not overlap.")
-        if managed and path.exists():
+        if (managed or create) and path.exists():
             raise ValueError(
-                "Private folders require a new, empty base directory. Choose a new folder name."
+                "New locations require a new directory. Choose another name or connect an existing folder."
             )
-        if not managed and not path.is_dir():
+        if not managed and not create and not path.is_dir():
             raise ValueError("Choose an existing directory.")
         if action == "preflight":
             uid, gid = storage.probe()
@@ -250,7 +252,7 @@ def execute(config, job):
             read_only=body["read_only"],
             selinux=body["selinux"],
         )
-        storage.add(args, managed=managed)
+        storage.add(args, managed=managed, shared=shared, create=create)
         if body.get("grant_access") and not managed:
             grant_access(path, body["read_only"])
         if managed and body["label"] != "My files":
@@ -262,6 +264,7 @@ def execute(config, job):
     elif action == "relocate":
         if root is None or root["kind"] != "managed":
             raise ValueError("Only a private-folder base can be relocated.")
+        storage.pin_registration(root)
         destination = approved(config, body["path"], new=True)
         if root["source"] == str(destination):
             storage.save(data)
@@ -292,15 +295,19 @@ def execute(config, job):
             raise ValueError("The storage location no longer exists.")
         path = approved(config, root["source"])
         if action == "update":
+            storage.pin_registration(root)
             root["label"] = body["label"]
             if root["kind"] == "assigned":
                 root.update(
                     owner=body["owner"], read_only=body["read_only"], selinux=body["selinux"]
                 )
+            elif root["kind"] == "shared":
+                root.update(read_only=body["read_only"], selinux=body["selinux"])
             storage.save(data)
             if body.get("grant_access"):
                 grant_access(path, root["read_only"])
         elif action == "refresh-identity":
+            storage.pin_registration(root)
             info = path.stat()
             if any(
                 r["id"] != root["id"] and (r["device"], r["inode"]) == (info.st_dev, info.st_ino)

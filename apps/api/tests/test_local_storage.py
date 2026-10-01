@@ -102,7 +102,9 @@ def test_auth_csrf_and_private_roots(storage):
     assert client.get("/storage/roots").status_code == 401
     login(client)
     assert client.post("/storage/personal/folders", json={"path": "denied"}).status_code == 403
-    with service.root("personal", "other", provision=True) as fd:
+    with LocalStorage(service.manifest, verification=True).root(
+        "personal", "other", provision=True
+    ) as fd:
         file = os.open("private", os.O_WRONLY | os.O_CREAT, 0o600, dir_fd=fd)
         os.close(file)
     assert client.get("/storage/personal/items").json()["items"] == []

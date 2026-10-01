@@ -34,10 +34,13 @@ def main():
 
                 root = Preference(root_id=body["root_id"])
                 path = body["path"]
+                kind = body.get("kind", "managed")
+                if kind not in {"managed", "shared"}:
+                    sys.exit("Choose private or shared storage.")
                 if not isinstance(path, str) or not path.startswith("/") or len(path) > 4096:
                     sys.exit("Choose an absolute host path.")
                 try:
-                    result = begin_setup(db, path, root.root_id)
+                    result = begin_setup(db, path, root.root_id, kind)
                     print(json.dumps({"id": result["id"]}))
                 except ValueError as error:
                     print(json.dumps({"error": str(error)}))

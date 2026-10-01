@@ -4,11 +4,13 @@
 import argparse
 import fcntl
 import json
+import hashlib
 import os
 import shutil
 import subprocess
 import sys
 import urllib.error
+from uuid import uuid4
 from contextlib import suppress
 from pathlib import Path
 from types import SimpleNamespace
@@ -44,8 +46,17 @@ def progress(record, message, state="applying"):
     host_cli("--progress", {"id": record["job_id"], "state": state, "message": message})
 
 
-def reviewed_root(data, requested):
-    managed = next((r for r in data["roots"] if r["kind"] == "managed"), None)
+def reviewed_root(data, requested, kind="managed"):
+    default = str(Path.home() / ("Ark-Files" if kind == "managed" else "Ark-Shared"))
+    managed = next(
+        (
+            r
+            for r in data["roots"]
+            if r["kind"] == kind
+            and (kind == "managed" or r["source"] == str(storage.source_path(requested or default)))
+        ),
+        None,
+    )
     if managed:
         if requested and str(storage.source_path(requested)) != managed["source"]:
             raise ValueError(
@@ -54,18 +65,20 @@ def reviewed_root(data, requested):
         path = storage.source_path(managed["source"])
         if not path.is_dir():
             raise ValueError(
-                "The private-folder base is missing. Restore the disk or disconnect it in Ark."
+                "The storage location is missing. Restore the disk or disconnect it in Ark."
             )
         info = path.stat()
         if (info.st_dev, info.st_ino) != (managed["device"], managed["inode"]):
             raise ValueError("Storage identity changed. Review the disk and use Reconnect in Ark.")
         return path, managed
-    path = storage.source_path(requested or str(Path.home() / "Ark-Files"))
+    path = storage.source_path(requested or default)
     for root in data["roots"]:
         source = Path(root["source"])
         if path == source or path in source.parents or source in path.parents:
-            raise ValueError("The new private-folder base overlaps an existing location.")
-    if len(data["roots"]) >= 32 or any(r["id"] == "personal" for r in data["roots"]):
+            raise ValueError("The new storage location overlaps an existing location.")
+    if len(data["roots"]) >= 32 or (
+        kind == "managed" and any(r["id"] == "personal" for r in data["roots"])
+    ):
         raise ValueError("Disconnect an existing location before creating a private-folder base.")
     return path, None
 
@@ -91,16 +104,17 @@ def prepare_root(data, path, root, record):
         storage.provision_new(path)
         info = path.stat()
         root = {
-            "id": "personal",
-            "label": "My files",
+            "id": record["root_id"],
+            "label": "My files" if record["kind"] == "managed" else "Shared files",
             "source": str(path),
-            "path": "/srv/ark-storage/personal",
+            "path": "/srv/ark-storage/" + record["root_id"],
             "device": info.st_dev,
             "inode": info.st_ino,
-            "kind": "managed",
+            "kind": record["kind"],
             "owner": None,
             "read_only": False,
             "selinux": "private",
+            "registration": str(uuid4()),
         }
         record["root"] = root
         storage.atomic_write(RECORD, json.dumps(record))
@@ -180,7 +194,8 @@ def perform_setup(args):
                     "foreground storage manager before running setup."
                 ) from error
             data = storage.state()
-            path, root = reviewed_root(data, args.path)
+            kind = "shared" if getattr(args, "shared", False) else "managed"
+            path, root = reviewed_root(data, args.path, kind)
             record = json.loads(RECORD.read_text()) if RECORD.exists() else {}
             if record and record.get("path") != str(path) and record.get("phase") != "completed":
                 raise ValueError(
@@ -201,13 +216,27 @@ def perform_setup(args):
                 storage.save(data, announce=False)
                 manager.compose("up", "--detach", "--no-deps", "--force-recreate", "--wait", "api")
             recover_manager_journal()
-            job = host_cli(
-                "--begin", {"path": str(path), "root_id": root["id"] if root else "personal"}
+            root_id = (
+                root["id"]
+                if root
+                else (
+                    "personal"
+                    if kind == "managed"
+                    else "shared-" + hashlib.sha256(str(path).encode()).hexdigest()[:12]
+                )
             )
-            record.update(path=str(path), job_id=job["id"], phase="preparing")
+            job = host_cli("--begin", {"path": str(path), "root_id": root_id, "kind": kind})
+            record.update(
+                path=str(path), job_id=job["id"], phase="preparing", kind=kind, root_id=root_id
+            )
             config = None
             try:
-                progress(record, "Creating private storage and account access.")
+                progress(
+                    record,
+                    "Creating private storage and account access."
+                    if kind == "managed"
+                    else "Creating a shared directory. Account access is granted in Administration.",
+                )
                 root = prepare_root(data, path, root, record)
                 record["phase"] = "applying"
                 progress(record, "Applying storage mounts. Ark will reconnect automatically.")
@@ -225,7 +254,9 @@ def perform_setup(args):
                         **manager.snapshot(config),
                         "job_id": job["id"],
                         "state": "verifying",
-                        "message": "Verifying access as the API user and creating private account folders.",
+                        "message": "Verifying access as the API user and creating private account folders."
+                        if kind == "managed"
+                        else "Verifying the shared directory as the API user.",
                     },
                 )
                 if not args.no_install:
@@ -237,7 +268,9 @@ def perform_setup(args):
                         **manager.snapshot(config),
                         "job_id": job["id"],
                         "state": "completed",
-                        "message": "Local Files is ready. Open my files in Ark.",
+                        "message": "Local Files is ready. Open my files in Ark."
+                        if kind == "managed"
+                        else "Shared directory connected. Use Manage access to choose accounts.",
                     },
                 )
                 # An administrator may queue a new operation just after completion.
@@ -262,7 +295,10 @@ def perform_setup(args):
         subprocess.run(
             ["systemctl", "--user", "restart", "ark-storage-manager.service"], check=True
         )
-    print(f"Local Files ready at {path}. Return to Administration and choose Open my files.")
+    next_step = (
+        "Open my files" if kind == "managed" else "Manage access to grant account permissions"
+    )
+    print(f"Local Files ready at {path}. Return to Administration and choose {next_step}.")
     if args.no_install:
         print(
             "For ongoing UI changes, supervise ./scripts/ark storage manager run as this host owner."
@@ -296,6 +332,11 @@ def setup(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--path", help="A new dedicated directory; defaults to ~/Ark-Files")
+    parser.add_argument(
+        "--shared",
+        action="store_true",
+        help="Create a shared location (default ~/Ark-Shared); grant accounts in Administration",
+    )
     parser.add_argument(
         "--no-install", action="store_true", help="Do not install a systemd user service"
     )

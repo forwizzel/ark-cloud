@@ -70,6 +70,13 @@ Set the maximum file size in Administration without restarting. **Set as startin
 Local Files is a separate account preference; opening a location does not change it. No Google
 credentials are required.
 
+Each location now offers **Manage access**: choose **No access**, **Read-only**, or **Read & write**
+for accounts by username. `Ark-Files` keeps each account's private folder isolated. To share the
+same files with selected accounts, choose **Create shared folder** or run
+`./scripts/ark storage setup --shared` to create a separate `~/Ark-Shared`, then grant users access.
+Existing access is preserved during upgrade; later accounts require an explicit grant. Permission
+changes take effect without restarting containers and preserve files when access is revoked.
+
 The retained storage CLI remains available for owner recovery and installations without a manager;
 see [Local storage](docs/local-storage.md) for its reference and advanced host details.
 

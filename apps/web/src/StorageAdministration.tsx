@@ -13,10 +13,13 @@ import {
   type StorageAdministration,
   type StorageJob,
   type StorageOperation,
+  type AccessLevel,
 } from "./storageAdminApi";
 import "./storage-administration.css";
 import StorageSetup from "./StorageSetup";
 import StorageActivity from "./StorageActivity";
+import StorageAccess from "./StorageAccess";
+import SharedStorageSetup from "./SharedStorageSetup";
 
 const failureMessage = (error: unknown) =>
   error instanceof Error ? error.message : "Storage operation failed.";
@@ -34,6 +37,7 @@ const titles: Record<string, string> = {
   preflight: "Review folder",
   relocate: "Change private-folder base",
   setup: "Set up Local Files",
+  access: "Account access",
 };
 
 export default function StorageAdministration({
@@ -46,6 +50,8 @@ export default function StorageAdministration({
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [editor, setEditor] = useState<StorageOperation | null>(null);
+  const [accessRoot, setAccessRoot] = useState<ManagedLocation | null>(null);
+  const [sharedSetup, setSharedSetup] = useState(false);
   const [review, setReview] = useState<StorageJob | null>(null);
   const [waiting, setWaiting] = useState<{
     id: string;
@@ -116,6 +122,7 @@ export default function StorageAdministration({
   const canChange =
     data?.manager.online && !data.configuration_error && !applying;
   function edit(operation: StorageOperation) {
+    setAccessRoot(null);
     setEditor(operation);
     setReview(null);
     setBrowser(null);
@@ -175,7 +182,19 @@ export default function StorageAdministration({
       path: "",
       read_only: false,
       selinux: "preserve",
+      shared: true,
+      grants: newGrants(),
     });
+  }
+  function newGrants() {
+    return (
+      data?.users
+        .filter((user) => user.active)
+        .map((user) => ({
+          user_id: user.id,
+          level: user.current ? ("write" as const) : ("none" as const),
+        })) ?? []
+    );
   }
   function configure(
     root: ManagedLocation,
@@ -268,6 +287,9 @@ export default function StorageAdministration({
             >
               Connect existing folder
             </button>
+            <button onClick={() => setSharedSetup((value) => !value)}>
+              {sharedSetup ? "Hide shared setup" : "Create shared folder"}
+            </button>
             {!data.roots.some((root) => root.kind === "managed") && (
               <button
                 disabled={!canChange}
@@ -277,6 +299,7 @@ export default function StorageAdministration({
                     label: "My files",
                     path: "",
                     managed: true,
+                    grants: newGrants(),
                   })
                 }
               >
@@ -303,16 +326,30 @@ export default function StorageAdministration({
                 <p>
                   {root.kind === "managed"
                     ? "Private folders for accounts"
-                    : root.username
-                      ? `Assigned to ${root.username}`
-                      : "Assigned account missing"}{" "}
-                  · {root.read_only ? "Read only" : "Read / write"}
+                    : "Shared directory"}{" "}
+                  ·{" "}
+                  {root.read_only
+                    ? "Host mount read-only"
+                    : "Host mount read / write"}
+                </p>
+                <p>
+                  Access for {root.access_count ?? (root.owner ? 1 : 0)}{" "}
+                  accounts
                 </p>
                 <p className={root.state === "healthy" ? "" : "local-error"}>
                   {root.message}
                 </p>
               </div>
               <div className="local-actions">
+                <button
+                  disabled={Boolean(data.configuration_error) || applying}
+                  onClick={() => {
+                    setEditor(null);
+                    setAccessRoot(root);
+                  }}
+                >
+                  Manage access
+                </button>
                 <button
                   disabled={!canChange}
                   onClick={() => configure(root, "update")}
@@ -358,6 +395,33 @@ export default function StorageAdministration({
           ))}
         </ul>
       </section>
+
+      {sharedSetup && (
+        <SharedStorageSetup
+          canCreate={Boolean(canChange)}
+          onCreate={() =>
+            edit({
+              action: "add",
+              shared: true,
+              create_directory: true,
+              label: "Shared files",
+              path: "",
+              read_only: false,
+              selinux: "private",
+              grants: newGrants(),
+            })
+          }
+        />
+      )}
+      {accessRoot && (
+        <StorageAccess
+          key={accessRoot.id}
+          root={accessRoot}
+          csrfToken={csrfToken}
+          onClose={() => setAccessRoot(null)}
+          onChanged={refreshInventory}
+        />
+      )}
 
       {editor && (
         <section
@@ -407,7 +471,9 @@ export default function StorageAdministration({
                       <label>
                         {editor.managed
                           ? "New private-folder base on the server"
-                          : "Existing folder on the server"}
+                          : editor.create_directory
+                            ? "New shared directory on the server"
+                            : "Existing folder on the server"}
                         <input
                           required
                           placeholder="/your/disk/folder"
@@ -420,33 +486,21 @@ export default function StorageAdministration({
                     )}
                     {!editor.managed && (
                       <label>
-                        Account with access
-                        <select
-                          required
-                          value={editor.owner ?? ""}
-                          onChange={(event) =>
-                            field({ owner: event.target.value })
-                          }
-                        >
-                          <option value="">Choose an account</option>
-                          {data.users
-                            .filter((user) => user.active)
-                            .map((user) => (
-                              <option key={user.id} value={user.id}>
-                                {user.username}
-                                {user.pending ? " · Invitation pending" : ""}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-                    )}
-                    {!editor.managed && (
-                      <label>
-                        Access
+                        Host mount access
                         <select
                           value={editor.read_only ? "read" : "write"}
                           onChange={(event) =>
-                            field({ read_only: event.target.value === "read" })
+                            field({
+                              read_only: event.target.value === "read",
+                              grants: editor.grants?.map((grant) => ({
+                                ...grant,
+                                level:
+                                  event.target.value === "read" &&
+                                  grant.level === "write"
+                                    ? "read"
+                                    : grant.level,
+                              })),
+                            })
                           }
                         >
                           <option value="write">Read and write</option>
@@ -455,6 +509,63 @@ export default function StorageAdministration({
                       </label>
                     )}
                   </div>
+                  {["add", "init"].includes(editor.action) && editor.grants && (
+                    <fieldset className="storage-initial-access">
+                      <legend>Account permissions</legend>
+                      <p>
+                        {editor.managed
+                          ? "Selected accounts get separate private folders."
+                          : "Selected accounts will share the same files."}
+                      </p>
+                      {data.users
+                        .filter((user) => user.active)
+                        .map((user) => (
+                          <label key={user.id}>
+                            Access for {user.username}
+                            {user.pending ? " · Invitation pending" : ""}
+                            <select
+                              value={
+                                editor.grants?.find(
+                                  (grant) => grant.user_id === user.id,
+                                )?.level ?? "none"
+                              }
+                              onChange={(event) =>
+                                field({
+                                  grants: editor.grants?.map((grant) =>
+                                    grant.user_id === user.id
+                                      ? {
+                                          ...grant,
+                                          level: event.target
+                                            .value as AccessLevel,
+                                        }
+                                      : grant,
+                                  ),
+                                })
+                              }
+                            >
+                              <option value="none">No access</option>
+                              <option value="read">Read-only</option>
+                              <option value="write" disabled={editor.read_only}>
+                                Read &amp; write
+                              </option>
+                            </select>
+                          </label>
+                        ))}
+                    </fieldset>
+                  )}
+                  {editor.action === "update" && (
+                    <p>
+                      Use Manage access on this location to choose accounts and
+                      their permissions.
+                    </p>
+                  )}
+                  {editor.create_directory && (
+                    <p>
+                      Ark creates a new dedicated shared directory with
+                      mapped-UID access and Ark-only container labels. Existing
+                      directories are never repurposed.
+                    </p>
+                  )}
                   {editor.action !== "update" && (
                     <>
                       <button
@@ -476,7 +587,9 @@ export default function StorageAdministration({
                                   field({
                                     path: editor.managed
                                       ? `${browser.path}/ark-files`
-                                      : browser.path,
+                                      : editor.create_directory
+                                        ? `${browser.path}/shared-files`
+                                        : browser.path,
                                   });
                                   setBrowser(null);
                                 }}
@@ -608,11 +721,20 @@ export default function StorageAdministration({
                   <p>{review.result.message}</p>
                   <p>
                     {editor.managed
-                      ? "Ark will create the new base and account folders."
-                      : `Access will be assigned to ${data.users.find((user) => user.id === editor.owner)?.username ?? "the selected account"}.`}{" "}
+                      ? "Ark will create separate private folders for selected accounts."
+                      : "Selected accounts will share this directory."}{" "}
                     {editor.selinux && editor.selinux !== "preserve"
                       ? "You are authorizing recursive relabeling of this folder."
                       : "Existing file labels are preserved."}
+                  </p>
+                  <p>
+                    {editor.grants
+                      ?.filter((grant) => grant.level !== "none")
+                      .map(
+                        (grant) =>
+                          `${data.users.find((user) => user.id === grant.user_id)?.username}: ${grant.level === "write" ? "read & write" : "read-only"}`,
+                      )
+                      .join(" · ")}
                   </p>
                   <details>
                     <summary>Runtime details</summary>
@@ -741,14 +863,18 @@ export default function StorageAdministration({
                   : user.pending
                     ? "Invitation pending · "
                     : ""}
-                {[
-                  ...(data.roots.some((root) => root.kind === "managed")
-                    ? ["Private account folder enabled"]
-                    : []),
-                  ...data.roots
-                    .filter((root) => root.owner === user.id)
-                    .map((root) => root.label),
-                ].join(" · ") || "No locations assigned"}
+                {data.roots
+                  .filter((root) =>
+                    root.access_accounts?.some(
+                      (grant) =>
+                        grant.user_id === user.id && grant.level !== "none",
+                    ),
+                  )
+                  .map(
+                    (root) =>
+                      `${root.label} (${root.kind === "managed" ? "private" : "shared"})`,
+                  )
+                  .join(" · ") || "No locations assigned"}
               </span>
               <details>
                 <summary>Permanent account ID</summary>
@@ -760,6 +886,10 @@ export default function StorageAdministration({
         <p>
           Username changes preserve assignments. Disabling or deleting an
           account removes access, not files.
+        </p>
+        <p>
+          Use Manage access on each location to grant or revoke account
+          permissions.
         </p>
         <a href="#administration-users">Manage accounts and invitations</a>
       </section>

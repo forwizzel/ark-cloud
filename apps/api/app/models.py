@@ -54,6 +54,29 @@ class StoragePreference(Base):
     path: Mapped[str] = mapped_column(String(2048), default="")
 
 
+class StorageLocation(Base):
+    __tablename__ = "storage_locations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    root_id: Mapped[str] = mapped_column(String(40), index=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    retired: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class StorageGrant(Base):
+    __tablename__ = "storage_grants"
+
+    location_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("storage_locations.id", ondelete="CASCADE"), primary_key=True
+    )
+    principal_id: Mapped[str] = mapped_column(
+        String(128), ForeignKey("local_users.id", ondelete="CASCADE"), primary_key=True
+    )
+    level: Mapped[str] = mapped_column(String(8))
+    version: Mapped[str] = mapped_column(String(36))
+
+
 class LocalUser(Base):
     __tablename__ = "local_users"
 

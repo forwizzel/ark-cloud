@@ -18,12 +18,34 @@ export type StorageOperation = {
   confirmed?: boolean;
   managed?: boolean;
   grant_access?: boolean;
+  shared?: boolean;
+  create_directory?: boolean;
+  grants?: { user_id: string; level: AccessLevel }[];
+};
+
+export type AccessLevel = "none" | "read" | "write";
+export type LocationAccess = {
+  root_id: string;
+  registration: string;
+  kind: "managed" | "assigned" | "shared";
+  host_read_only: boolean;
+  revision: number;
+  accounts: {
+    id: string;
+    username: string;
+    active: boolean;
+    pending: boolean;
+    level: AccessLevel;
+    effective_level: AccessLevel;
+    ready: boolean;
+    message: string;
+  }[];
 };
 
 export type StorageJob = {
   id: string;
   action: string;
-  payload: Partial<StorageOperation>;
+  payload: Partial<StorageOperation> & { kind?: "managed" | "shared" };
   state: "queued" | "applying" | "verifying" | "completed" | "failed";
   disposition?:
     | "current"
@@ -52,13 +74,15 @@ export type ManagedLocation = {
   id: string;
   label: string;
   source: string;
-  kind: "managed" | "assigned";
+  kind: "managed" | "assigned" | "shared";
   owner: string | null;
   username: string | null;
   read_only: boolean;
   selinux: "preserve" | "private" | "shared";
   state: "healthy" | "unavailable";
   message: string;
+  access_count?: number;
+  access_accounts?: { user_id: string; level: AccessLevel }[];
 };
 
 export type StorageAdministration = {
@@ -80,7 +104,13 @@ export type StorageAdministration = {
   jobs: StorageJob[];
   upload_max_bytes: number;
   upload_limit_source: "ui" | "environment";
-  users: { id: string; username: string; active: boolean; pending: boolean }[];
+  users: {
+    id: string;
+    username: string;
+    active: boolean;
+    pending: boolean;
+    current?: boolean;
+  }[];
 };
 
 export async function storageRequest<T>(

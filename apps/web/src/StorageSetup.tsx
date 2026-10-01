@@ -11,7 +11,7 @@ export default function StorageSetup({
   const [choice, setChoice] = useState<"new" | "existing">("new");
   const [copied, setCopied] = useState("");
   const managed = data.roots.find((root) => root.kind === "managed");
-  const job = data.setup.job;
+  const job = data.setup.job?.payload.kind === "shared" ? null : data.setup.job;
   const running =
     job && ["applying", "verifying", "queued"].includes(job.state);
   const ready = managed?.state === "healthy" && !running;

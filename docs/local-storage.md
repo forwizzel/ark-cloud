@@ -56,14 +56,50 @@ Lifecycle helpers pause the installed systemd manager before `up`/`down`/data re
 an enabled manager after `up` passes health checks. A separately supervised foreground manager
 must be paused by its owner during deployment/teardown.
 
+### Control account access
+
+Every location has **Manage access**. Choose **No access**, **Read-only**, or **Read & write** for
+each account by username. The editor shows effective permissions, disabled/invited account state,
+and whether a private folder is ready. Saving private access explicitly creates that account's
+folder when needed; status reads never do. Revoking access preserves files. Permission edits work
+without a host-helper connection or container restart when the location is already applied.
+
+`Ark-Files` is a **private-account base**: enabled accounts see only their own immutable-ID folder.
+It is not a shared directory, and granting another account access never reveals your private files.
+Existing active accounts retain access during the permissions migration; later accounts require
+an explicit grant. Legacy assigned directories preserve their assigned account's initial access.
+
+For a separate shared location, choose **Create shared folder** and run this from the repository
+on the host:
+
+```bash
+./scripts/ark storage setup --shared
+```
+
+This creates a new `~/Ark-Shared` and connects it without granting any account access. Use
+**Manage access** to select users afterward. `--shared --path /a/new/shared-folder` supports another
+new location. Alternatively, create a shared directory inside an already-approved, non-overlapping
+area or connect an existing directory, choosing account permissions before confirmation. Authorized
+users of a shared location see the same files; its permissions do not apply to private account folders.
+
+The API enforces grants on every file operation. Read-only accounts cannot upload, create, rename,
+move or delete. Host read-only mounts remain an upper limit. Upload publication rechecks the grant
+version, including revoke/regrant changes made while a transfer is running. Grants use immutable
+account IDs and location registrations, not usernames or labels. Removed registrations are retired;
+recreating a location does not inherit its old shared permissions. Registration IDs are pinned across
+explicitly reviewed identity refreshes and base relocation. Stale access editors cannot save into a
+different registration or overwrite a newer permission revision. Account grants and their audit
+history live in PostgreSQL, never file bodies; include them in your normal database backups.
+
 The UI provides:
 
-- **Connect folder:** browse approved server folders, pick an account by username, choose access,
+- **Connect folder:** browse approved server folders, pick accounts by username, choose access,
   review the path, and connect. Paths refer to the server, not the browser computer.
 - **Create private account folders:** explicitly choose a new base directory. Ark applies a narrow
   mapped-UID ACL and private container labeling to this new tree, then creates private folders for
-  active accounts. Later accounts can explicitly choose **Create my private folder** in Local Files.
-- **Configure:** change a label, account assignment or access mode. Advanced options expose explicit
+  selected accounts. Later accounts need an administrator's access grant.
+- **Manage access:** directly grant or revoke per-account permissions; private folders remain isolated.
+- **Configure:** change a label or host mount access mode. Advanced options expose explicit
   SELinux relabeling and a narrow ACL grant for a host-owned folder plus future content. Existing
   child permissions are not recursively changed.
 - **Change base directory:** pause API writes, copy private account folders to a new directory,
@@ -131,13 +167,14 @@ container-side access; permission modes shown by `ls` alone do not describe all 
 
 Configuration is kept in ignored `.ark-storage/host.json`, `.ark-storage/manifest.json`, and
 `compose.storage.yaml`. The host file is authoritative, the API manifest contains only stable root
-IDs, container paths, expected device/inode identity, mode, and ownership. The API cannot edit it.
+IDs, registration IDs, container paths, expected device/inode identity, mode, and legacy ownership.
+The API cannot edit it; per-account grants are separately managed in PostgreSQL.
 Use lifecycle commands under `./scripts/ark`: they include the storage override. Plain
 `docker compose` intentionally uses the base stack without real content mounts for unit checks.
 Do not run a base-only `docker compose up` against your integrated instance.
 
 Each account gets `<data directory>/<immutable user UUID>`. Username changes preserve the UUID.
-Invited users explicitly create their private folder in Local Files when it is not yet provisioned.
+Administrators grant invited accounts private storage access and explicitly provision their folders.
 Application admin status
 does not grant browser access to another account's files. All files are accessible to the host
 owner through their ACL; this is application account isolation, not encryption from the host owner.
@@ -166,7 +203,8 @@ the mapped UID for a new tree; Docker's UID mapping can be inspected with:
 
 Account assignments are host-owned; the enrolled manager applies approved administrator UI requests.
 Without it, use the owner CLI. One assigned root
-has one UUID owner. Sources cannot overlap the managed tree, another registered root, repository,
+starts with one UUID owner's grant in the legacy CLI; use **Manage access** for additional accounts.
+Sources cannot overlap the managed tree, another registered root, repository,
 system/credential directories, or a whole home/root directory. Source and target symlinks are
 rejected. Alias/bind mount arrangements that conceal overlap are unsupported; inspect them on the
 host before registering. Nested filesystem mounts are not traversed by the API.

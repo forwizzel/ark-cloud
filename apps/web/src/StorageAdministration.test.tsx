@@ -67,8 +67,8 @@ test("connect flow chooses account by name and reviews before applying", async (
   fireEvent.change(screen.getByLabelText("Existing folder on the server"), {
     target: { value: "/disk/files/photos" },
   });
-  fireEvent.change(screen.getByLabelText("Account with access"), {
-    target: { value: "account-id" },
+  fireEvent.change(screen.getByLabelText("Access for alice"), {
+    target: { value: "write" },
   });
   expect(api.submitStorageOperation).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Review folder" }));
@@ -76,7 +76,8 @@ test("connect flow chooses account by name and reviews before applying", async (
     expect(api.submitStorageOperation).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "preflight",
-        owner: "account-id",
+        shared: true,
+        grants: [{ user_id: "account-id", level: "write" }],
         path: "/disk/files/photos",
       }),
       "csrf",
@@ -92,7 +93,8 @@ test("connect flow chooses account by name and reviews before applying", async (
       expect.objectContaining({
         action: "add",
         confirmed: true,
-        owner: "account-id",
+        shared: true,
+        grants: [{ user_id: "account-id", level: "write" }],
       }),
       "csrf",
     ),

@@ -244,6 +244,8 @@ def publish(storage, root_id, owner, path, parent, temp, name, request, settings
         current = LocalStorage(load_manifest(settings.storage_manifest))
         if current.config(root_id, owner) != storage.config(root_id, owner):
             raise StorageError("Storage configuration changed during upload. Refresh and retry.")
+        if current.permissions.get((root_id, owner)) != storage.permissions.get((root_id, owner)):
+            raise StorageError("Storage access changed during upload. Refresh and retry.", 403)
         with (
             current.root(root_id, owner, write=True) as root,
             current.parent(root, path) as (fd, _),

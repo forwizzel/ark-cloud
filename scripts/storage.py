@@ -71,6 +71,12 @@ def state():
     return json.loads(STATE.read_text()) if STATE.exists() else {"version": 1, "roots": []}
 
 
+def pin_registration(root):
+    if not root.get("registration"):
+        name = f"ark-storage:{root['id']}:{root['kind']}:{root['device']}:{root['inode']}:{root.get('owner') or ''}"
+        root["registration"] = str(uuid.uuid5(uuid.NAMESPACE_URL, name))
+
+
 def source_path(value):
     path = Path(value).expanduser().absolute()
     if path != path.resolve():
@@ -173,7 +179,7 @@ def atomic_write(path, content, mode=0o600):
         temp.unlink(missing_ok=True)
 
 
-def add(args, managed=False):
+def add(args, managed=False, *, shared=False, create=False):
     local_daemon()
     data = state()
     path = source_path(args.path)
@@ -192,14 +198,14 @@ def add(args, managed=False):
         existing = Path(item["source"])
         if path == existing or path in existing.parents or existing in path.parents:
             raise ValueError("Storage roots must not overlap.")
-    if managed:
+    if managed or create:
         provision_new(path)
     if not path.is_dir():
         raise ValueError("Source must be an existing directory.")
     info = path.stat()
     if any((r["device"], r["inode"]) == (info.st_dev, info.st_ino) for r in data["roots"]):
         raise ValueError("This filesystem root is already registered under another path.")
-    owner = None if managed else str(uuid.UUID(args.owner))
+    owner = None if managed or shared else str(uuid.UUID(args.owner))
     data["roots"].append(
         {
             "id": root_id,
@@ -208,10 +214,11 @@ def add(args, managed=False):
             "path": f"/srv/ark-storage/{root_id}",
             "device": info.st_dev,
             "inode": info.st_ino,
-            "kind": "managed" if managed else "assigned",
+            "kind": "managed" if managed else "shared" if shared else "assigned",
             "owner": owner,
             "read_only": False if managed else args.read_only,
-            "selinux": "private" if managed else args.selinux,
+            "selinux": "private" if managed or create else args.selinux,
+            "registration": str(uuid.uuid4()),
         }
     )
     save(data)
@@ -280,6 +287,7 @@ def execute(args):
         else:
             local_daemon()
             root = next(r for r in data["roots"] if r["id"] == args.id)
+            pin_registration(root)
             path = source_path(root["source"])
             if not path.is_dir():
                 raise ValueError("The source directory is missing.")

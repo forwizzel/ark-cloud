@@ -27,6 +27,15 @@ User device | Tailscale or local host | Web proxy | API | PostgreSQL / Google Dr
   ownership. Host-manager credentials stay in a mode-0600 host file and are hashed in PostgreSQL.
   No Docker socket or host control channel is mounted into the API. Queued jobs recheck administrator
   authorization before a durable claim; already-started changes are reconciled after interruptions.
+- Account storage grants are administered with session-bound CSRF and location-registration/revision
+  checks. Private grants address only the caller's immutable-ID folder; shared grants address the
+  entire registered shared tree. Administrator status alone does not bypass file grants or private
+  folder confinement. Read-only grants reject every file mutation. Grant changes serialize with
+  file publication, and uploads recheck grant versions before publishing, including revoke/regrant.
+  Revocation blocks new operations; a download whose descriptor was already authorized may finish.
+  Retired registrations cannot be reused to inherit old grants or silently change a private base
+  into shared storage. File bodies stay outside PostgreSQL; grant and audit metadata are backed up
+  with the control plane.
 - Appearance choices live only in browser localStorage; they contain no credentials and are not
   sent to the API.
 
