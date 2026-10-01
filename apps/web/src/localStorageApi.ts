@@ -6,6 +6,8 @@ export type StorageRoot = {
   message: string;
   total_bytes: number | null;
   available_bytes: number | null;
+  kind?: "managed" | "assigned";
+  needs_setup?: boolean;
 };
 
 export type LocalItem = {
@@ -50,6 +52,41 @@ export function storageUrl(
 export async function fetchStorageRoots(signal?: AbortSignal) {
   return response<{ roots: StorageRoot[]; message: string }>(
     await fetch("/api/storage/roots", { signal }),
+  );
+}
+
+export type StoragePreference = {
+  root_id: string | null;
+  path: string;
+  upload_max_bytes: number;
+};
+
+export async function fetchStoragePreference(signal?: AbortSignal) {
+  return response<StoragePreference>(
+    await fetch("/api/storage/preferences", { signal }),
+  );
+}
+
+export async function saveStoragePreference(
+  root: string | null,
+  path: string,
+  csrf: string,
+) {
+  return response<StoragePreference>(
+    await fetch("/api/storage/preferences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+      body: JSON.stringify({ root_id: root, path }),
+    }),
+  );
+}
+
+export async function provisionPrivateFolder(csrf: string) {
+  return response<void>(
+    await fetch("/api/storage/private-folder", {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrf },
+    }),
   );
 }
 

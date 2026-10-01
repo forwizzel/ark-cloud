@@ -21,6 +21,12 @@ User device | Tailscale or local host | Web proxy | API | PostgreSQL / Google Dr
 - Explicit host directory mounts are the local-content boundary. The owner-operated manifest and
   immutable account IDs scope access; Unix permissions and SELinux independently constrain the API.
   Google Drive is optional and metadata-only. PostgreSQL never stores file bodies.
+- An optional host-owner-enrolled storage manager accepts typed storage jobs through the loopback
+  proxy and controls only this deployment's storage configuration within explicitly approved areas.
+  Enrollment delegates those operations to application administrators; it is separate from file
+  ownership. Host-manager credentials stay in a mode-0600 host file and are hashed in PostgreSQL.
+  No Docker socket or host control channel is mounted into the API. Queued jobs recheck administrator
+  authorization before a durable claim; already-started changes are reconciled after interruptions.
 - Appearance choices live only in browser localStorage; they contain no credentials and are not
   sent to the API.
 

@@ -107,7 +107,9 @@ def load_manifest(path: str) -> Manifest:
         return Manifest(roots=[])
     except (OSError, ValueError) as error:
         raise StorageError(
-            "Storage configuration is invalid. Ask the host owner to run storage check.", 503
+            "Storage configuration is invalid. "
+            "Ask an administrator to review Local Storage diagnostics.",
+            503,
         ) from error
 
 
@@ -169,17 +171,30 @@ def mount_points() -> set[str]:
 
 
 class LocalStorage:
-    def __init__(self, manifest: Manifest):
+    def __init__(self, manifest: Manifest, *, verification: bool = False):
         self.manifest = manifest
+        self.verification = verification
 
     def config(self, root_id: str, owner: str) -> RootConfig:
+        from app.services.storage_control import blocked_roots
+
+        if not self.verification and root_id in blocked_roots():
+            raise StorageError("This location is disconnected or being reconfigured.", 404)
         for root in self.manifest.roots:
             if root.id == root_id and (root.kind == "managed" or root.owner == owner):
                 return root
         raise StorageError("Storage location not found.", 404)
 
     @contextmanager
-    def root(self, root_id: str, owner: str, *, write: bool = False):
+    def root(
+        self,
+        root_id: str,
+        owner: str,
+        *,
+        write: bool = False,
+        provision: bool = False,
+        base: bool = False,
+    ):
         if platform.machine() not in {"x86_64", "aarch64"}:
             raise StorageError("Local storage requires Linux x86_64 or aarch64.", 503)
         config = self.config(root_id, owner)
@@ -187,7 +202,7 @@ class LocalStorage:
             raise StorageError("This location is read-only.", 403)
         if config.path not in mount_points():
             raise StorageError(
-                "Storage mount is missing. Ask the host owner to run storage check.", 503
+                "Storage mount is missing. Ask an administrator to reconnect this location.", 503
             )
         # Resolve the mount itself without following any component symlinks.
         anchor = os.open("/", DIRECTORY)
@@ -205,11 +220,12 @@ class LocalStorage:
             info = os.fstat(fd)
             if (info.st_dev, info.st_ino) != (config.device, config.inode):
                 raise StorageError("Storage identity changed. Host owner review is required.", 503)
-            if config.kind == "managed":
+            if config.kind == "managed" and not base:
                 if not re.fullmatch(r"[a-zA-Z0-9-]{1,128}", owner):
                     raise StorageError("Invalid account identity.", 403)
-                with suppress(FileExistsError):
-                    os.mkdir(owner, mode=0o770, dir_fd=fd)
+                if provision:
+                    with suppress(FileExistsError):
+                        os.mkdir(owner, mode=0o770, dir_fd=fd)
                 private = open_beneath(fd, owner)
                 os.close(fd)
                 fd = private
@@ -229,6 +245,8 @@ class LocalStorage:
                 "id": config.id,
                 "label": config.label,
                 "read_only": config.read_only,
+                "kind": config.kind,
+                "needs_setup": False,
                 "state": "healthy",
                 "message": "Ready",
                 "available_bytes": None,
@@ -251,6 +269,18 @@ class LocalStorage:
                         available_bytes=usage.f_bavail * usage.f_frsize,
                         total_bytes=usage.f_blocks * usage.f_frsize,
                     )
+            except FileNotFoundError:
+                item.update(
+                    state="unavailable",
+                    needs_setup=config.kind == "managed",
+                    message=(
+                        "Your private folder has not been created. "
+                        "Choose Create my private folder to set it up."
+                        if config.kind == "managed"
+                        else "This directory is missing. "
+                        "Ask your administrator to check the storage location."
+                    ),
+                )
             except (StorageError, OSError) as error:
                 item.update(
                     state="unavailable",
@@ -261,9 +291,7 @@ class LocalStorage:
             items.append(item)
         return {
             "roots": items,
-            "message": ""
-            if items
-            else "Ask the host owner to run ./scripts/ark storage init to enable local files.",
+            "message": "" if items else "No storage has been assigned to your account yet.",
         }
 
     @contextmanager

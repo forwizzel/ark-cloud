@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Owner-operated mount provisioning. Never invoked by the browser/API."""
+"""Host-owned mount provisioning, shared by the CLI and enrolled storage manager."""
 
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -9,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -17,8 +19,19 @@ STATE = CONFIG / "host.json"
 OVERRIDE = REPO / "compose.storage.yaml"
 
 
+@contextmanager
+def configuration_lock():
+    CONFIG.mkdir(mode=0o755, exist_ok=True)
+    with (CONFIG / "configuration.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
 def run(*args):
-    return subprocess.check_output(args, cwd=REPO, text=True).strip()
+    return subprocess.check_output(args, cwd=REPO, text=True, timeout=180).strip()
 
 
 def local_daemon():
@@ -88,13 +101,13 @@ def source_path(value):
     return path
 
 
-def save(data):
+def save(data, *, announce=True):
     CONFIG.mkdir(mode=0o755, exist_ok=True)
     manifest = {"version": 1, "roots": []}
     mounts = [
         {
             "type": "bind",
-            "source": str(CONFIG / "manifest.json"),
+            "source": str(CONFIG / "manifest.json").replace("$", "$$"),
             "target": "/etc/ark-storage/manifest.json",
             "read_only": True,
             "bind": {"create_host_path": False, "selinux": "Z"},
@@ -109,26 +122,55 @@ def save(data):
         mounts.append(
             {
                 "type": "bind",
-                "source": item["source"],
+                "source": item["source"].replace("$", "$$"),
                 "target": item["path"],
                 "read_only": item["read_only"],
                 "bind": options,
             }
         )
     # JSON is valid YAML. Configuration contains paths and IDs, never credentials.
-    for path, value in [
+    outputs = [
         (STATE, data),
         (CONFIG / "manifest.json", manifest),
         (OVERRIDE, {"services": {"api": {"volumes": mounts}}}),
-    ]:
-        temp = path.with_suffix(path.suffix + ".tmp")
-        temp.write_text(json.dumps(value, indent=2) + "\n")
-        temp.chmod(0o644)
+    ]
+    previous = {path: path.read_bytes() if path.exists() else None for path, _ in outputs}
+    try:
+        for path, value in outputs:
+            atomic_write(path, json.dumps(value, indent=2) + "\n", 0o644)
+    except BaseException:
+        for path, content in previous.items():
+            if content is None:
+                path.unlink(missing_ok=True)
+            else:
+                atomic_write(path, content, 0o644)
+        raise
+    if announce:
+        print(
+            "Storage configuration saved. Apply it with ./scripts/ark up, "
+            "then run ./scripts/ark storage check."
+        )
+
+
+def atomic_write(path, content, mode=0o600):
+    temp = path.with_name(path.name + ".tmp-" + uuid.uuid4().hex)
+    try:
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+        with os.fdopen(fd, "wb") as output:
+            output.write(content.encode() if isinstance(content, str) else content)
+            output.flush()
+            # The manager's systemd unit uses UMask=0077. os.open's mode is
+            # masked by that umask, so set the intended mode before publishing.
+            os.fchmod(output.fileno(), mode)
+            os.fsync(output.fileno())
         temp.replace(path)
-    print(
-        "Storage configuration saved. Apply it with ./scripts/ark up, "
-        "then run ./scripts/ark storage check."
-    )
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 def add(args, managed=False):
@@ -151,23 +193,7 @@ def add(args, managed=False):
         if path == existing or path in existing.parents or existing in path.parents:
             raise ValueError("Storage roots must not overlap.")
     if managed:
-        if path.exists():
-            raise ValueError(
-                "Init requires a NEW directory; it will not relabel or change existing data."
-            )
-        if not shutil.which("setfacl"):
-            raise ValueError("Install Fedora's acl package (setfacl) before provisioning.")
-        uid, gid = probe()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.mkdir(mode=0o700)
-        try:
-            run("setfacl", "-m", f"u:{uid}:rwx,d:u:{uid}:rwx,d:u:{os.getuid()}:rwx", str(path))
-        except (OSError, subprocess.CalledProcessError):
-            path.rmdir()  # Only this newly created, still-empty directory.
-            raise
-        print(
-            f"API maps to host UID {uid}, GID {gid}; a narrow ACL was applied to the new directory."
-        )
+        provision_new(path)
     if not path.is_dir():
         raise ValueError("Source must be an existing directory.")
     info = path.stat()
@@ -189,6 +215,24 @@ def add(args, managed=False):
         }
     )
     save(data)
+
+
+def provision_new(path):
+    if path.exists():
+        raise ValueError(
+            "Init requires a NEW directory; it will not relabel or change existing data."
+        )
+    if not shutil.which("setfacl"):
+        raise ValueError("Install Fedora's acl package (setfacl) before provisioning.")
+    uid, gid = probe()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.mkdir(mode=0o700)
+    try:
+        run("setfacl", "-m", f"u:{uid}:rwx,d:u:{uid}:rwx,d:u:{os.getuid()}:rwx", str(path))
+    except (OSError, subprocess.CalledProcessError):
+        path.rmdir()
+        raise
+    print(f"API maps to host UID {uid}, GID {gid}; a narrow ACL was applied to the new directory.")
 
 
 def main():
@@ -218,6 +262,11 @@ def main():
     refresh.add_argument("--confirm", action="store_true", required=True)
     sub.add_parser("list", help="Show owner-only host configuration")
     args = parser.parse_args()
+    with configuration_lock():
+        execute(args)
+
+
+def execute(args):
     if args.command == "init":
         add(args, managed=True)
     elif args.command == "add":
@@ -249,5 +298,5 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (ValueError, OSError, subprocess.CalledProcessError) as error:
+    except (ValueError, OSError, subprocess.SubprocessError) as error:
         sys.exit(f"ark storage: {error}")

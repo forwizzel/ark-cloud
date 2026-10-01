@@ -9,6 +9,7 @@ from app.api.google_drive import router as google_drive_router
 from app.api.health import router as health_router
 from app.api.local_storage import router as local_storage_router
 from app.api.search import router as search_router
+from app.api.storage_admin import router as storage_admin_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 
@@ -41,6 +42,7 @@ def create_app() -> FastAPI:
     application.include_router(auth_router)
     application.include_router(google_drive_router)
     application.include_router(search_router)
+    application.include_router(storage_admin_router)
     application.include_router(local_storage_router)
     return application
 

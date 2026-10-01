@@ -1,0 +1,250 @@
+.storage-admin {
+  display: grid;
+  gap: 24px;
+}
+.storage-admin-intro,
+.storage-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.storage-admin h2,
+.storage-admin h3,
+.storage-admin h4 {
+  margin: 0 0 8px;
+}
+.storage-admin p {
+  max-width: 72ch;
+  margin: 8px 0 16px;
+}
+.storage-section {
+  padding: 24px;
+  min-width: 0;
+}
+.storage-admin form {
+  display: grid;
+  gap: 16px;
+}
+.storage-admin fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+.storage-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.storage-admin label {
+  display: grid;
+  gap: 8px;
+  font-weight: 500;
+}
+.storage-admin .storage-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.storage-admin .storage-checkbox input {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--signal);
+}
+.storage-admin input,
+.storage-admin select {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font: inherit;
+}
+.storage-admin button {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 12px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.storage-admin button:hover:not(:disabled) {
+  background: var(--panel-raised);
+  border-color: var(--signal);
+}
+.storage-admin button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.storage-admin .refresh-button {
+  background: var(--signal);
+  color: var(--canvas);
+}
+.storage-admin .refresh-button:hover:not(:disabled) {
+  background: var(--signal);
+  color: var(--canvas);
+}
+.storage-admin a {
+  color: var(--signal);
+}
+.storage-admin input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+.storage-admin fieldset > button {
+  justify-self: start;
+}
+.storage-admin summary {
+  cursor: pointer;
+  padding: 8px 0;
+}
+.storage-admin details {
+  min-width: 0;
+}
+.storage-admin pre {
+  overflow-x: auto;
+  padding: 16px;
+  background: var(--canvas);
+  border-radius: 7px;
+}
+.storage-locations,
+.storage-assignments,
+.storage-activity {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+}
+.storage-locations > li {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.storage-location-identity {
+  min-width: 0;
+}
+.storage-path {
+  overflow-wrap: anywhere;
+}
+.storage-locations .local-actions {
+  flex-shrink: 0;
+  max-width: 360px;
+}
+.storage-locations p {
+  margin-bottom: 8px;
+}
+.storage-admin .storage-policy-form {
+  grid-template-columns: minmax(120px, 240px) 100px auto;
+  align-items: end;
+  justify-content: start;
+}
+.storage-assignments > li {
+  padding: 16px 0;
+  border-top: 1px solid var(--line-soft);
+  display: grid;
+  gap: 8px;
+}
+.storage-activity > li {
+  padding: 16px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.storage-activity > li > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.storage-activity time,
+.storage-help {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.storage-notice,
+.storage-review,
+.storage-folder-picker {
+  padding: 16px;
+  background: var(--panel-raised);
+  border-radius: 7px;
+  overflow-wrap: anywhere;
+}
+.storage-folder-picker ul {
+  list-style: none;
+  padding: 0;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.storage-folder-picker button {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.storage-setup-choice legend {
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+.storage-admin .storage-setup-choice {
+  gap: 12px;
+  margin: 16px 0 24px;
+}
+.storage-setup-steps {
+  padding-left: 24px;
+  margin: 24px 0;
+}
+.storage-setup-steps > li {
+  padding: 0 0 20px 8px;
+}
+.storage-setup-steps > li:last-child {
+  padding-bottom: 0;
+}
+.storage-setup pre {
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.storage-open-files {
+  display: inline-block;
+  padding: 8px 0;
+  font-weight: 500;
+}
+.storage-history {
+  margin-top: 24px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 8px;
+}
+.storage-activity .local-actions {
+  justify-content: start;
+  margin-bottom: 12px;
+}
+@media (max-width: 980px) {
+  .storage-locations > li {
+    flex-direction: column;
+    gap: 12px;
+  }
+}
+@media (max-width: 680px) {
+  .storage-section {
+    padding: 18px;
+  }
+  .storage-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .storage-admin .storage-policy-form {
+    grid-template-columns: 1fr 90px;
+  }
+  .storage-policy-form button {
+    grid-column: 1 / -1;
+  }
+}

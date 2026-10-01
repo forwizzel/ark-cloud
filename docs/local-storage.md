@@ -3,10 +3,116 @@
 Local Files makes your host's files available through your Ark account. Google Drive remains an
 optional metadata workspace. Files never pass through Google or live in PostgreSQL.
 
+## Configure storage in Ark Cloud
+
+Administrators use **Administration → Local Storage**. Account invitations and management live
+under **Administration → Users**. Regular users choose their default location/folder inside
+**Local Files**; that preference persists with their account across devices.
+
+### Create your cloud storage (recommended)
+
+The UI-led wizard explains the host step and follows progress automatically. From the ArkCloud
+repository on the server, as the account running the deployment, run:
+
+```bash
+./scripts/ark storage setup
+```
+
+There is no manual `mkdir` step. Ark creates a **new** `~/Ark-Files`, applies mapped-UID ACLs and
+private container labels, connects the base, installs the host helper, and verifies access as the
+unprivileged API user. Active accounts receive isolated private folders. When the wizard says
+**Local Files is ready**, choose **Open my files**. This opens the location without changing your
+saved starting-folder preference.
+
+Use `--path /a/new/directory` for another new base. An existing unregistered directory is a conflict,
+not permission to overwrite or repurpose it: use the existing-folder flow below. Repeating setup
+preserves an established base and its files. `.ark-storage/setup-journal.json` pins setup-created
+directories for recovery after interruption; changed or missing identities require review. If
+interrupted before a new directory's identity was recorded, setup refuses to adopt it automatically.
+For an established base, use **Change base directory** to relocate, **Reconnect** after reviewing
+a replacement disk, or **Disconnect** to remove its registration. Setup never silently performs
+these operations. A pending manager journal must finish first; terminal report-only journals are
+archived during setup. Without systemd, use `--no-install` and supervise the helper separately.
+If setup stops reporting progress for five minutes, the wizard shows resume guidance rather than
+waiting indefinitely. Rerun the same command after confirming the previous command stopped;
+the unfinished job and access block stay intact until verification succeeds.
+
+### Connect an existing folder
+
+Select **Connect an existing folder** in the wizard. If the helper is not connected, the host
+owner enrolls it with an existing dedicated directory:
+
+```bash
+./scripts/ark storage manager enroll --approve /your/disk/files --install
+```
+
+The approved area must already exist and be a dedicated directory. Repeat `--approve` for more
+areas. Valid, already-connected roots retain management access when another area is enrolled.
+Enrollment provisions no file location and grants no content ACL. It installs a systemd
+user service under the deployment owner's account; use the host's user-service/linger policy if
+it should run without a logged-in session. Without systemd, omit `--install` and supervise
+`./scripts/ark storage manager run` as the same host owner. Re-enrollment rotates its credential.
+Lifecycle helpers pause the installed systemd manager before `up`/`down`/data reset, and start
+an enabled manager after `up` passes health checks. A separately supervised foreground manager
+must be paused by its owner during deployment/teardown.
+
+The UI provides:
+
+- **Connect folder:** browse approved server folders, pick an account by username, choose access,
+  review the path, and connect. Paths refer to the server, not the browser computer.
+- **Create private account folders:** explicitly choose a new base directory. Ark applies a narrow
+  mapped-UID ACL and private container labeling to this new tree, then creates private folders for
+  active accounts. Later accounts can explicitly choose **Create my private folder** in Local Files.
+- **Configure:** change a label, account assignment or access mode. Advanced options expose explicit
+  SELinux relabeling and a narrow ACL grant for a host-owned folder plus future content. Existing
+  child permissions are not recursively changed.
+- **Change base directory:** pause API writes, copy private account folders to a new directory,
+  verify file hashes, modes and extended attributes/ACLs, then switch mounts. The original tree
+  remains on disk. Pause external writers as well. There is no merge or overwrite of existing targets.
+- **Disconnect:** revoke application access immediately and remove the mount configuration without
+  deleting content or reversing ACLs/labels.
+- **Check access:** verify as the API user; writable roots receive a temporary create/rename/remove
+  probe. Basic status reads do not create account directories or test files.
+- **Reconnect:** explicitly accept a reviewed root identity after checking that the correct disk
+  and contents are present. Approved-area identities are pinned separately; if an approved area
+  itself is replaced/remounted, its host owner must review and re-enroll it.
+- **Maximum file size:** save a runtime per-file upload limit (1 byte–10 GiB). The environment value
+  is the initial fallback; **Restore environment default** removes the UI override. New uploads
+  use the effective policy, and the browser checks size before starting a transfer.
+- **Activity & diagnostics:** current issues/progress are separate from finished history. Retry
+  appears only when it applies to the current location, account and helper state; otherwise Ark
+  explains the next step. Removed-location failures, canceled requests and superseded/resolved
+  operations belong in **History**. Dismiss a terminal notification or dismiss historical
+  notifications together; **Show dismissed** retains access to the records. Dismissal never
+  releases an access block or cancels unfinished work. Queued UI requests expire after one hour;
+  host setup is explicitly resumed by rerunning the command.
+
+Mount changes briefly recreate the API, preserving PostgreSQL, the web service and content.
+The browser reconnects automatically. A durable host journal reconciles interrupted operations,
+including relocation while the API is stopped. Only one storage operation/manager process runs
+at a time; the retained CLI shares the configuration lock. Queued requests can be canceled before
+deployment begins. Completed operations require verification against the running API manifest and
+mounts, not merely a successful host write.
+
+An idle, authenticated helper reconciles stale blocks for removed roots only after the host
+configuration matches the running manifest and the old mount is absent. It cannot release blocks
+for existing locations this way; those require successful access verification.
+
+The manager credential lives only in mode-0600 `.ark-storage/manager.json`; the API stores its hash.
+The manager polls the loopback web proxy using typed requests. The API receives no Docker socket,
+privileged namespaces, host-root mount or ability to run arbitrary host commands. Enrollment
+delegates storage provisioning inside approved areas to Ark administrators; it does not give them
+browser access to another account's content. Existing host configuration is imported when the
+manager first reports its inventory. No existing directory or user preference is silently replaced.
+
+## Owner CLI reference
+
+The commands below are the fallback for host recovery or a deployment without the enrolled manager.
+
 ## Enable private account folders
 
 Requirements: Linux x86_64/aarch64 with `openat2` (kernel 5.6+), Docker Compose v2 supporting
-long-form bind options, Python 3 on the host, and Fedora's `acl` package (`setfacl`). The API
+long-form bind options, Python 3.10+ on the host, and Fedora's `acl` package (`setfacl`). The API
 continues running as `arkcloud`, not root. Build/start Ark and bootstrap your first account using
 the README, then run:
 
@@ -31,7 +137,8 @@ Use lifecycle commands under `./scripts/ark`: they include the storage override.
 Do not run a base-only `docker compose up` against your integrated instance.
 
 Each account gets `<data directory>/<immutable user UUID>`. Username changes preserve the UUID.
-Invited users get their own folder when they first access Local Files. Application admin status
+Invited users explicitly create their private folder in Local Files when it is not yet provisioned.
+Application admin status
 does not grant browser access to another account's files. All files are accessible to the host
 owner through their ACL; this is application account isolation, not encryption from the host owner.
 
@@ -57,7 +164,8 @@ the mapped UID for a new tree; Docker's UID mapping can be inspected with:
 ./scripts/ark exec api python -c 'import os; print(os.getuid(), os.getgid()); print(open("/proc/self/uid_map").read()); print(open("/proc/self/gid_map").read())'
 ```
 
-Account assignments are owner-operated; there is no browser root-assignment API. One assigned root
+Account assignments are host-owned; the enrolled manager applies approved administrator UI requests.
+Without it, use the owner CLI. One assigned root
 has one UUID owner. Sources cannot overlap the managed tree, another registered root, repository,
 system/credential directories, or a whole home/root directory. Source and target symlinks are
 rejected. Alias/bind mount arrangements that conceal overlap are unsupported; inspect them on the
@@ -108,7 +216,8 @@ are unsupported by the provisioner.
 - Listings stop at 10,000 entries and return 100 at a time. Changing directory membership
   invalidates pagination. Item revisions prevent ordinary stale moves/deletes/downloads. Host
   editors may change files outside Ark; downloads are live reads, not snapshots or version history.
-- Default upload limit is 1 GiB, configurable with `ARK_STORAGE_UPLOAD_MAX_BYTES` (maximum 10 GiB).
+- Default upload limit is 1 GiB. The administrator UI can override `ARK_STORAGE_UPLOAD_MAX_BYTES`
+  at runtime (maximum 10 GiB), or restore that environment fallback.
   Four simultaneous uploads and eight downloads are supported in the single API worker. An upload
   idle for 60 seconds fails; browser cancellation and normal errors remove temporary content.
   Transfers stream in bounded chunks; the browser does not buffer a whole download into a Blob.
@@ -142,6 +251,19 @@ loopback plus Tailscale Serve HTTPS; use `ARK_COOKIE_SECURE=true` when accessing
 
 ## Persistence, removal, and recovery
 
+If Administration reports an invalid storage configuration, its Local Storage page still shows
+host inventory and activity. On the host, inspect `.ark-storage/manifest.json`: the API needs to
+read it, while `.ark-storage/manager.json` must remain private. If the manifest is valid but has
+mode `600`, the deployment owner can run `chmod 644 .ark-storage/manifest.json` from the Ark
+repository, then reload Administration. If the manifest is malformed or missing, review the
+host-owned `.ark-storage/host.json` and generated `compose.storage.yaml` before regenerating or
+restarting; do not replace the manifest with an empty one for a configured deployment.
+
+Deleting an approved host area does not unregister a connected location. Disconnect the location
+in Administration (or use the owner CLI below) without recreating the deleted directory. To use a
+new area, first verify the intended disk and re-enroll the manager with an existing dedicated
+directory; never accept an empty mountpoint as a replacement for a missing disk.
+
 `up`, `restart`, and `down` preserve host content. Disabling or deleting a local account removes
 access, **not** files. New accounts get new UUIDs even if a username is reused. To stop exposing an
 assigned root, run `./scripts/ark storage remove ROOT_ID --confirm`, then `./scripts/ark up`.
@@ -149,6 +271,8 @@ This removes configuration only; it does not delete content, undo ACLs, or resto
 
 Back up these together: PostgreSQL (accounts and stable UUIDs), `.ark-storage/` and
 `compose.storage.yaml` (assignments and sources), and the host file trees (including ACLs/xattrs).
+Protect these backups: `.ark-storage/manager.json` now contains a host-manager credential; the
+manifest itself still contains no secrets. Re-enroll after restoring if that credential is unavailable.
 Stop file writes during a coordinated backup. A database backup alone contains no file bodies.
 Test restoration to a separate location/instance, verify owner UUIDs, labels, ACLs, mount identity,
 and file hashes, then verify another account cannot access them. Never use live paths for a restore

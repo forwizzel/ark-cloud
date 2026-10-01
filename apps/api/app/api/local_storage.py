@@ -26,6 +26,7 @@ from app.services.local_storage import (
     load_manifest,
     rename_exclusive,
 )
+from app.services.storage_control import upload_limit
 
 
 class StorageRoute(APIRoute):
@@ -189,7 +190,7 @@ async def upload(
 ):
     if request.headers.get("content-type", "").split(";")[0] != "application/octet-stream":
         raise StorageError("Upload a raw file with application/octet-stream content type.", 415)
-    maximum = settings.storage_upload_max_bytes
+    maximum = upload_limit(settings)
     length = request.headers.get("content-length")
     if length and (not length.isdecimal() or int(length) > maximum):
         raise StorageError(f"Upload exceeds the {maximum}-byte limit.", 413)

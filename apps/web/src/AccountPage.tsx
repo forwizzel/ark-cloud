@@ -16,10 +16,12 @@ export default function AccountPage({
   session,
   onUpdate,
   onPasswordChanged,
+  usersOnly = false,
 }: {
   session: AuthSession;
   onUpdate: (session: AuthSession) => void;
   onPasswordChanged: () => void;
+  usersOnly?: boolean;
 }) {
   const [username, setUsername] = useState(session.username ?? "");
   const [currentForName, setCurrentForName] = useState("");
@@ -48,8 +50,8 @@ export default function AccountPage({
       });
 
   useEffect(() => {
-    if (session.role === "admin") void refreshUsers();
-  }, [session.role]);
+    if (session.role === "admin" && usersOnly) void refreshUsers();
+  }, [session.role, usersOnly]);
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -114,7 +116,7 @@ export default function AccountPage({
       setDeleteName("");
       setDeletePassword("");
       setNotice(
-        "Account and its Drive connection and indexed metadata deleted.",
+        "Account and its Drive connection and indexed metadata deleted. Local files remain on the host.",
       );
       await refreshUsers();
     });
@@ -132,88 +134,97 @@ export default function AccountPage({
           {notice}
         </p>
       )}
-      <div className="account-grid">
-        <section className="account-card" aria-labelledby="account-name-title">
-          <p className="eyebrow">Identity</p>
-          <h2 id="account-name-title">Username</h2>
-          <form onSubmit={saveName}>
-            <label>
-              New username
-              <input
-                required
-                minLength={3}
-                maxLength={64}
-                autoComplete="username"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-              />
-            </label>
-            <label>
-              Current password
-              <input
-                required
-                type="password"
-                autoComplete="current-password"
-                value={currentForName}
-                onChange={(event) => setCurrentForName(event.target.value)}
-              />
-            </label>
-            <button className="refresh-button" type="submit" disabled={busy}>
-              Save username
-            </button>
-          </form>
-        </section>
-        <section
-          className="account-card"
-          aria-labelledby="account-password-title"
-        >
-          <p className="eyebrow">Security</p>
-          <h2 id="account-password-title">Password</h2>
-          <form onSubmit={savePassword}>
-            <label>
-              Current password
-              <input
-                required
-                type="password"
-                autoComplete="current-password"
-                value={currentForPassword}
-                onChange={(event) => setCurrentForPassword(event.target.value)}
-              />
-            </label>
-            <label>
-              New password
-              <input
-                required
-                type="password"
-                minLength={12}
-                maxLength={1024}
-                autoComplete="new-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
-            </label>
-            <label>
-              Confirm new password
-              <input
-                required
-                type="password"
-                autoComplete="new-password"
-                value={confirmation}
-                onChange={(event) => setConfirmation(event.target.value)}
-              />
-            </label>
-            <button className="refresh-button" type="submit" disabled={busy}>
-              Change password
-            </button>
-          </form>
-        </section>
-      </div>
-      {session.role === "admin" && (
+      {!usersOnly && (
+        <div className="account-grid">
+          <section
+            className="account-card"
+            aria-labelledby="account-name-title"
+          >
+            <p className="eyebrow">Identity</p>
+            <h2 id="account-name-title">Username</h2>
+            <form onSubmit={saveName}>
+              <label>
+                New username
+                <input
+                  required
+                  minLength={3}
+                  maxLength={64}
+                  autoComplete="username"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                />
+              </label>
+              <label>
+                Current password
+                <input
+                  required
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentForName}
+                  onChange={(event) => setCurrentForName(event.target.value)}
+                />
+              </label>
+              <button className="refresh-button" type="submit" disabled={busy}>
+                Save username
+              </button>
+            </form>
+          </section>
+          <section
+            className="account-card"
+            aria-labelledby="account-password-title"
+          >
+            <p className="eyebrow">Security</p>
+            <h2 id="account-password-title">Password</h2>
+            <form onSubmit={savePassword}>
+              <label>
+                Current password
+                <input
+                  required
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentForPassword}
+                  onChange={(event) =>
+                    setCurrentForPassword(event.target.value)
+                  }
+                />
+              </label>
+              <label>
+                New password
+                <input
+                  required
+                  type="password"
+                  minLength={12}
+                  maxLength={1024}
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+              </label>
+              <label>
+                Confirm new password
+                <input
+                  required
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmation}
+                  onChange={(event) => setConfirmation(event.target.value)}
+                />
+              </label>
+              <button className="refresh-button" type="submit" disabled={busy}>
+                Change password
+              </button>
+            </form>
+          </section>
+        </div>
+      )}
+      {!usersOnly && session.role === "admin" && (
+        <a href="#administration-users">Manage accounts and invitations</a>
+      )}
+      {session.role === "admin" && usersOnly && (
         <section
           className="account-card account-card--wide"
           aria-labelledby="account-users-title"
         >
-          <p className="eyebrow">Administration</p>
           <h2 id="account-users-title">Local accounts</h2>
           <p>
             Only administrators can invite people. Invitations expire after 24
@@ -253,6 +264,11 @@ export default function AccountPage({
               <p>
                 Share privately. The recipient opens Ark Cloud, chooses “Redeem
                 invitation”, and enters this code. It will not appear again.
+              </p>
+              <p>
+                Local files remain on the host. This account’s storage
+                assignments lose access; they are not inherited by a new account
+                with the same username.
               </p>
               <button type="button" onClick={() => setInviteCode(null)}>
                 Dismiss code

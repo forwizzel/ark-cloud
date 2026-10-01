@@ -2,6 +2,8 @@
 
 import argparse
 import json
+import os
+import stat
 import tempfile
 import unittest
 import uuid
@@ -58,6 +60,20 @@ class ProvisioningTests(unittest.TestCase):
         self.assertNotIn("selinux", mount["bind"])
         self.assertEqual(source.stat().st_mode, before.st_mode)
         self.assertEqual((source / "original").read_text(), "preserve")
+
+    def test_atomic_save_honors_modes_under_manager_umask(self):
+        previous = os.umask(0o077)
+        try:
+            storage.save({"version": 1, "roots": []})
+            for path in (storage.STATE, storage.CONFIG / "manifest.json", storage.OVERRIDE):
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o644)
+            credential = storage.CONFIG / "manager.json"
+            storage.atomic_write(credential, "private")
+            self.assertEqual(stat.S_IMODE(credential.stat().st_mode), 0o600)
+            storage.save({"version": 1, "roots": []})
+            self.assertEqual(stat.S_IMODE((storage.CONFIG / "manifest.json").stat().st_mode), 0o644)
+        finally:
+            os.umask(previous)
 
     def test_init_refuses_existing_tree_before_changing_permissions(self):
         source = self.base / "existing"

@@ -15,6 +15,8 @@ afterEach(cleanup);
 vi.mock("./localStorageApi", async (original) => ({
   ...(await original<typeof api>()),
   fetchStorageRoots: vi.fn(),
+  fetchStoragePreference: vi.fn(),
+  saveStoragePreference: vi.fn(),
   fetchLocalItems: vi.fn(),
   localMutation: vi.fn(),
   uploadLocalFile: vi.fn(),
@@ -40,6 +42,11 @@ const item: api.LocalItem = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(api.fetchStoragePreference).mockResolvedValue({
+    root_id: "personal",
+    path: "",
+    upload_max_bytes: 1024,
+  });
   vi.mocked(api.fetchStorageRoots).mockResolvedValue({
     roots: [root],
     message: "",
@@ -121,14 +128,16 @@ test("read-only roots expose downloads without write controls", async () => {
   ).not.toBeInTheDocument();
 });
 
-test("unconfigured storage provides owner setup guidance", async () => {
+test("unconfigured storage guides members to their administrator", async () => {
   vi.mocked(api.fetchStorageRoots).mockResolvedValue({
     roots: [],
     message: "Local files need configuration.",
   });
   render(<LocalFiles csrfToken="csrf" />);
   expect(
-    await screen.findByText("./scripts/ark storage init"),
+    await screen.findByText(
+      "Ask your administrator to connect a folder for your account.",
+    ),
   ).toBeInTheDocument();
   expect(api.fetchLocalItems).not.toHaveBeenCalled();
 });
@@ -162,6 +171,63 @@ test("uploads with progress and offers cancellation", async () => {
   );
   expect(cancel).toHaveBeenCalled();
   expect(screen.queryByText("Uploading upload.txt")).not.toBeInTheDocument();
+});
+
+test("does not silently select a default and saves an explicit starting folder", async () => {
+  vi.mocked(api.fetchStoragePreference).mockResolvedValue({
+    root_id: null,
+    path: "",
+    upload_max_bytes: 1024,
+  });
+  vi.mocked(api.saveStoragePreference).mockResolvedValue({
+    root_id: "personal",
+    path: "",
+    upload_max_bytes: 1024,
+  });
+  render(<LocalFiles csrfToken="csrf" />);
+  await screen.findByText("Choose your starting location");
+  expect(api.fetchLocalItems).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText("Storage location"), {
+    target: { value: "personal" },
+  });
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Set as starting folder" }),
+  );
+  await waitFor(() =>
+    expect(api.saveStoragePreference).toHaveBeenCalledWith(
+      "personal",
+      "",
+      "csrf",
+    ),
+  );
+});
+
+test("oversized files are rejected before starting transfer", async () => {
+  vi.mocked(api.fetchStoragePreference).mockResolvedValue({
+    root_id: "personal",
+    path: "",
+    upload_max_bytes: 3,
+  });
+  render(<LocalFiles csrfToken="csrf" />);
+  await screen.findByRole("button", { name: "Upload file" });
+  fireEvent.change(screen.getByLabelText("File to upload"), {
+    target: { files: [new File(["1234"], "large.txt")] },
+  });
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "exceeds the 3 B upload limit",
+  );
+  expect(api.uploadLocalFile).not.toHaveBeenCalled();
+});
+
+test("administrator empty state links directly to setup", async () => {
+  vi.mocked(api.fetchStorageRoots).mockResolvedValue({
+    roots: [],
+    message: "No locations assigned.",
+  });
+  render(<LocalFiles csrfToken="csrf" isAdmin />);
+  expect(
+    await screen.findByRole("link", { name: "Set up storage" }),
+  ).toHaveAttribute("href", "#administration");
 });
 
 test("delete confirmation receives focus and cancel returns to its trigger", async () => {

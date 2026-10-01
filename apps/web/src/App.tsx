@@ -21,6 +21,7 @@ import AccountPage from "./AccountPage";
 import DriveWorkspace from "./DriveWorkspace";
 import LocalFiles, { LocalStorageSummary } from "./LocalFiles";
 import SystemInformationPage from "./SystemInformationPage";
+import StorageAdministration from "./StorageAdministration";
 import arkCloudLogo from "../../../graphics/arkcloud-logo.svg?raw";
 
 type DashboardState =
@@ -49,7 +50,13 @@ function App() {
   });
   const [requestNumber, setRequestNumber] = useState(0);
   const [activePage, setActivePage] = useState<
-    "overview" | "files" | "drive" | "system" | "account"
+    | "overview"
+    | "files"
+    | "drive"
+    | "system"
+    | "account"
+    | "administration"
+    | "users"
   >("overview");
   const [connectionNotice, setConnectionNotice] = useState(readOAuthNotice);
   const [signInNotice, setSignInNotice] = useState("");
@@ -113,8 +120,12 @@ function App() {
     setRequestNumber((value) => value + 1);
   };
 
-  const onLogin = (session: AuthSession) => {
+  const onLogin = (session: AuthSession, firstSetup = false) => {
     showDashboard();
+    if (firstSetup) {
+      window.location.hash = "administration";
+      setActivePage("administration");
+    }
     setSignInNotice("");
     setSessionState({ phase: "authenticated", session });
     setDashboardState({ phase: "loading" });
@@ -213,6 +224,19 @@ function App() {
           >
             Account
           </a>
+          {sessionState.session.role === "admin" && (
+            <a
+              className={`nav-item ${activePage === "administration" || activePage === "users" ? "nav-item--active" : ""}`}
+              href="#administration"
+              aria-current={
+                activePage === "administration" || activePage === "users"
+                  ? "page"
+                  : undefined
+              }
+            >
+              Administration
+            </a>
+          )}
         </nav>
 
         <AppearanceControls />
@@ -233,7 +257,10 @@ function App() {
                     ? "Drive Workspace"
                     : activePage === "system"
                       ? "System Information"
-                      : "Account"}
+                      : activePage === "administration" ||
+                          activePage === "users"
+                        ? "Administration"
+                        : "Account"}
             </h1>
           </div>
           <div className="topbar-actions">
@@ -283,8 +310,55 @@ function App() {
 
         {activePage === "system" && <SystemInformationPage />}
         {activePage === "files" && (
-          <LocalFiles csrfToken={sessionState.session.csrf_token ?? ""} />
+          <LocalFiles
+            csrfToken={sessionState.session.csrf_token ?? ""}
+            isAdmin={sessionState.session.role === "admin"}
+          />
         )}
+        {(activePage === "administration" || activePage === "users") &&
+          (sessionState.session.role === "admin" ? (
+            <>
+              <nav
+                className="local-actions"
+                aria-label="Administration sections"
+              >
+                <a
+                  href="#administration"
+                  aria-current={
+                    activePage === "administration" ? "page" : undefined
+                  }
+                >
+                  Local Storage
+                </a>
+                <a
+                  href="#administration-users"
+                  aria-current={activePage === "users" ? "page" : undefined}
+                >
+                  Users
+                </a>
+              </nav>
+              {activePage === "administration" ? (
+                <StorageAdministration
+                  csrfToken={sessionState.session.csrf_token ?? ""}
+                />
+              ) : (
+                <AccountPage
+                  session={sessionState.session}
+                  usersOnly
+                  onUpdate={(session) =>
+                    setSessionState({ phase: "authenticated", session })
+                  }
+                  onPasswordChanged={() =>
+                    setSessionState({ phase: "unauthenticated" })
+                  }
+                />
+              )}
+            </>
+          ) : (
+            <p role="alert">
+              Administrator access is required to manage storage and accounts.
+            </p>
+          ))}
         {activePage === "account" && (
           <AccountPage
             session={sessionState.session}
@@ -302,10 +376,14 @@ function App() {
         {activePage !== "system" &&
           activePage !== "files" &&
           activePage !== "account" &&
+          activePage !== "administration" &&
+          activePage !== "users" &&
           dashboardState.phase === "loading" && <LoadingDashboard />}
         {activePage !== "system" &&
           activePage !== "files" &&
           activePage !== "account" &&
+          activePage !== "administration" &&
+          activePage !== "users" &&
           dashboardState.phase === "error" && (
             <ErrorDashboard
               message={dashboardState.message}
@@ -492,7 +570,7 @@ function LoginScreen({
   setupRequired,
   notice,
 }: {
-  onLogin: (session: AuthSession) => void;
+  onLogin: (session: AuthSession, firstSetup?: boolean) => void;
   setupRequired: boolean;
   notice: string;
 }) {
@@ -520,6 +598,7 @@ function LoginScreen({
           : mode === "invite"
             ? await redeemInvite(code, password)
             : await login(username, password),
+        mode === "setup",
       );
     } catch (loginError: unknown) {
       setError(
@@ -1005,8 +1084,21 @@ function formatLastSeen(value: string | null): string {
 
 export default App;
 
-function pageFromHash(): "overview" | "files" | "drive" | "system" | "account" {
-  if (window.location.hash === "#local-files") return "files";
+function pageFromHash():
+  | "overview"
+  | "files"
+  | "drive"
+  | "system"
+  | "account"
+  | "administration"
+  | "users" {
+  if (window.location.hash === "#administration") return "administration";
+  if (window.location.hash === "#administration-users") return "users";
+  if (
+    window.location.hash === "#local-files" ||
+    window.location.hash.startsWith("#local-files/")
+  )
+    return "files";
   if (window.location.hash === "#drive-workspace") return "drive";
   if (window.location.hash === "#system-information") return "system";
   if (window.location.hash === "#account") return "account";

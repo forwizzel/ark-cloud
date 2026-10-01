@@ -19,6 +19,41 @@ class Base(DeclarativeBase):
     pass
 
 
+class StorageControl(Base):
+    __tablename__ = "storage_control"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    upload_max_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    blocked_roots: Mapped[list] = mapped_column(JSON, default=list)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class StorageJob(Base):
+    __tablename__ = "storage_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    principal_id: Mapped[str] = mapped_column(String(128))
+    action: Mapped[str] = mapped_column(String(32))
+    payload: Mapped[dict] = mapped_column(JSON)
+    state: Mapped[str] = mapped_column(String(32), index=True)
+    message: Mapped[str] = mapped_column(Text)
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class StoragePreference(Base):
+    __tablename__ = "storage_preferences"
+
+    principal_id: Mapped[str] = mapped_column(
+        String(128), ForeignKey("local_users.id", ondelete="CASCADE"), primary_key=True
+    )
+    root_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    path: Mapped[str] = mapped_column(String(2048), default="")
+
+
 class LocalUser(Base):
     __tablename__ = "local_users"
 

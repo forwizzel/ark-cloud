@@ -23,6 +23,8 @@ metadata-only Google Drive workspace, detailed system information, and updated i
 - Saved searches, pinned folders, advisory storage insights, and sync-observed activity
 - Observable synchronization with history, retries, and expired-change-token recovery
 - Private local account folders and owner-assigned existing host directories
+- Administrator UI for connecting host folders, assignments, access checks, base relocation and upload policy
+- Explicit, account-persisted Local Files starting-folder preferences
 - Local browsing, streaming uploads/downloads, folders, rename, within-location moves, and deletion
 - Direct Google Drive links for every catalog result; Ark Cloud never proxies Drive file content
 - Dedicated System Information page with sensor, compute, identity, and storage details scoped to
@@ -42,22 +44,34 @@ Before the first start, replace the example database password in both
 `POSTGRES_PASSWORD` and `ARK_DATABASE_URL`. The two values must match. After `./scripts/ark up`,
 run `./scripts/ark bootstrap` to receive a 15-minute setup code. Open
 <http://127.0.0.1:5173> and create the first administrator in the browser using that code.
-Username and password changes are available under **Account**; admins can invite other local
-users there. See [Local accounts](docs/development.md#local-accounts) for upgrading and recovery.
+Username and password changes are available under **Account**; admins invite and manage local
+users under **Administration → Users**. See [Local accounts](docs/development.md#local-accounts) for upgrading and recovery.
 Google Drive and Tailscale are optional.
 
-Enable the default local-file workspace after the first build:
+After creating your administrator, Ark opens **Administration → Local Storage**. Choose
+**Create my cloud storage** in the setup wizard. From the ArkCloud repository on the host,
+run this as the account that runs the deployment:
 
 ```bash
-./scripts/ark storage init
-./scripts/ark up
-./scripts/ark storage check
+./scripts/ark storage setup
 ```
 
-This provisions a **new** `~/.local/share/ark-cloud/files` directory, grants the API's mapped
-host UID a narrow ACL, and configures its private container label. Select **Local Files** in the
-browser. No Google credentials are required. See [Local storage](docs/local-storage.md) for
-Fedora prerequisites, a custom path, existing directories, account assignment, and recovery.
+Ark creates `~/Ark-Files` for you, configures isolated private account folders, installs the host
+helper, applies mounts and verifies access. Return to the wizard and choose **Open my files**.
+You do not need to create a directory or complete a second UI configuration step. Existing
+unregistered folders are never overwritten; use **Connect an existing folder** for those, or
+`./scripts/ark storage setup --path /a/new/directory` to create a different new base.
+
+Linux, Python 3.10+, a local Docker daemon, systemd user services and `setfacl` (Fedora's `acl`
+package) are needed. The helper runs as the deployment owner; the API remains unprivileged.
+Without systemd, use `storage setup --no-install` and supervise `storage manager run` as that owner.
+Setup resumes recorded work; repeating it verifies the existing base without replacing files.
+Set the maximum file size in Administration without restarting. **Set as starting folder** in
+Local Files is a separate account preference; opening a location does not change it. No Google
+credentials are required.
+
+The retained storage CLI remains available for owner recovery and installations without a manager;
+see [Local storage](docs/local-storage.md) for its reference and advanced host details.
 
 `./scripts/ark up` builds and recreates the complete stack, applies migrations, and waits for
 all health checks. It preserves named volumes, so changes to `.env` are applied without manually

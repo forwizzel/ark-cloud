@@ -31,7 +31,9 @@ def main():
                 failed = True
                 continue
             try:
-                with storage.root(config.id, owner, write=not config.read_only) as root:
+                with storage.root(
+                    config.id, owner, write=not config.read_only, provision=True
+                ) as root:
                     if not config.read_only:
                         name = f".ark-probe-{secrets.token_hex(8)}"
                         moved = name + "-moved"

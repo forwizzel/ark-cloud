@@ -64,7 +64,7 @@ issue a code. No default login exists and the setup page closes after the first 
 
 Users change their username or password under **Account**. They must supply their current
 password. Password changes revoke every session, including the current browser; sign back in.
-An administrator can create an invitation in **Account → Local accounts** and share its one-time
+An administrator can create an invitation in **Administration → Users** and share its one-time
 code privately. The invitee selects **Redeem invitation** on the sign-in screen to choose a
 password. Invitations expire after 24 hours; an admin can issue a replacement code. Admins can
 change roles, disable/enable accounts, or delete an account with an explicit username and admin

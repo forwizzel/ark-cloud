@@ -46,6 +46,8 @@ def storage(tmp_path, monkeypatch):
     app.dependency_overrides[get_settings] = lambda: Settings(
         database_url="sqlite://", storage_upload_max_bytes=64
     )
+    with service.root("personal", "ark", provision=True):
+        pass
     return service, tmp_path
 
 
@@ -100,7 +102,7 @@ def test_auth_csrf_and_private_roots(storage):
     assert client.get("/storage/roots").status_code == 401
     login(client)
     assert client.post("/storage/personal/folders", json={"path": "denied"}).status_code == 403
-    with service.root("personal", "other") as fd:
+    with service.root("personal", "other", provision=True) as fd:
         file = os.open("private", os.O_WRONLY | os.O_CREAT, 0o600, dir_fd=fd)
         os.close(file)
     assert client.get("/storage/personal/items").json()["items"] == []
@@ -115,6 +117,7 @@ def test_auth_csrf_and_private_roots(storage):
 
 def test_assigned_read_only_root_rejects_other_accounts_and_all_writes(storage, db_session):
     service, path = storage
+    (path / "ark").rmdir()  # This case exposes the assigned tree, not the managed fixture.
     member_id = str(uuid4())
     from argon2 import PasswordHasher
 
@@ -237,7 +240,7 @@ def test_missing_mount_identity_and_read_only(storage, monkeypatch):
     monkeypatch.setattr("app.services.local_storage.mount_points", set)
     with pytest.raises(StorageError, match="mount is missing"):
         service.mkdir("personal", "ark", "denied")
-    assert list(path.iterdir()) == []
+    assert list((path / "ark").iterdir()) == []
 
 
 def test_upload_limit_cleanup_and_revocation(storage, monkeypatch):

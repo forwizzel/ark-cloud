@@ -3,12 +3,16 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   fetchLocalItems,
   fetchStorageRoots,
+  fetchStoragePreference,
+  saveStoragePreference,
+  provisionPrivateFolder,
   localMutation,
   storageUrl,
   uploadLocalFile,
   type LocalItem,
   type LocalListing,
   type StorageRoot,
+  type StoragePreference,
 } from "./localStorageApi";
 import "./local-files.css";
 
@@ -60,22 +64,48 @@ export function LocalStorageSummary() {
   );
 }
 
-export default function LocalFiles({ csrfToken }: { csrfToken: string }) {
+export default function LocalFiles({
+  csrfToken,
+  isAdmin = false,
+}: {
+  csrfToken: string;
+  isAdmin?: boolean;
+}) {
   const [roots, setRoots] = useState<StorageRoot[]>([]);
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useState(() =>
+    window.location.hash.startsWith("#local-files/")
+      ? window.location.hash.slice("#local-files/".length)
+      : "",
+  );
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [refresh, setRefresh] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [preference, setPreference] = useState<StoragePreference | null>(null);
+  const [preferenceNotice, setPreferenceNotice] = useState("");
   useEffect(() => {
     const controller = new AbortController();
-    fetchStorageRoots(controller.signal)
-      .then((data) => {
+    Promise.all([
+      fetchStorageRoots(controller.signal),
+      fetchStoragePreference(controller.signal),
+    ])
+      .then(([data, saved]) => {
+        if (controller.signal.aborted) return;
         setRoots(data.roots);
+        setPreference(saved);
+        if (
+          saved.root_id &&
+          !data.roots.some((root) => root.id === saved.root_id)
+        )
+          setPreferenceNotice(
+            "Your default location is no longer available. Choose another location and set a new default.",
+          );
         setSelected((current) =>
           data.roots.some((root) => root.id === current)
             ? current
-            : (data.roots[0]?.id ?? ""),
+            : data.roots.some((root) => root.id === saved.root_id)
+              ? (saved.root_id ?? "")
+              : "",
         );
         setError(data.roots.length ? "" : data.message);
         setLoading(false);
@@ -89,6 +119,22 @@ export default function LocalFiles({ csrfToken }: { csrfToken: string }) {
     return () => controller.abort();
   }, [refresh]);
   const root = roots.find((item) => item.id === selected);
+  async function setDefault(path: string) {
+    setBusy(true);
+    try {
+      const saved = await saveStoragePreference(
+        selected || null,
+        path,
+        csrfToken,
+      );
+      setPreference(saved);
+      setPreferenceNotice("Default starting folder saved.");
+    } catch (failure) {
+      setPreferenceNotice(message(failure));
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <div className="local-files">
       <div className="local-location-bar">
@@ -99,11 +145,15 @@ export default function LocalFiles({ csrfToken }: { csrfToken: string }) {
             disabled={busy || !roots.length}
             onChange={(event) => setSelected(event.target.value)}
           >
-            {!roots.length && <option value="">No locations configured</option>}
+            <option value="">
+              {roots.length ? "Choose a location" : "No locations configured"}
+            </option>
             {roots.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.label}
                 {item.read_only ? " · Read only" : ""}
+                {item.state !== "healthy" ? " · Unavailable" : ""}
+                {preference?.root_id === item.id ? " · Default" : ""}
               </option>
             ))}
           </select>
@@ -115,7 +165,38 @@ export default function LocalFiles({ csrfToken }: { csrfToken: string }) {
         >
           Refresh locations
         </button>
+        {isAdmin && <a href="#administration">Manage storage</a>}
+        {preference?.root_id && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void saveStoragePreference(null, "", csrfToken)
+                .then((saved) => {
+                  setPreference(saved);
+                  setPreferenceNotice(
+                    "Default cleared. Choose a starting location next time you open Local Files.",
+                  );
+                })
+                .catch((failure) => setPreferenceNotice(message(failure)))
+                .finally(() => setBusy(false));
+            }}
+          >
+            Clear default
+          </button>
+        )}
       </div>
+      {preferenceNotice && <p role="status">{preferenceNotice}</p>}
+      {!loading && roots.length > 0 && !selected && (
+        <section className="panel local-empty">
+          <h2>Choose your starting location</h2>
+          <p>
+            Select a location above. You can make any available folder your
+            default; Ark will open it the next time you visit.
+          </p>
+        </section>
+      )}
       {loading && <p role="status">Loading storage locations…</p>}
       {error && (
         <section className="panel local-empty" role="status">
@@ -123,8 +204,11 @@ export default function LocalFiles({ csrfToken }: { csrfToken: string }) {
           <p>{error}</p>
           {!roots.length && (
             <p>
-              The host owner can configure a private folder with{" "}
-              <code>./scripts/ark storage init</code>, then restart Ark Cloud.
+              {isAdmin ? (
+                <a href="#administration">Set up storage</a>
+              ) : (
+                "Ask your administrator to connect a folder for your account."
+              )}
             </p>
           )}
         </section>
@@ -134,6 +218,23 @@ export default function LocalFiles({ csrfToken }: { csrfToken: string }) {
           <section className="panel local-empty" role="alert">
             <h2>{root.label} is unavailable</h2>
             <p>{root.message}</p>
+            {root.kind === "managed" && root.needs_setup && (
+              <button
+                disabled={busy}
+                onClick={() => {
+                  setBusy(true);
+                  void provisionPrivateFolder(csrfToken)
+                    .then(() => setRefresh((value) => value + 1))
+                    .catch((failure) => setPreferenceNotice(message(failure)))
+                    .finally(() => setBusy(false));
+                }}
+              >
+                Create my private folder
+              </button>
+            )}
+            {isAdmin && (
+              <a href="#administration">Review storage diagnostics</a>
+            )}
           </section>
         ) : (
           <FileBrowser
@@ -141,6 +242,9 @@ export default function LocalFiles({ csrfToken }: { csrfToken: string }) {
             root={root}
             csrfToken={csrfToken}
             onBusy={setBusy}
+            initialPath={preference?.root_id === root.id ? preference.path : ""}
+            preference={preference}
+            onDefault={(path) => void setDefault(path)}
           />
         ))}
       <p className="local-scope">
@@ -158,12 +262,18 @@ function FileBrowser({
   root,
   csrfToken,
   onBusy,
+  initialPath,
+  preference,
+  onDefault,
 }: {
   root: StorageRoot;
   csrfToken: string;
   onBusy: (value: boolean) => void;
+  initialPath: string;
+  preference: StoragePreference | null;
+  onDefault: (path: string) => void;
 }) {
-  const [path, setPath] = useState("");
+  const [path, setPath] = useState(initialPath);
   const [listing, setListing] = useState<LocalListing | null>(null);
   const [refresh, setRefresh] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -290,6 +400,12 @@ function FileBrowser({
     }
   }
   async function upload(file: File) {
+    if (preference && file.size > preference.upload_max_bytes) {
+      setError(
+        `This file exceeds the ${size(preference.upload_max_bytes)} upload limit.`,
+      );
+      return;
+    }
     lock(true);
     setError("");
     setNotice(`Uploading ${file.name}`);
@@ -346,8 +462,24 @@ function FileBrowser({
             {size(root.available_bytes)} available
             {root.read_only ? " · Read only" : ""}
           </p>
+          {!root.read_only && preference && (
+            <p>Maximum file size: {size(preference.upload_max_bytes)}</p>
+          )}
         </div>
         <div className="local-actions">
+          <button
+            type="button"
+            disabled={
+              busy ||
+              loading ||
+              (preference?.root_id === root.id && preference.path === path)
+            }
+            onClick={() => onDefault(path)}
+          >
+            {preference?.root_id === root.id && preference.path === path
+              ? "Default starting folder"
+              : "Set as starting folder"}
+          </button>
           <button
             disabled={busy || loading}
             onClick={() => reload()}
@@ -426,9 +558,16 @@ function FileBrowser({
         </div>
       )}
       {error && (
-        <p className="local-error" role="alert">
-          {error}
-        </p>
+        <div>
+          <p className="local-error" role="alert">
+            {error}
+          </p>
+          {path && !listing && (
+            <button type="button" onClick={() => navigate("")}>
+              Return to location root
+            </button>
+          )}
+        </div>
       )}
       {action && (
         <form
