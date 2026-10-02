@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import useUnsavedChanges from "./useUnsavedChanges";
 import {
   storageRequest,
   submitStorageOperation,
@@ -34,6 +35,27 @@ export default function StorageConnection({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [folders, setFolders] = useState<string[]>(data.manager.approved_paths);
+  const accessGroup = useRef<HTMLFieldSetElement>(null);
+  const errorNotice = useRef<HTMLParagraphElement>(null);
+  useUnsavedChanges(
+    Boolean(
+      label ||
+      path ||
+      mode !== "new" ||
+      kind !== "shared" ||
+      grants.some(
+        (grant) =>
+          grant.level !==
+          (data.users.find((user) => user.id === grant.user_id)?.current
+            ? "write"
+            : "none"),
+      ),
+    ),
+  );
+  useEffect(() => {
+    if (error && error !== "Choose at least one account with access.")
+      errorNotice.current?.focus();
+  }, [error]);
   const area = data.manager.managed_area;
   const newPath = area
     ? `${area}/${
@@ -85,6 +107,7 @@ export default function StorageConnection({
     event.preventDefault();
     if (!grants.some((grant) => grant.level !== "none")) {
       setError("Choose at least one account with access.");
+      accessGroup.current?.querySelector("select")?.focus();
       return;
     }
     setBusy(true);
@@ -123,7 +146,13 @@ export default function StorageConnection({
         verifies the connection automatically.
       </p>
       {error && (
-        <p className="local-error" role="alert">
+        <p
+          className="local-error"
+          role="alert"
+          id="connection-error"
+          ref={errorNotice}
+          tabIndex={-1}
+        >
           {error}
         </p>
       )}
@@ -146,6 +175,8 @@ export default function StorageConnection({
             <label>
               Location name
               <input
+                name="location-name"
+                autoComplete="off"
                 required
                 maxLength={80}
                 value={label}
@@ -155,6 +186,8 @@ export default function StorageConnection({
             <label>
               Folder
               <select
+                name="folder-mode"
+                autoComplete="off"
                 value={mode}
                 onChange={(event) => {
                   setMode(event.target.value as "new" | "existing");
@@ -168,6 +201,8 @@ export default function StorageConnection({
             <label>
               Purpose
               <select
+                name="folder-purpose"
+                autoComplete="off"
                 value={kind}
                 onChange={(event) =>
                   setKind(event.target.value as "shared" | "managed")
@@ -197,6 +232,10 @@ export default function StorageConnection({
               <label>
                 Existing server folder
                 <input
+                  name="server-folder"
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoCapitalize="none"
                   required
                   value={path}
                   onChange={(event) => setPath(event.target.value)}
@@ -230,7 +269,11 @@ export default function StorageConnection({
               </ul>
             </>
           )}
-          <fieldset className="storage-initial-access">
+          <fieldset
+            className="storage-initial-access"
+            ref={accessGroup}
+            aria-describedby={error ? "connection-error" : undefined}
+          >
             <legend>Account permissions</legend>
             <p>
               {kind === "managed"
@@ -243,6 +286,8 @@ export default function StorageConnection({
                 <label key={user.id}>
                   Access for {user.username}
                   <select
+                    name={`access-${user.id}`}
+                    autoComplete="off"
                     value={
                       grants.find((grant) => grant.user_id === user.id)
                         ?.level ?? "none"
@@ -276,9 +321,10 @@ export default function StorageConnection({
             <button
               className="refresh-button"
               type="submit"
+              aria-busy={busy}
               disabled={mode === "new" && !area}
             >
-              {busy ? "Connecting…" : "Connect"}
+              {busy ? "Connecting…" : "Connect location"}
             </button>
             <a href="#administration/storage">Cancel</a>
           </div>

@@ -10,7 +10,11 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import LocalFiles from "./LocalFiles";
 import * as api from "./localStorageApi";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  window.history.replaceState({}, "", "/");
+});
 
 vi.mock("./localStorageApi", async (original) => ({
   ...(await original<typeof api>()),
@@ -71,6 +75,21 @@ test("browses and downloads through the authenticated same-origin route", async 
   expect(screen.getByText("512 B available")).toBeInTheDocument();
 });
 
+test("a linked folder takes precedence over the saved starting folder", async () => {
+  window.history.replaceState(
+    {},
+    "",
+    "/?files-path=Reports%2F2026#local-files/personal",
+  );
+  render(<LocalFiles csrfToken="csrf" />);
+  await screen.findByRole("link", { name: "Download notes.txt" });
+  expect(api.fetchLocalItems).toHaveBeenCalledWith(
+    "personal",
+    "Reports/2026",
+    expect.any(AbortSignal),
+  );
+});
+
 test("requires explicit deletion confirmation and includes the item revision", async () => {
   render(<LocalFiles csrfToken="csrf" />);
   fireEvent.click(
@@ -102,7 +121,7 @@ test("renames in the current directory and reports conflicts", async () => {
   fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
     target: { value: "new.txt" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  fireEvent.click(screen.getByRole("button", { name: "Rename item" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "destination already exists",
   );

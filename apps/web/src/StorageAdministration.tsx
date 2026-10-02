@@ -13,6 +13,7 @@ import StorageAccess from "./StorageAccess";
 import StorageActivity from "./StorageActivity";
 import StorageConnection from "./StorageConnection";
 import "./storage-administration.css";
+import useUnsavedChanges from "./useUnsavedChanges";
 
 const active = (job: StorageJob) =>
   ["queued", "applying", "verifying"].includes(job.state);
@@ -134,6 +135,7 @@ export default function StorageAdministration({
       csrfToken={csrfToken}
       busy={busy}
       titles={titles}
+      headingLevel={page.page === "location" ? 4 : 3}
       onNotice={setNotice}
       onRefresh={refresh}
       onRetry={(job) => {
@@ -520,6 +522,7 @@ function StorageSettings({
 }) {
   const [limit, setLimit] = useState(String(data.upload_max_bytes / 1024 ** 2));
   const [busy, setBusy] = useState(false);
+  useUnsavedChanges(limit !== String(data.upload_max_bytes / 1024 ** 2));
   async function save(value: number | null) {
     setBusy(true);
     try {
@@ -552,6 +555,9 @@ function StorageSettings({
         <label>
           File size (MiB)
           <input
+            name="upload-limit"
+            autoComplete="off"
+            inputMode="decimal"
             required
             type="number"
             min="0.000001"
@@ -595,6 +601,7 @@ function LocationConfiguration({
 }) {
   const [label, setLabel] = useState(root.label);
   const [destination, setDestination] = useState("");
+  useUnsavedChanges(label !== root.label || Boolean(destination));
   const [confirm, setConfirm] = useState<"remove" | "refresh-identity" | null>(
     null,
   );
@@ -617,6 +624,8 @@ function LocationConfiguration({
         <label>
           Location name
           <input
+            name="location-name"
+            autoComplete="off"
             required
             maxLength={80}
             value={label}
@@ -642,6 +651,10 @@ function LocationConfiguration({
           <label>
             New server directory
             <input
+              name="destination-directory"
+              autoComplete="off"
+              spellCheck={false}
+              autoCapitalize="none"
               required
               value={destination}
               onChange={(event) => setDestination(event.target.value)}

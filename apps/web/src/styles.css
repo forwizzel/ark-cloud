@@ -999,7 +999,6 @@ h1 {
   display: block;
   height: 100%;
   background: var(--signal);
-  transition: width 420ms ease;
 }
 
 .metric-card--warning .meter span {
@@ -1338,7 +1337,6 @@ h1 {
   display: block;
   height: 100%;
   background: var(--signal);
-  transition: width 320ms ease;
 }
 
 .sync-foot {
@@ -1814,7 +1812,7 @@ select:disabled {
   border-bottom: 1px solid var(--line-soft);
 }
 
-.sidecar-section h3 {
+.sidecar-section h2 {
   margin: 0;
   font-family: "Arial Narrow", "Roboto Condensed", Arial, sans-serif;
   font-size: 1rem;
@@ -2578,7 +2576,7 @@ select:disabled {
 .workspace-lower-grid h2,
 .quota-readout strong,
 .indexed-readout strong,
-.sidecar-section h3,
+.sidecar-section h2,
 .loading-dashboard strong,
 .error-dashboard h2,
 .system-temperatures-head h2,

@@ -132,7 +132,7 @@ test("existing-folder connection submits once with automatic preparation", async
   fireEvent.change(screen.getByLabelText("Existing server folder"), {
     target: { value: "/host/area/second" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+  fireEvent.click(screen.getByRole("button", { name: "Connect location" }));
   await waitFor(() =>
     expect(api.submitStorageOperation).toHaveBeenCalledWith(
       expect.objectContaining({

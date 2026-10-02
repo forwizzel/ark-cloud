@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import useUnsavedChanges from "./useUnsavedChanges";
 import {
   storageRequest,
   type AccessLevel,
@@ -30,6 +31,15 @@ export default function StorageAccess({
   const [error, setError] = useState("");
   const heading = useRef<HTMLHeadingElement>(null);
   const route = `admin/storage/roots/${encodeURIComponent(root.id)}/access`;
+  const discardChanges = useUnsavedChanges(
+    Boolean(
+      view?.accounts.some(
+        (account) =>
+          draft[account.id] !== undefined &&
+          draft[account.id] !== account.level,
+      ),
+    ),
+  );
   useEffect(() => {
     const controller = new AbortController();
     storageRequest<LocationAccess>(
@@ -77,6 +87,16 @@ export default function StorageAccess({
         },
       );
       setView(next);
+      setDraft((current) =>
+        Object.fromEntries(
+          next.accounts.map((account) => [
+            account.id,
+            account.id === userId
+              ? account.level
+              : (current[account.id] ?? account.level),
+          ]),
+        ),
+      );
       setNotice(`Access saved for ${username}. No restart needed.`);
       await onChanged();
     } catch (failure) {
@@ -98,7 +118,13 @@ export default function StorageAccess({
         <h3 id="storage-access-heading" ref={heading} tabIndex={-1}>
           Manage access — {root.label}
         </h3>
-        <button type="button" onClick={onClose} disabled={Boolean(busy)}>
+        <button
+          type="button"
+          onClick={() => {
+            if (discardChanges()) onClose();
+          }}
+          disabled={Boolean(busy)}
+        >
           Close access editor
         </button>
       </div>
@@ -156,6 +182,8 @@ export default function StorageAccess({
                 <label>
                   Access for {account.username}
                   <select
+                    name={`access-${account.id}`}
+                    autoComplete="off"
                     value={draft[account.id] ?? account.level}
                     disabled={Boolean(busy)}
                     onChange={(event) =>
@@ -179,6 +207,7 @@ export default function StorageAccess({
                 </label>
                 <button
                   type="submit"
+                  aria-busy={busy === account.id}
                   disabled={
                     Boolean(busy) ||
                     (draft[account.id] === account.level &&

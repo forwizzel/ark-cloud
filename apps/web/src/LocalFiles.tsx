@@ -15,6 +15,7 @@ import {
   type StoragePreference,
 } from "./localStorageApi";
 import "./local-files.css";
+import useUnsavedChanges from "./useUnsavedChanges";
 
 function message(error: unknown) {
   return error instanceof Error
@@ -29,7 +30,7 @@ function size(bytes: number | null) {
     Math.floor(Math.log(Math.max(bytes, 1)) / Math.log(1024)),
     4,
   );
-  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(bytes / 1024 ** index)} ${units[index]}`;
+  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(bytes / 1024 ** index)}\u00a0${units[index]}`;
 }
 
 export function LocalStorageSummary() {
@@ -57,7 +58,7 @@ export function LocalStorageSummary() {
     >
       <div>
         <h2 id="local-summary-heading">Local storage</h2>
-        <p>{state}</p>
+        <p role="status">{state}</p>
       </div>
       <a href="#local-files">Open Local Files</a>
     </section>
@@ -141,9 +142,25 @@ export default function LocalFiles({
         <label>
           Storage location
           <select
+            name="storage-location"
+            data-discard-changes
+            data-current-value={selected}
+            autoComplete="off"
             value={selected}
             disabled={busy || !roots.length}
-            onChange={(event) => setSelected(event.target.value)}
+            onChange={(event) => {
+              const url = new URL(window.location.href);
+              url.searchParams.delete("files-path");
+              url.hash = event.target.value
+                ? `#local-files/${event.target.value}`
+                : "#local-files";
+              window.history.replaceState(
+                window.history.state,
+                "",
+                `${url.pathname}${url.search}${url.hash}`,
+              );
+              setSelected(event.target.value);
+            }}
           >
             <option value="">
               {roots.length ? "Choose a location" : "No locations configured"}
@@ -242,7 +259,15 @@ export default function LocalFiles({
             root={root}
             csrfToken={csrfToken}
             onBusy={setBusy}
-            initialPath={preference?.root_id === root.id ? preference.path : ""}
+            initialPath={
+              window.location.hash === `#local-files/${root.id}`
+                ? (new URLSearchParams(window.location.search).get(
+                    "files-path",
+                  ) ?? (preference?.root_id === root.id ? preference.path : ""))
+                : preference?.root_id === root.id
+                  ? preference.path
+                  : ""
+            }
             preference={preference}
             onDefault={(path) => void setDefault(path)}
           />
@@ -287,12 +312,32 @@ function FileBrowser({
   const input = useRef<HTMLInputElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const editorHeading = useRef<HTMLHeadingElement>(null);
+  const editorInput = useRef<HTMLInputElement>(null);
   const trigger = useRef<HTMLElement | null>(null);
   const focusAfterLoad = useRef(false);
   const restoreTrigger = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
-    if (action?.kind === "delete") editorHeading.current?.focus();
+    const url = new URL(window.location.href);
+    url.hash = `#local-files/${root.id}`;
+    url.searchParams.set("files-path", path);
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }, [root.id, path]);
+  const initialValue =
+    action?.kind === "rename"
+      ? action.item.name
+      : action && action.kind !== "folders"
+        ? action.item.path
+        : "";
+  const discardChanges = useUnsavedChanges(
+    Boolean(action && action.kind !== "delete" && value !== initialValue),
+  );
+  useEffect(() => {
+    if (action) editorHeading.current?.focus();
     if (!action && restoreTrigger.current) {
       restoreTrigger.current = false;
       if (trigger.current?.isConnected) trigger.current.focus();
@@ -338,6 +383,7 @@ function FileBrowser({
     setRefresh((current) => current + 1);
   }
   function navigate(next: string) {
+    if (!discardChanges()) return;
     focusAfterLoad.current = true;
     setPath(next);
     setListing(null);
@@ -347,6 +393,7 @@ function FileBrowser({
     setNotice("");
   }
   function choose(next: Action) {
+    if (!discardChanges()) return;
     trigger.current =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
@@ -357,6 +404,7 @@ function FileBrowser({
     setNotice("");
   }
   function cancelEditor() {
+    if (!discardChanges()) return;
     restoreTrigger.current = true;
     setAction(null);
   }
@@ -395,6 +443,7 @@ function FileBrowser({
       reload(false);
     } catch (failure) {
       setError(message(failure));
+      if (action.kind !== "delete") editorInput.current?.focus();
     } finally {
       lock(false);
     }
@@ -506,6 +555,7 @@ function FileBrowser({
               </button>
               <input
                 ref={input}
+                name="upload-file"
                 type="file"
                 hidden
                 aria-label="File to upload"
@@ -557,9 +607,9 @@ function FileBrowser({
           </button>
         </div>
       )}
-      {error && (
+      {error && !action && (
         <div>
-          <p className="local-error" role="alert">
+          <p className="local-error" role="alert" id="file-action-error">
             {error}
           </p>
           {path && !listing && (
@@ -587,6 +637,11 @@ function FileBrowser({
           {action.kind !== "folders" && (
             <p className="local-filename">{action.item.name}</p>
           )}
+          {error && (
+            <p className="local-error" role="alert" id="file-action-error">
+              {error}
+            </p>
+          )}
           {action.kind === "delete" ? (
             <p>This cannot be undone. Folders must be empty.</p>
           ) : (
@@ -595,7 +650,13 @@ function FileBrowser({
                 ? "Destination path, relative to this storage location"
                 : "Name"}
               <input
-                autoFocus
+                ref={editorInput}
+                name={action.kind === "move" ? "destination-path" : "item-name"}
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? "file-action-error" : undefined}
+                autoComplete="off"
+                spellCheck={false}
+                autoCapitalize="none"
                 required
                 maxLength={action.kind === "move" ? 2048 : 255}
                 value={value}
@@ -605,12 +666,16 @@ function FileBrowser({
             </label>
           )}
           <div className="local-actions">
-            <button type="submit" disabled={busy}>
+            <button type="submit" disabled={busy} aria-busy={busy}>
               {busy
                 ? "Saving…"
                 : action.kind === "delete"
                   ? "Delete permanently"
-                  : "Save"}
+                  : action.kind === "folders"
+                    ? "Create folder"
+                    : action.kind === "rename"
+                      ? "Rename item"
+                      : "Move item"}
             </button>
             <button type="button" disabled={busy} onClick={cancelEditor}>
               Cancel

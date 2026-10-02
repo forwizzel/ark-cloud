@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { formatNumber } from "./formatNumber";
 
 import {
   fetchSystemInformation,
@@ -58,7 +59,10 @@ function TemperatureGroup({
             key={`${reading.source_name}-${index}`}
           >
             <dt>{reading.label}</dt>
-            <dd>{reading.celsius.toFixed(1)} °C</dd>
+            <dd>
+              {formatNumber(reading.celsius, 1)}
+              {"\u00a0"}°C
+            </dd>
           </div>
         ))}
       </dl>
@@ -67,13 +71,13 @@ function TemperatureGroup({
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024) return `${formatNumber(bytes)}\u00a0B`;
   const units = ["KiB", "MiB", "GiB", "TiB", "PiB"];
   const exponent = Math.min(
     Math.floor(Math.log(bytes) / Math.log(1024)),
     units.length,
   );
-  return `${(bytes / 1024 ** exponent).toFixed(1)} ${units[exponent - 1]}`;
+  return `${formatNumber(bytes / 1024 ** exponent, 1)}\u00a0${units[exponent - 1]}`;
 }
 
 function formatTime(value: string): string {
@@ -86,7 +90,11 @@ function formatTime(value: string): string {
 }
 
 function valueOrDash(value: string | number | null): string {
-  return value === null || value === "" ? "—" : String(value);
+  return value === null || value === ""
+    ? "—"
+    : typeof value === "number"
+      ? formatNumber(value)
+      : value;
 }
 
 function Detail({
@@ -290,7 +298,7 @@ export default function SystemInformationPage() {
                 value={
                   information.value.compute.percent === null
                     ? null
-                    : `${information.value.compute.percent.toFixed(1)}%`
+                    : `${formatNumber(information.value.compute.percent, 1)}%`
                 }
               />
               <Detail
@@ -298,7 +306,7 @@ export default function SystemInformationPage() {
                 value={
                   information.value.compute.frequency_mhz === null
                     ? null
-                    : `${information.value.compute.frequency_mhz.toFixed(0)} MHz`
+                    : `${formatNumber(information.value.compute.frequency_mhz)}\u00a0MHz`
                 }
               />
             </dl>
@@ -327,7 +335,7 @@ export default function SystemInformationPage() {
                 label="Used"
                 value={
                   information.value.memory.usage
-                    ? `${information.value.memory.usage.percent.toFixed(1)}%`
+                    ? `${formatNumber(information.value.memory.usage.percent, 1)}%`
                     : null
                 }
               />

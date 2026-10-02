@@ -9,6 +9,7 @@ export default function StorageActivity({
   onNotice,
   onRefresh,
   onRetry,
+  headingLevel = 3,
 }: {
   jobs: StorageJob[];
   csrfToken: string;
@@ -17,8 +18,10 @@ export default function StorageActivity({
   onNotice: (value: string) => void;
   onRefresh: () => Promise<void>;
   onRetry: (job: StorageJob) => void;
+  headingLevel?: 3 | 4;
 }) {
   const [working, setWorking] = useState(false);
+  const Heading = headingLevel === 3 ? "h3" : "h4";
   const [showDismissed, setShowDismissed] = useState(false);
   const visible = jobs.filter(
     (job) => !["browse", "preflight"].includes(job.action),
@@ -122,7 +125,7 @@ export default function StorageActivity({
   }
   return (
     <>
-      <h4>Current issues &amp; progress</h4>
+      <Heading>Current issues &amp; progress</Heading>
       {current.length ? (
         <ol className="storage-activity">{current.map(entry)}</ol>
       ) : (

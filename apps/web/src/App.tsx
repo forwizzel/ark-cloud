@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { formatNumber } from "./formatNumber";
 
 import {
   fetchDashboard,
@@ -177,6 +178,18 @@ function App() {
 
   return (
     <div className="app-frame">
+      <a
+        className="skip-link"
+        href="#main-content"
+        onClick={(event) => {
+          event.preventDefault();
+          const main = document.getElementById("main-content");
+          main?.focus();
+          main?.scrollIntoView({ block: "start" });
+        }}
+      >
+        Skip to main content
+      </a>
       <aside className="side-rail">
         <a className="brand" href="/" aria-label="Ark Cloud dashboard">
           <span
@@ -184,7 +197,7 @@ function App() {
             aria-hidden="true"
             dangerouslySetInnerHTML={{ __html: arkCloudLogo }}
           />
-          <span className="brand-type">
+          <span className="brand-type" translate="no">
             <strong>ARK</strong>
             <small>CLOUD</small>
           </span>
@@ -254,10 +267,7 @@ function App() {
         <AppearanceControls />
       </aside>
 
-      <main
-        className="main-content"
-        id={activePage === "overview" ? "overview" : undefined}
-      >
+      <main className="main-content" id="main-content" tabIndex={-1}>
         <header className="topbar">
           <div>
             <h1>
@@ -296,6 +306,7 @@ function App() {
             )}
             <button
               className="logout-button"
+              data-discard-changes
               type="button"
               onClick={() => void onLogout()}
             >
@@ -585,6 +596,12 @@ function LoginScreen({
   );
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const confirmationInput = useRef<HTMLInputElement>(null);
+  const errorMessage = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (error && !error.startsWith("Passwords do not match."))
+      errorMessage.current?.focus();
+  }, [error]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -592,7 +609,9 @@ function LoginScreen({
     setError(null);
     try {
       if (mode !== "login" && password !== confirmation) {
-        throw new Error("Passwords do not match.");
+        setError("Passwords do not match. Re-enter the confirmation password.");
+        confirmationInput.current?.focus();
+        return;
       }
       onLogin(
         mode === "setup"
@@ -612,7 +631,7 @@ function LoginScreen({
   };
 
   return (
-    <main className="auth-frame">
+    <main className="auth-frame" id="main-content">
       <form className="login-panel" onSubmit={(event) => void submit(event)}>
         <span
           className="brand-logo brand-logo--login"
@@ -643,6 +662,9 @@ function LoginScreen({
           <label>
             Username
             <input
+              name="username"
+              spellCheck={false}
+              autoCapitalize="none"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
               autoComplete="username"
@@ -655,6 +677,9 @@ function LoginScreen({
           <label>
             {mode === "setup" ? "Setup code" : "Invitation code"}
             <input
+              name={mode === "setup" ? "setup-code" : "invitation-code"}
+              spellCheck={false}
+              autoCapitalize="none"
               required
               value={code}
               onChange={(event) => setCode(event.target.value)}
@@ -665,6 +690,7 @@ function LoginScreen({
         <label>
           {mode === "login" ? "Password" : "New password"}
           <input
+            name="password"
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
@@ -679,6 +705,10 @@ function LoginScreen({
           <label>
             Confirm password
             <input
+              ref={confirmationInput}
+              name="password-confirmation"
+              aria-invalid={Boolean(error && password !== confirmation)}
+              aria-describedby={error ? "sign-in-error" : undefined}
               required
               type="password"
               autoComplete="new-password"
@@ -688,13 +718,24 @@ function LoginScreen({
           </label>
         )}
         {error && (
-          <p className="auth-error" role="alert">
+          <p
+            className="auth-error"
+            role="alert"
+            id="sign-in-error"
+            ref={errorMessage}
+            tabIndex={-1}
+          >
             {error}
           </p>
         )}
-        <button className="refresh-button" type="submit" disabled={submitting}>
+        <button
+          className="refresh-button"
+          type="submit"
+          disabled={submitting}
+          aria-busy={submitting}
+        >
           {submitting
-            ? "Please wait"
+            ? "Please wait…"
             : mode === "setup"
               ? "Create administrator"
               : mode === "invite"
@@ -852,6 +893,12 @@ function GoogleDrivePanel({
   };
 
   const disconnect = async () => {
+    if (
+      !window.confirm(
+        "Disconnect Google Drive? You’ll need to reconnect to access its metadata. Files in Google Drive stay unchanged.",
+      )
+    )
+      return;
     setActing(true);
     setActionError(null);
     try {
@@ -1047,14 +1094,14 @@ function usageDetail(usage: ResourceUsage): string {
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024) return `${formatNumber(bytes)}\u00a0B`;
   const units = ["KiB", "MiB", "GiB", "TiB", "PiB"];
   const exponent = Math.min(
     Math.floor(Math.log(bytes) / Math.log(1024)),
     units.length,
   );
   const value = bytes / 1024 ** exponent;
-  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[exponent - 1]}`;
+  return `${formatNumber(value, value >= 10 ? 0 : 1)}\u00a0${units[exponent - 1]}`;
 }
 
 function formatUptime(seconds: number): string {

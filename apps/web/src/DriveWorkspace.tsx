@@ -1,4 +1,7 @@
 import { FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
+import useUnsavedChanges from "./useUnsavedChanges";
+import { formatNumber } from "./formatNumber";
+import { readDriveFilters, writeDriveFilters } from "./driveFilterUrl";
 
 import {
   createPinnedLocation,
@@ -80,8 +83,12 @@ export default function DriveWorkspace({
 }: DriveWorkspaceProps) {
   const [status, setStatus] = useState<DriveCatalogStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<SavedSearchFilters>(rootFilters);
-  const [draft, setDraft] = useState<SavedSearchFilters>(rootFilters);
+  const [filters, setFilters] = useState<SavedSearchFilters>(() =>
+    readDriveFilters(rootFilters),
+  );
+  const [draft, setDraft] = useState<SavedSearchFilters>(() =>
+    readDriveFilters(rootFilters),
+  );
   const [folder, setFolder] = useState<DriveFolder>(rootFolder);
   const [folderError, setFolderError] = useState<string | null>(null);
   const [results, setResults] = useState<ResultState>(
@@ -110,9 +117,15 @@ export default function DriveWorkspace({
   const [loadingActivity, setLoadingActivity] = useState(false);
   const requestNumber = useRef(0);
   const navigationRequest = useRef(0);
-  const latestFilters = useRef<SavedSearchFilters>(rootFilters);
+  const latestFilters = useRef<SavedSearchFilters>(filters);
   const syncInFlight = useRef(false);
   const pollSequence = useRef(0);
+  const saveInput = useRef<HTMLInputElement>(null);
+  const discardChanges = useUnsavedChanges(showSaveForm && Boolean(saveName));
+  useEffect(() => {
+    if (showSaveForm && window.matchMedia?.("(pointer: fine)").matches)
+      saveInput.current?.focus();
+  }, [showSaveForm]);
   const completedSyncKey = useRef<string | null>(null);
 
   const updateStatus = (next: DriveCatalogStatus) => {
@@ -125,6 +138,7 @@ export default function DriveWorkspace({
     latestFilters.current = next;
     setFilters(next);
     setDraft(next);
+    writeDriveFilters(next, rootFilters);
   };
 
   useEffect(() => {
@@ -143,7 +157,28 @@ export default function DriveWorkspace({
     }
 
     const request = ++requestNumber.current;
-    searchCatalog({ ...rootFilters, limit: 20 }, controller.signal)
+    const initialFilters = latestFilters.current;
+    const navigation = navigationRequest.current;
+    if (initialFilters.parent_id && initialFilters.parent_id !== "root") {
+      fetchDriveFolder(initialFilters.parent_id, controller.signal)
+        .then((next) => {
+          if (
+            !controller.signal.aborted &&
+            navigation === navigationRequest.current
+          )
+            setFolder(next);
+        })
+        .catch((error: unknown) => {
+          if (
+            !controller.signal.aborted &&
+            navigation === navigationRequest.current
+          )
+            setFolderError(
+              `Unable to open the linked folder. ${errorMessage(error)}`,
+            );
+        });
+    }
+    searchCatalog({ ...initialFilters, limit: 20 }, controller.signal)
       .then((response) => {
         if (request !== requestNumber.current) return;
         updateStatus(response.catalog);
@@ -413,6 +448,12 @@ export default function DriveWorkspace({
   };
 
   const removeSavedSearch = async (saved: SavedSearch) => {
+    if (
+      !window.confirm(
+        `Delete the saved search “${saved.name}”? Its saved filters will be removed.`,
+      )
+    )
+      return;
     setMutating(true);
     setSideError(null);
     try {
@@ -474,6 +515,12 @@ export default function DriveWorkspace({
   };
 
   const removePin = async (pin: PinnedLocation) => {
+    if (
+      !window.confirm(
+        `Remove the pinned folder “${pin.label ?? pin.folder_name ?? "Unnamed folder"}”? Files in Google Drive stay unchanged.`,
+      )
+    )
+      return;
     setMutating(true);
     setSideError(null);
     try {
@@ -520,7 +567,7 @@ export default function DriveWorkspace({
           <strong>
             {status
               ? titleCase(status.phase ?? status.state)
-              : "Reading status"}
+              : "Reading status…"}
           </strong>
           {status?.state === "syncing" && status.mode && (
             <small>
@@ -536,7 +583,7 @@ export default function DriveWorkspace({
           disabled={!connected || syncing || status?.state === "syncing"}
         >
           {status?.state === "syncing" || syncing
-            ? "Sync in progress"
+            ? "Sync in progress…"
             : status?.retryable
               ? "Retry sync"
               : "Sync now"}
@@ -597,7 +644,11 @@ export default function DriveWorkspace({
               </div>
             )}
           </div>
-          {folderError && <p className="workspace-alert">{folderError}</p>}
+          {folderError && (
+            <p className="workspace-alert" role="alert">
+              {folderError}
+            </p>
+          )}
 
           <FilterBar
             draft={draft}
@@ -611,7 +662,7 @@ export default function DriveWorkspace({
               {results.phase === "ready"
                 ? `${results.items.length} loaded${results.nextCursor ? " / more available" : ""}`
                 : results.phase === "loading"
-                  ? "Reading catalog index"
+                  ? "Reading catalog index…"
                   : "Listing unavailable"}
             </span>
             <span>Revision {status?.revision ?? "--"}</span>
@@ -619,7 +670,7 @@ export default function DriveWorkspace({
 
           {results.phase === "loading" && (
             <div className="ledger-empty" role="status">
-              Scanning indexed metadata
+              Scanning indexed metadata…
             </div>
           )}
           {results.phase === "error" && (
@@ -748,22 +799,30 @@ export default function DriveWorkspace({
                     <label htmlFor="saved-search-name">Search name</label>
                     <input
                       id="saved-search-name"
+                      ref={saveInput}
+                      name="saved-search-name"
+                      autoComplete="off"
                       value={saveName}
                       onChange={(event) => setSaveName(event.target.value)}
                       maxLength={100}
-                      autoFocus
                       required
                     />
                     <div>
                       <button
                         type="submit"
-                        disabled={mutating || !saveName.trim()}
+                        disabled={mutating}
+                        aria-busy={mutating}
                       >
-                        Save current
+                        {mutating ? "Saving…" : "Save search"}
                       </button>
                       <button
                         type="button"
-                        onClick={() => setShowSaveForm(false)}
+                        onClick={() => {
+                          if (discardChanges()) {
+                            setShowSaveForm(false);
+                            setSaveName("");
+                          }
+                        }}
                       >
                         Cancel
                       </button>
@@ -861,7 +920,7 @@ function SyncConsole({
       : 100;
   return (
     <section className="sync-console" aria-label="Catalog sync">
-      <span className="sync-progress-label">
+      <span className="sync-progress-label" role="status">
         {total ? `${processed} / ${total}` : `${processed} processed`}
       </span>
       <div
@@ -906,9 +965,11 @@ function FilterBar({
         <span>Search indexed names</span>
         <input
           type="search"
+          name="q"
+          autoComplete="off"
           value={draft.q ?? ""}
           onChange={(event) => patch({ q: event.target.value })}
-          placeholder="Name contains..."
+          placeholder="e.g., tax return…"
           maxLength={200}
           disabled={disabled}
         />
@@ -916,6 +977,8 @@ function FilterBar({
       <label>
         <span>Kind</span>
         <select
+          name="kind"
+          autoComplete="off"
           value={draft.kind}
           onChange={(event) =>
             patch({ kind: event.target.value as DriveKind | "all" })
@@ -933,6 +996,8 @@ function FilterBar({
       <label>
         <span>Sort</span>
         <select
+          name="sort"
+          autoComplete="off"
           value={draft.sort}
           onChange={(event) => patch({ sort: event.target.value as DriveSort })}
           disabled={disabled}
@@ -946,6 +1011,8 @@ function FilterBar({
       <label>
         <span>Direction</span>
         <select
+          name="direction"
+          autoComplete="off"
           value={draft.direction}
           onChange={(event) =>
             patch({ direction: event.target.value as DriveDirection })
@@ -959,6 +1026,7 @@ function FilterBar({
       <label className="filter-check">
         <input
           type="checkbox"
+          name="starred"
           checked={draft.starred === true}
           onChange={(event) =>
             patch({ starred: event.target.checked ? true : null })
@@ -974,6 +1042,8 @@ function FilterBar({
             <span>Modified after</span>
             <input
               type="date"
+              name="modified-after"
+              autoComplete="off"
               value={dateInputValue(draft.modified_after)}
               onChange={(event) =>
                 patch({
@@ -987,6 +1057,8 @@ function FilterBar({
             <span>Modified before</span>
             <input
               type="date"
+              name="modified-before"
+              autoComplete="off"
               value={dateInputValue(draft.modified_before, true)}
               onChange={(event) =>
                 patch({
@@ -1000,6 +1072,9 @@ function FilterBar({
             <span>Minimum bytes</span>
             <input
               type="number"
+              name="minimum-bytes"
+              autoComplete="off"
+              inputMode="numeric"
               min="0"
               value={draft.min_size ?? ""}
               onChange={(event) =>
@@ -1012,6 +1087,9 @@ function FilterBar({
             <span>Maximum bytes</span>
             <input
               type="number"
+              name="maximum-bytes"
+              autoComplete="off"
+              inputMode="numeric"
               min="0"
               value={draft.max_size ?? ""}
               onChange={(event) =>
@@ -1135,7 +1213,7 @@ function SidecarSection({
   return (
     <section className="sidecar-section">
       <header>
-        <h3>{title}</h3>
+        <h2>{title}</h2>
         <span>{String(count).padStart(2, "0")}</span>
       </header>
       {children}
@@ -1214,6 +1292,9 @@ function InsightsPanel({
         </div>
         <div className="kind-breakdown">
           <span>Catalog by type</span>
+          {!insights.by_kind.length && (
+            <p>No indexed type breakdown is available.</p>
+          )}
           <ul>
             {insights.by_kind.map((group) => (
               <li key={group.kind}>
@@ -1456,14 +1537,14 @@ function titleCase(value: string): string {
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024) return `${formatNumber(bytes)}\u00a0B`;
   const units = ["KiB", "MiB", "GiB", "TiB", "PiB"];
   const exponent = Math.min(
     Math.floor(Math.log(bytes) / Math.log(1024)),
     units.length,
   );
   const value = bytes / 1024 ** exponent;
-  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[exponent - 1]}`;
+  return `${formatNumber(value, value >= 10 ? 0 : 1)}\u00a0${units[exponent - 1]}`;
 }
 
 function formatDateTime(value: string): string {

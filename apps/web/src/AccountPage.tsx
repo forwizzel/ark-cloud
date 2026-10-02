@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import useUnsavedChanges from "./useUnsavedChanges";
 
 import {
   changePassword,
@@ -35,22 +36,46 @@ export default function AccountPage({
   const [deleteName, setDeleteName] = useState("");
   const [deletePassword, setDeletePassword] = useState("");
   const [users, setUsers] = useState<LocalUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(usersOnly);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const csrf = session.csrf_token ?? "";
+  const confirmationInput = useRef<HTMLInputElement>(null);
+  const errorNotice = useRef<HTMLParagraphElement>(null);
+  const discardChanges = useUnsavedChanges(
+    username !== (session.username ?? "") ||
+      Boolean(
+        currentForName ||
+        currentForPassword ||
+        password ||
+        confirmation ||
+        inviteName ||
+        deleteName ||
+        deletePassword,
+      ),
+  );
+  useEffect(() => {
+    if (error && error !== "New passwords do not match.")
+      errorNotice.current?.focus();
+  }, [error]);
 
-  const refreshUsers = () =>
+  const fetchUsers = () =>
     listUsers()
       .then(setUsers)
       .catch((reason: unknown) => {
         setError(
           reason instanceof Error ? reason.message : "Unable to load accounts.",
         );
-      });
+      })
+      .finally(() => setLoadingUsers(false));
+  const refreshUsers = () => {
+    setLoadingUsers(true);
+    return fetchUsers();
+  };
 
   useEffect(() => {
-    if (session.role === "admin" && usersOnly) void refreshUsers();
+    if (session.role === "admin" && usersOnly) void fetchUsers();
   }, [session.role, usersOnly]);
 
   async function run(action: () => Promise<void>) {
@@ -83,6 +108,7 @@ export default function AccountPage({
     event.preventDefault();
     if (password !== confirmation) {
       setError("New passwords do not match.");
+      confirmationInput.current?.focus();
       return;
     }
     void run(async () => {
@@ -125,7 +151,13 @@ export default function AccountPage({
   return (
     <div className="account-page">
       {error && (
-        <p className="auth-error" role="alert">
+        <p
+          className="auth-error"
+          role="alert"
+          id="account-error"
+          ref={errorNotice}
+          tabIndex={-1}
+        >
           {error}
         </p>
       )}
@@ -146,6 +178,9 @@ export default function AccountPage({
               <label>
                 New username
                 <input
+                  name="username"
+                  spellCheck={false}
+                  autoCapitalize="none"
                   required
                   minLength={3}
                   maxLength={64}
@@ -157,6 +192,7 @@ export default function AccountPage({
               <label>
                 Current password
                 <input
+                  name="current-password"
                   required
                   type="password"
                   autoComplete="current-password"
@@ -164,7 +200,12 @@ export default function AccountPage({
                   onChange={(event) => setCurrentForName(event.target.value)}
                 />
               </label>
-              <button className="refresh-button" type="submit" disabled={busy}>
+              <button
+                className="refresh-button"
+                type="submit"
+                disabled={busy}
+                aria-busy={busy}
+              >
                 Save username
               </button>
             </form>
@@ -179,6 +220,7 @@ export default function AccountPage({
               <label>
                 Current password
                 <input
+                  name="current-password"
                   required
                   type="password"
                   autoComplete="current-password"
@@ -191,6 +233,7 @@ export default function AccountPage({
               <label>
                 New password
                 <input
+                  name="new-password"
                   required
                   type="password"
                   minLength={12}
@@ -203,6 +246,14 @@ export default function AccountPage({
               <label>
                 Confirm new password
                 <input
+                  name="password-confirmation"
+                  ref={confirmationInput}
+                  aria-invalid={error === "New passwords do not match."}
+                  aria-describedby={
+                    error === "New passwords do not match."
+                      ? "account-error"
+                      : undefined
+                  }
                   required
                   type="password"
                   autoComplete="new-password"
@@ -210,7 +261,12 @@ export default function AccountPage({
                   onChange={(event) => setConfirmation(event.target.value)}
                 />
               </label>
-              <button className="refresh-button" type="submit" disabled={busy}>
+              <button
+                className="refresh-button"
+                type="submit"
+                disabled={busy}
+                aria-busy={busy}
+              >
                 Change password
               </button>
             </form>
@@ -234,6 +290,10 @@ export default function AccountPage({
             <label>
               Username
               <input
+                name="invited-username"
+                autoComplete="off"
+                spellCheck={false}
+                autoCapitalize="none"
                 required
                 minLength={3}
                 maxLength={64}
@@ -244,6 +304,8 @@ export default function AccountPage({
             <label>
               Role
               <select
+                name="invited-role"
+                autoComplete="off"
                 value={inviteRole}
                 onChange={(event) =>
                   setInviteRole(event.target.value as "member" | "admin")
@@ -253,14 +315,14 @@ export default function AccountPage({
                 <option value="admin">Administrator</option>
               </select>
             </label>
-            <button className="refresh-button" disabled={busy}>
+            <button className="refresh-button" disabled={busy} aria-busy={busy}>
               Create invitation
             </button>
           </form>
           {inviteCode && (
             <div className="invite-code" role="status">
               <strong>One-time invitation code</strong>
-              <code>{inviteCode}</code>
+              <code translate="no">{inviteCode}</code>
               <p>
                 Share privately. The recipient opens Ark Cloud, chooses “Redeem
                 invitation”, and enters this code. It will not appear again.
@@ -348,6 +410,7 @@ export default function AccountPage({
                     type="button"
                     disabled={busy || user.username === session.username}
                     onClick={() => {
+                      if (!discardChanges()) return;
                       setDeleting(user);
                       setDeleteName("");
                       setDeletePassword("");
@@ -359,6 +422,10 @@ export default function AccountPage({
               </li>
             ))}
           </ul>
+          {loadingUsers && <p role="status">Loading accounts…</p>}
+          {!loadingUsers && !error && users.length === 0 && (
+            <p>No local accounts are available.</p>
+          )}
           {deleting && (
             <form className="account-delete" onSubmit={confirmDelete}>
               <h3>Delete {deleting.username}?</h3>
@@ -370,6 +437,10 @@ export default function AccountPage({
               <label>
                 Type {deleting.username} to confirm
                 <input
+                  name="delete-confirmation"
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoCapitalize="none"
                   required
                   value={deleteName}
                   onChange={(event) => setDeleteName(event.target.value)}
@@ -378,6 +449,7 @@ export default function AccountPage({
               <label>
                 Your current password
                 <input
+                  name="current-password"
                   required
                   type="password"
                   autoComplete="current-password"
@@ -391,7 +463,16 @@ export default function AccountPage({
               >
                 Delete account
               </button>
-              <button type="button" onClick={() => setDeleting(null)}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (discardChanges()) {
+                    setDeleting(null);
+                    setDeleteName("");
+                    setDeletePassword("");
+                  }
+                }}
+              >
                 Cancel
               </button>
             </form>

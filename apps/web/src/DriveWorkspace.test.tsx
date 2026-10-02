@@ -61,6 +61,7 @@ const projectFile: SearchResult = {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  window.history.replaceState({}, "", "/");
 });
 
 test("loads root items and navigates folders and breadcrumbs inside Ark", async () => {
@@ -284,7 +285,7 @@ test("creates a named saved search through the inline form with CSRF", async () 
   fireEvent.change(screen.getByLabelText("Search name"), {
     target: { value: "Current projects" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Save current" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save search" }));
 
   expect(await screen.findByText("Current projects")).toBeInTheDocument();
   await waitFor(() => {
@@ -296,6 +297,53 @@ test("creates a named saved search through the inline form with CSRF", async () 
       expect.objectContaining({ "X-CSRF-Token": "csrf-token" }),
     );
   });
+});
+
+test("saved-search deletion requires confirmation before making a request", async () => {
+  const fetchMock = workspaceFetch();
+  render(<DriveWorkspace connected csrfToken="csrf" />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Save current search" }),
+  );
+  fireEvent.change(screen.getByLabelText("Search name"), {
+    target: { value: "Current projects" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save search" }));
+  const remove = await screen.findByRole("button", {
+    name: "Delete saved search Current projects",
+  });
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  fireEvent.click(remove);
+  expect(confirm).toHaveBeenCalled();
+  expect(
+    fetchMock.mock.calls.some(([, init]) => init?.method === "DELETE"),
+  ).toBe(false);
+  expect(screen.getByText("Current projects")).toBeInTheDocument();
+});
+
+test("applied filters survive remounts through the URL", async () => {
+  const fetchMock = workspaceFetch();
+  const { unmount } = render(<DriveWorkspace connected csrfToken="csrf" />);
+  await screen.findByRole("button", { name: "Projects" });
+  fireEvent.change(screen.getByLabelText("Search indexed names"), {
+    target: { value: "annual report" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+  expect(new URLSearchParams(window.location.search).get("drive-q")).toBe(
+    "annual report",
+  );
+  unmount();
+  render(<DriveWorkspace connected csrfToken="csrf" />);
+  expect(screen.getByLabelText("Search indexed names")).toHaveValue(
+    "annual report",
+  );
+  await waitFor(() =>
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        String(input).includes("q=annual+report"),
+      ).length,
+    ).toBeGreaterThan(1),
+  );
 });
 
 test("serializes modified-before as exclusive next-day midnight", async () => {
