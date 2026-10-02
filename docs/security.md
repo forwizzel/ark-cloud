@@ -3,14 +3,14 @@
 ## Current Security Posture
 
 Version 0.9 is development software, not a production deployment. It supports local accounts,
-administrator-managed invitations, private local files, and principal-scoped Drive data. Tailscale reduces network
+administrator-managed invitations, and account-scoped local files. Tailscale reduces network
 exposure but does not replace identity checks inside Ark Cloud. Do not publish this stack to the
 Internet.
 
 ## Trust Boundaries
 
 ```text
-User device | Tailscale or local host | Web proxy | API | PostgreSQL / Google Drive
+User device | Tailscale or local host | Web proxy | API | PostgreSQL / authorized host files
 ```
 
 - The browser is untrusted input even on a private network.
@@ -24,7 +24,7 @@ User device | Tailscale or local host | Web proxy | API | PostgreSQL / Google Dr
   identity resides in `tailscale_state`. It cannot reach the database network.
 - Explicit host directory mounts are the local-content boundary. The owner-operated manifest and
   immutable account IDs scope access; Unix permissions and SELinux independently constrain the API.
-  Google Drive is optional and metadata-only. PostgreSQL never stores file bodies.
+  PostgreSQL never stores file bodies.
 - An optional host-owner-enrolled storage manager accepts typed storage jobs through the loopback
   proxy and controls only this deployment's storage configuration within explicitly approved areas.
   Enrollment delegates those operations to application administrators; it is separate from file
@@ -118,9 +118,9 @@ HTTP on loopback. Inventory requests remain server-side and return normalized de
 - SQLAlchemy hides statement parameters to reduce accidental secret or personal-data logs.
 - Health endpoints report component state but no credentials or connection details.
 - Database storage uses a named volume and is never part of the source tree.
-- PostgreSQL stores encrypted credentials and other control-plane state, not Drive file content.
+- PostgreSQL stores encrypted credentials and other control-plane state, not file content.
 - Database backups contain sensitive control-plane data. Encrypt and restrict them rather than
-  treating them as ordinary user files in Drive.
+  treating them as ordinary user files.
 - System collection does not mount the Docker socket, host root filesystem, privileged
   namespaces, or require root.
 
@@ -140,36 +140,19 @@ initial development image but do not lock every transitive package.
   documentation.
 - Review CORS before adding any cross-origin client; keep explicit origins rather than `*`.
 
-## Google Drive And Sessions
+## Accounts And Sessions
 
 - Dashboard and integration routes require a local server-side session. The session cookie is
   HttpOnly and SameSite; authenticated mutations require a session-bound CSRF token. Signed-out
   setup and invitation redemption require a one-time secret and same-origin JSON request.
 - Keep a random session secret in ignored `.env` or use the persistent database-generated secret;
   local account password hashes use Argon2id and are stored in PostgreSQL, not in
-  source control. Set `ARK_COOKIE_SECURE=true` whenever access is served over HTTPS.
-- Google OAuth client credentials and Fernet encryption key remain server-side. Refresh tokens are
-  encrypted before database storage and are never returned to the browser or written to logs.
-- The OAuth callback validates a short-lived state value bound to the local session, completes the
-  bounded token exchange and initial metadata sync, then redirects so authorization parameters do
-  not remain in the browser URL.
-- Google Drive is the source of truth for Drive content. Ark Cloud requests
-  `drive.metadata.readonly` for account/quota health and a principal-scoped catalog of files owned
-  by the account in My Drive. The database stores selected normalized metadata, folder edges,
-  saved searches, pinned folder IDs, sync history, and bounded sync-observed activity. It never
-  stores file content, descriptions, owners, permissions, access tokens, or raw Google responses.
-- Initial catalog synchronization runs after OAuth connection. Manual updates require the local
-  session's CSRF token. Saved-search and pin mutations also require CSRF. Browsing, search, reports,
-  activity, preferences, and synchronization records require authentication, and every database
-  query is scoped to the authenticated principal.
-- Folder names, filenames, saved query terms, pins, insights, and activity are sensitive personal
-  metadata. They are excluded from routine logs, but they are present in PostgreSQL backups and
-  require the same access controls as other control-plane data.
-- Pagination cursors contain only encoded catalog position, revision, filter signature, and
-  principal-binding data. They grant no access and are always validated before a principal-scoped
-  query.
-- Drive search results contain direct Google Drive links. Ark Cloud never proxies Drive content or performs
-  upload, download, rename, move, export, or delete operations.
+  source control. The managed Tailscale gateway supplies a trusted HTTPS proof for Secure cookies;
+  arbitrary client-provided forwarded headers are not trusted. Other HTTPS reverse proxies must
+  configure `ARK_COOKIE_SECURE=true` explicitly.
+- Immutable user IDs bind sessions and private folders. Username changes do not change file
+  ownership. Password changes, disabling accounts, and role changes revoke existing sessions.
+- Account deletion removes control-plane permissions but never deletes host file content.
 
 ## Runtime Information
 

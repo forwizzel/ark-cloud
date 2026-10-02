@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.service import now, token_hash
 from app.main import app
-from app.models import AuthSession, BootstrapCode, GoogleDriveConnection, LocalUser
+from app.models import AuthSession, BootstrapCode, LocalUser
 
 
 def sign_in(client: TestClient, username: str = "ark", password: str = "test-password") -> str:
@@ -66,21 +66,13 @@ def test_fresh_setup_requires_code_and_can_only_create_one_admin(db_session: Ses
     )
 
 
-def test_username_password_and_session_revocation_preserve_drive_owner(db_session: Session) -> None:
+def test_username_password_and_session_revocation_preserve_account_identity(
+    db_session: Session,
+) -> None:
     client = TestClient(app)
     other_device = TestClient(app)
     csrf = sign_in(client)
     sign_in(other_device)
-    db_session.add(
-        GoogleDriveConnection(
-            principal_id="ark",
-            refresh_token_encrypted="encrypted",
-            granted_scopes="scope",
-            created_at=now(),
-            updated_at=now(),
-        )
-    )
-    db_session.commit()
     old_hash = db_session.get(LocalUser, "ark").password_hash
     changed = client.put(
         "/auth/account/username",
@@ -89,8 +81,8 @@ def test_username_password_and_session_revocation_preserve_drive_owner(db_sessio
     )
     assert changed.status_code == 200
     assert changed.json()["username"] == "my.name"
-    assert db_session.get(GoogleDriveConnection, "ark") is not None
     db_session.expire_all()
+    assert db_session.get(LocalUser, "ark").username == "my.name"
     assert db_session.get(LocalUser, "ark").password_hash == old_hash
     assert other_device.get("/auth/session").json()["username"] == "my.name"
     assert (
@@ -154,7 +146,7 @@ def test_admin_invitation_is_one_use_and_member_is_restricted(db_session: Sessio
         ).status_code
         == 403
     )
-    assert member.get("/integrations/google-drive/status").status_code == 200
+    assert member.get("/storage/roots").status_code == 200
     user = db_session.scalar(select(LocalUser).where(LocalUser.username == "someone"))
     assert user.id != "ark"
     assert (

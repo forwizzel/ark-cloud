@@ -31,7 +31,6 @@ from app.dependencies import get_optional_principal, require_admin, require_csrf
 from app.models import (
     AuthSession,
     BootstrapCode,
-    GoogleDriveConnection,
     LocalUser,
     TailscaleControl,
 )
@@ -142,8 +141,6 @@ def setup(
         db.execute(select(func.pg_advisory_xact_lock(734017)))
     if _user_count(db):
         raise HTTPException(status_code=409, detail="Setup is already complete.")
-    if db.scalar(select(func.count()).select_from(GoogleDriveConnection)):
-        raise HTTPException(status_code=409, detail="Legacy data requires account migration first.")
     if throttled(db, key):
         raise HTTPException(status_code=429, detail="Too many attempts. Try again later.")
     code = db.get(BootstrapCode, 1)

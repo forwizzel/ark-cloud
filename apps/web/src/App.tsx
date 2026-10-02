@@ -7,19 +7,15 @@ import {
   login,
   logout,
   redeemInvite,
-  refreshGoogleDrive,
   setupAccount,
-  disconnectGoogleDrive,
   type Dashboard,
   type AuthSession,
-  type GoogleDriveSummary,
   type IntegrationState,
   type ResourceUsage,
   type TailscaleDevice,
 } from "./api";
 import AppearanceControls from "./AppearanceControls";
 import AccountPage from "./AccountPage";
-import DriveWorkspace from "./DriveWorkspace";
 import LocalFiles, { LocalStorageSummary } from "./LocalFiles";
 import SystemInformationPage from "./SystemInformationPage";
 import StorageAdministration from "./StorageAdministration";
@@ -54,15 +50,8 @@ function App() {
   });
   const [requestNumber, setRequestNumber] = useState(0);
   const [activePage, setActivePage] = useState<
-    | "overview"
-    | "files"
-    | "drive"
-    | "system"
-    | "account"
-    | "administration"
-    | "users"
+    "overview" | "files" | "system" | "account" | "administration" | "users"
   >("overview");
-  const [connectionNotice, setConnectionNotice] = useState(readOAuthNotice);
   const [activeHash, setActiveHash] = useState(window.location.hash);
   const [signInNotice, setSignInNotice] = useState("");
 
@@ -224,15 +213,6 @@ function App() {
             Local Files
           </a>
           <a
-            className={`nav-item ${activePage === "drive" ? "nav-item--active" : ""}`}
-            href="#drive-workspace"
-            aria-current={activePage === "drive" ? "page" : undefined}
-            onClick={() => setActivePage("drive")}
-          >
-            <span className="nav-symbol" aria-hidden="true" />
-            Drive Workspace
-          </a>
-          <a
             className={`nav-item ${activePage === "system" ? "nav-item--active" : ""}`}
             href="#system-information"
             aria-label="System Information"
@@ -276,14 +256,11 @@ function App() {
                 ? "Dashboard"
                 : activePage === "files"
                   ? "Local Files"
-                  : activePage === "drive"
-                    ? "Drive Workspace"
-                    : activePage === "system"
-                      ? "System Information"
-                      : activePage === "administration" ||
-                          activePage === "users"
-                        ? "Administration"
-                        : "Account"}
+                  : activePage === "system"
+                    ? "System Information"
+                    : activePage === "administration" || activePage === "users"
+                      ? "Administration"
+                      : "Account"}
             </h1>
           </div>
           <div className="topbar-actions">
@@ -315,22 +292,6 @@ function App() {
             </button>
           </div>
         </header>
-
-        {connectionNotice && (
-          <div
-            className={`connection-notice connection-notice--${connectionNotice.tone}`}
-            role="status"
-          >
-            <span>{connectionNotice.message}</span>
-            <button
-              type="button"
-              onClick={() => setConnectionNotice(null)}
-              aria-label="Dismiss connection notice"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
 
         {activePage === "system" && <SystemInformationPage />}
         {activePage === "files" && (
@@ -412,18 +373,7 @@ function App() {
         {dashboardState.phase === "ready" && activePage === "overview" && (
           <DashboardView
             dashboard={dashboardState.dashboard}
-            csrfToken={sessionState.session.csrf_token ?? ""}
             isAdmin={sessionState.session.role === "admin"}
-            onDashboardRefresh={refresh}
-          />
-        )}
-        {dashboardState.phase === "ready" && activePage === "drive" && (
-          <DriveWorkspace
-            connected={
-              dashboardState.dashboard.google_drive.state === "healthy" ||
-              dashboardState.dashboard.google_drive.state === "unavailable"
-            }
-            csrfToken={sessionState.session.csrf_token ?? ""}
           />
         )}
       </main>
@@ -433,14 +383,10 @@ function App() {
 
 function DashboardView({
   dashboard,
-  csrfToken,
   isAdmin,
-  onDashboardRefresh,
 }: {
   dashboard: Dashboard;
-  csrfToken: string;
   isAdmin: boolean;
-  onDashboardRefresh: () => void;
 }) {
   const system = dashboard.system;
   const systemHealth = dashboard.integrations.find(
@@ -573,11 +519,6 @@ function DashboardView({
 
       <TailscalePanel tailscale={dashboard.tailscale} isAdmin={isAdmin} />
       <LocalStorageSummary />
-      <GoogleDrivePanel
-        drive={dashboard.google_drive}
-        csrfToken={csrfToken}
-        onDashboardRefresh={onDashboardRefresh}
-      />
       <p className="scope-note">
         Metrics are the API runtime's view: CPU, memory, and uptime can be
         host-global, while storage can reflect the container filesystem. A
@@ -657,13 +598,13 @@ function LoginScreen({
         {notice && <p role="status">{notice}</p>}
         {mode === "setup" && (
           <p>
-            From this machine, run <code>./scripts/ark bootstrap</code> and
+            Run <code>./scripts/ark bootstrap</code> on the host machine, then
             enter the one-time code to create the first administrator.
           </p>
         )}
         {mode === "invite" && (
           <p>
-            Ask your administrator for an invitation code. Choose a password for
+            Ask an administrator for an invitation code. Choose a password for
             your new account.
           </p>
         )}
@@ -874,156 +815,12 @@ function TailscalePanel({
         </div>
       )}
       {isAdmin && (
-        <div className="drive-actions">
-          <a className="drive-link" href="#administration/tailscale">
+        <div className="workspace-actions">
+          <a className="workspace-link" href="#administration/tailscale">
             Configure Tailscale
           </a>
         </div>
       )}
-    </section>
-  );
-}
-
-function GoogleDrivePanel({
-  drive,
-  csrfToken,
-  onDashboardRefresh,
-}: {
-  drive: GoogleDriveSummary;
-  csrfToken: string;
-  onDashboardRefresh: () => void;
-}) {
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [acting, setActing] = useState(false);
-  const connected = drive.state === "healthy" || drive.state === "unavailable";
-
-  const refresh = async () => {
-    setActing(true);
-    setActionError(null);
-    try {
-      await refreshGoogleDrive(csrfToken);
-      onDashboardRefresh();
-    } catch (error: unknown) {
-      setActionError(
-        error instanceof Error
-          ? error.message
-          : "Unable to refresh Google Drive.",
-      );
-    } finally {
-      setActing(false);
-    }
-  };
-
-  const disconnect = async () => {
-    if (
-      !window.confirm(
-        "Disconnect Google Drive? You’ll need to reconnect to access its metadata. Files in Google Drive stay unchanged.",
-      )
-    )
-      return;
-    setActing(true);
-    setActionError(null);
-    try {
-      await disconnectGoogleDrive(csrfToken);
-      onDashboardRefresh();
-    } catch (error: unknown) {
-      setActionError(
-        error instanceof Error
-          ? error.message
-          : "Unable to disconnect Google Drive.",
-      );
-    } finally {
-      setActing(false);
-    }
-  };
-
-  return (
-    <section className="drive-panel panel" aria-labelledby="drive-heading">
-      <PanelHeading
-        title="Google Drive"
-        aside={drive.state === "healthy" ? undefined : stateLabels[drive.state]}
-        id="drive-heading"
-      />
-      <div className="drive-panel-body">
-        <div className="drive-summary">
-          <strong>
-            {drive.account_name ?? drive.account_email ?? "Google Drive"}
-          </strong>
-          <p>{drive.message}</p>
-        </div>
-        {drive.used_bytes !== null && drive.total_bytes !== null && (
-          <div className="drive-quota">
-            <div>
-              <span>Storage used</span>
-              <strong>
-                {formatBytes(drive.used_bytes)} /{" "}
-                {formatBytes(drive.total_bytes)}
-              </strong>
-            </div>
-            <div
-              className="meter"
-              role="progressbar"
-              aria-label="Google Drive storage used"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={
-                drive.percent === null ? undefined : Math.round(drive.percent)
-              }
-            >
-              <span
-                style={{
-                  width: `${Math.min(100, Math.max(0, drive.percent ?? 0))}%`,
-                }}
-              />
-            </div>
-          </div>
-        )}
-        {actionError && (
-          <p className="auth-error" role="alert">
-            {actionError}
-          </p>
-        )}
-        <div className="drive-actions">
-          {connected ? (
-            <>
-              <button
-                type="button"
-                className="refresh-button"
-                onClick={() => void refresh()}
-                disabled={acting}
-              >
-                Refresh
-              </button>
-              <a
-                className="drive-link"
-                href={drive.web_url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open Google Drive
-              </a>
-              <a className="drive-link" href="#drive-workspace">
-                Open Drive workspace
-              </a>
-              <button
-                type="button"
-                className="quiet-button"
-                onClick={() => void disconnect()}
-                disabled={acting}
-              >
-                Disconnect
-              </button>
-            </>
-          ) : (
-            <a
-              className="refresh-button drive-connect"
-              href="/api/integrations/google-drive/connect"
-            >
-              Connect Google Drive
-            </a>
-          )}
-        </div>
-      </div>
     </section>
   );
 }
@@ -1156,13 +953,7 @@ function formatLastSeen(value: string | null): string {
 export default App;
 
 function pageFromHash():
-  | "overview"
-  | "files"
-  | "drive"
-  | "system"
-  | "account"
-  | "administration"
-  | "users" {
+  "overview" | "files" | "system" | "account" | "administration" | "users" {
   if (
     window.location.hash === "#administration-users" ||
     window.location.hash === "#administration/users"
@@ -1178,7 +969,6 @@ function pageFromHash():
     window.location.hash.startsWith("#local-files/")
   )
     return "files";
-  if (window.location.hash === "#drive-workspace") return "drive";
   if (window.location.hash === "#system-information") return "system";
   if (window.location.hash === "#account") return "account";
   return "overview";
@@ -1186,48 +976,4 @@ function pageFromHash():
 
 function scrollPageToTop() {
   document.scrollingElement?.scrollTo?.({ top: 0, behavior: "instant" });
-}
-
-function readOAuthNotice(): {
-  tone: "success" | "error";
-  message: string;
-} | null {
-  const url = new URL(window.location.href);
-  const outcome = url.searchParams.get("google_drive");
-  const catalog = url.searchParams.get("catalog");
-  if (!outcome) return null;
-
-  url.searchParams.delete("google_drive");
-  url.searchParams.delete("catalog");
-  window.history.replaceState(
-    {},
-    "",
-    `${url.pathname}${url.search}${url.hash}`,
-  );
-
-  if (outcome === "connected") {
-    return catalog === "failed"
-      ? {
-          tone: "error",
-          message:
-            "Google Drive connected, but the initial catalog sync failed. Open Drive Workspace to retry.",
-        }
-      : {
-          tone: "success",
-          message:
-            "Google Drive connected. Ark Cloud is ready to index owned My Drive metadata.",
-        };
-  }
-  const failures: Record<string, string> = {
-    denied:
-      "Google Drive access was not granted. Reconnect when you are ready.",
-    invalid_state:
-      "The Google Drive connection expired or could not be verified. Start the connection again.",
-    failed:
-      "Google Drive could not be connected. Check the server configuration and try again.",
-  };
-  return {
-    tone: "error",
-    message: failures[outcome] ?? "Google Drive connection did not complete.",
-  };
 }

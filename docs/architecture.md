@@ -12,11 +12,10 @@ Browser (127.0.0.1:5173 locally; HTTPS via Tailscale Serve remotely)
    | same-origin /api/*
    v
  Vite web container  -- /api/* proxy -->  FastAPI container
-                                           |      |       |       |
-                                           |      |       |       +--> owner-mounted host directories
-                                           |      |       +----------> optional Google Drive API
-                                           |      +------------------> Tailscale API and psutil runtime metrics
-                                           +-------------------------> PostgreSQL
+                                           |      |       |
+                                           |      |       +--> owner-mounted host directories
+                                           |      +----------> Tailscale API and psutil runtime metrics
+                                           +-----------------> PostgreSQL
 ```
 
 Compose creates two bridge networks:
@@ -33,7 +32,7 @@ IP addresses. PostgreSQL needs no published host port because only the API consu
 ### Web
 
 The React application owns presentation and browser interaction. It requests `/api/*` from
-its own origin: session state, the dashboard, Local Files, Drive Workspace, and System Information. Vite
+its own origin: session state, the dashboard, Local Files, Administration, and System Information. Vite
 removes the `/api` prefix and forwards requests to `http://api:8000` inside Docker. The
 browser-facing `/api/health` uses the same proxy path. Browser code therefore knows nothing
 about container addresses, and same-origin requests need no permissive CORS policy.
@@ -55,29 +54,23 @@ browser-visible paths while the internal route remains `GET /health`.
 ### Database
 
 PostgreSQL is the system of record for Ark Cloud control-plane state, not user file content.
-It stores local sessions, OAuth state, encrypted Google refresh tokens, cached Drive account/quota
-status, the derived Drive metadata index, sync history, and local Drive workspace preferences.
-It also stores encrypted UI-saved Tailscale credentials and desired managed connection state;
+It stores local users, sessions, storage registrations and grants, provisioning jobs, account
+starting-folder preferences, encrypted UI-saved Tailscale credentials and desired connection state;
 the Tailscale encryption key is kept separately in the `tailscale_secrets` named volume.
-The host filesystem is the source of truth for local files; Google Drive remains authoritative for
-Drive files. An Alembic migration history tracks schema changes; Compose applies migrations before
+The host filesystem is the source of truth for file content. An Alembic migration history tracks
+schema changes; Compose applies migrations before
 starting the API.
 
 ### Storage Boundaries
 
 Ark Cloud uses separate storage boundaries for separate responsibilities:
 
-- Local host directories are the default content provider; Google Drive is an optional metadata
-  workspace.
-- PostgreSQL contains only Ark Cloud control-plane state and derived metadata needed by the
+- Local host directories are the content provider.
+- PostgreSQL contains only Ark Cloud control-plane state and metadata needed by the
   application. It does not contain file bodies or act as a second file store.
 - The API container overlay is operational storage only. Dedicated owner-configured bind mounts
   hold local user content; missing mounts never fall back to the overlay. Runtime disk usage describes
-  the `api-runtime-view`, not Google Drive capacity or user-content storage.
-
-Ark Cloud exposes normalized Drive connection/quota status and a searchable index of selected My
-Drive metadata. Establishing Drive as the content source of truth does not grant Ark Cloud
-permission to retrieve or modify file content.
+  the `api-runtime-view`, not exact host capacity or user-content storage.
 
 ## Configuration And Logs
 
@@ -101,12 +94,11 @@ class Integration(Protocol):
     def summary(self) -> IntegrationSummary: ...
 ```
 
-`SystemIntegration`, `TailscaleIntegration`, and `GoogleDriveIntegration` implement this
+`SystemIntegration` and `TailscaleIntegration` implement this
 boundary. The dashboard route aggregates normalized summaries and health records; it does not
-parse psutil, Tailscale, or Google payloads. Drive status is scoped to the authenticated local
-principal. A failed or unconfigured adapter reports its own state without failing unrelated
-integrations. Search is a principal-scoped Drive metadata capability; Drive activity is limited to
-changes observed during catalog synchronization, not a unified activity feed.
+parse psutil or Tailscale payloads. A failed or unconfigured adapter reports its own state without
+failing unrelated integrations. Local file operations are a separate account-scoped filesystem
+capability rather than an external metadata catalog.
 
 ### System Integration
 
@@ -176,60 +168,11 @@ outside UI control and must be retired separately during migration. Tailscale cl
 need the app and an authorized account login; the network boundary does not replace Ark Cloud
 application authentication.
 
-## Google Drive Integration
-
-Google Drive is Ark Cloud's optional external metadata provider and remains the file-management
-system for Drive files. The API uses a server-side OAuth web flow to request metadata-only access,
-encrypts its
-refresh token before PostgreSQL storage, and caches normalized account/quota status. Browser
-clients receive no Google credentials or raw upstream responses. Ark Cloud does not upload,
-download, export, modify, or proxy Drive file content.
-
-### Drive Catalog And Search
-
-After a successful OAuth connection, the API synchronously catalogs selected metadata for files
-owned by the connected account in My Drive. The initial sync captures a Drive change token,
-enumerates bounded pages of metadata, reconciles changes that occurred during enumeration, and
-atomically replaces the principal's catalog. Later user-triggered syncs consume the My Drive changes
-feed to upsert or remove individual records. A failed or time-limited sync preserves the last usable
-catalog and records a normalized error for the dashboard.
-
-PostgreSQL stores only Drive file IDs, names, MIME types, sizes, Drive timestamps, starred state,
-normalized parent relationships, derived Drive links, indexing timestamps, and synchronization
-state. It also stores principal-scoped local preferences such as saved searches and pinned folder
-IDs. It does not store file bodies, previews, descriptions, owners, permissions, or raw Google
-payloads.
-
-### Drive Workspace
-
-Version 0.4 resolves Drive's opaque root folder ID during synchronization and normalizes it to a
-local `root` sentinel. A parent-edge table supports folder listings and bounded breadcrumbs without
-database-specific JSON queries. Workspace listings support metadata filters and deterministic
-sorting. Opaque pagination cursors bind the filter set and authenticated principal to a catalog
-revision, so a concurrent synchronization causes the next page to restart rather than mixing two
-catalog snapshots.
-
-Manual synchronization remains synchronous and bounded. Each attempt records its mode, phase,
-progress, result, and normalized error. Incremental changes atomically update the catalog, parent
-edges, activity, change token, and revision. An expired change token switches the same attempt to
-one full recovery scan; failure preserves the prior usable catalog. Activity is bounded metadata
-observed during synchronization, not a complete or real-time Google Drive audit log.
-
-Saved searches and pins are local control-plane state. Storage reports are derived from indexed
-metadata and are explicitly advisory because Google-native files may not report a size and account
-quota can include data outside the catalog. Results and reports link directly to Google Drive.
-
-Scheduled synchronization remains deferred because it needs durable job ownership, locking,
-shutdown recovery, backoff, and quota controls. Shared files and shared drives remain excluded
-pending explicit visibility and per-drive cursor rules. Write actions remain excluded pending OAuth
-scope, confirmation, audit, conflict, and recovery reviews. Version 0.4 introduces no scheduler,
-background worker, Drive write scope, or content proxy.
-
 ## Local Storage (v0.9)
 
 `app/services/local_storage.py` reads a bounded, read-only host manifest. A managed mount gives each
-immutable user ID a private directory; assigned mounts are visible only to their configured owner.
-No new database schema is needed. `scripts/storage.py` provisions a new directory or registers an
+immutable user ID a private directory; shared mounts require explicit account grants.
+PostgreSQL persists registrations, grants, jobs, and preferences. `scripts/storage.py` provisions a new directory or registers an
 existing one, records device/inode identity, and generates `compose.storage.yaml`. Lifecycle helpers
 load the override; isolated API unit checks use base Compose without content mounts.
 
@@ -238,13 +181,13 @@ resolution. `renameat2(RENAME_NOREPLACE)` publishes uploads and moves without cl
 Lists are bounded to 10,000 entries, returned 100 at a time with directory-revision validation.
 Writes carry current item revisions, serialize their final mutations within the supported single
 API process, and retain descriptors instead of reopening unchecked paths. Deletion removes only
-files or empty folders. Local Files loads independently of dashboard and Drive availability.
+files or empty folders. Local Files loads independently of dashboard availability.
 See [Local storage](local-storage.md) for deployment, trust assumptions, limits, and recovery.
 
 ## Deferred Decisions
 
 - Version 0.7 stores local users and Argon2id password hashes in PostgreSQL. Stable user IDs scope
-  sessions and Drive metadata; usernames can change without changing ownership. The first
+  sessions and private folders; usernames can change without changing ownership. The first
   administrator uses a one-time locally generated code, and admins invite additional users.
   Each account manages its own credentials in the app. A terminal-only owner CLI handles recovery.
 - A general-purpose reverse proxy such as Caddy and production HTTPS remain deployment work;

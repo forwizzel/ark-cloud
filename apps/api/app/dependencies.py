@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 from app.auth.service import SESSION_COOKIE, Principal, get_session, validate_csrf
 from app.core.config import Settings, get_settings
 from app.core.database import get_db_session
-from app.integrations.google_drive import GoogleDriveIntegration
 from app.integrations.system import SystemIntegration
 from app.integrations.tailscale import TailscaleIntegration
 from app.models import LocalUser
@@ -25,13 +24,6 @@ def get_tailscale_integration(
     from app.services.tailscale_control import runtime_integration
 
     return runtime_integration(db, settings)
-
-
-def get_google_drive_integration(
-    settings: Annotated[Settings, Depends(get_settings)],
-    db: Annotated[Session, Depends(get_db_session)],
-) -> GoogleDriveIntegration:
-    return GoogleDriveIntegration(settings, db)
 
 
 def get_optional_principal(

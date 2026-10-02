@@ -5,7 +5,6 @@ from fastapi.testclient import TestClient
 from app.auth.service import Principal
 from app.core.database import get_database_state
 from app.dependencies import (
-    get_google_drive_integration,
     get_system_integration,
     get_tailscale_integration,
     require_principal,
@@ -13,7 +12,6 @@ from app.dependencies import (
 from app.integrations.base import IntegrationError
 from app.main import app
 from app.schemas.integrations import (
-    GoogleDriveSummary,
     IntegrationHealth,
     ResourceUsage,
     SystemSummary,
@@ -82,27 +80,6 @@ class FakeTailscaleIntegration:
         )
 
 
-class FakeGoogleDriveIntegration:
-    integration_id = "google_drive"
-    name = "Google Drive"
-
-    def summary(self, _: str) -> GoogleDriveSummary:
-        return GoogleDriveSummary(
-            state="not_configured",
-            message="Connect a Google Drive account to enable Drive status.",
-            checked_at=NOW,
-        )
-
-    def health_for(self, summary: GoogleDriveSummary) -> IntegrationHealth:
-        return IntegrationHealth(
-            id=self.integration_id,
-            name=self.name,
-            state=summary.state,
-            message=summary.message,
-            checked_at=summary.checked_at,
-        )
-
-
 class UnavailableSystemIntegration(FakeSystemIntegration):
     def summary(self) -> SystemSummary:
         raise IntegrationError("System metrics are unavailable.")
@@ -115,7 +92,6 @@ def test_dashboard_normalizes_platform_and_integrations() -> None:
     app.dependency_overrides[get_database_state] = lambda: "connected"
     app.dependency_overrides[get_system_integration] = lambda: FakeSystemIntegration()
     app.dependency_overrides[get_tailscale_integration] = lambda: FakeTailscaleIntegration()
-    app.dependency_overrides[get_google_drive_integration] = lambda: FakeGoogleDriveIntegration()
     app.dependency_overrides[require_principal] = lambda: Principal("ark", "ark", "test")
 
     response = client.get("/dashboard")
@@ -126,11 +102,10 @@ def test_dashboard_normalizes_platform_and_integrations() -> None:
     assert payload["system"]["hostname"] == "Ark"
     assert payload["system"]["cpu_percent"] == 10
     assert payload["tailscale"]["state"] == "not_configured"
-    assert payload["google_drive"]["state"] == "not_configured"
+    assert "google_drive" not in payload
     assert [integration["id"] for integration in payload["integrations"]] == [
         "system",
         "tailscale",
-        "google_drive",
     ]
 
 
@@ -138,7 +113,6 @@ def test_dashboard_preserves_partial_results_when_system_and_database_fail() -> 
     app.dependency_overrides[get_database_state] = lambda: "disconnected"
     app.dependency_overrides[get_system_integration] = lambda: UnavailableSystemIntegration()
     app.dependency_overrides[get_tailscale_integration] = lambda: FakeTailscaleIntegration()
-    app.dependency_overrides[get_google_drive_integration] = lambda: FakeGoogleDriveIntegration()
     app.dependency_overrides[require_principal] = lambda: Principal("ark", "ark", "test")
 
     response = client.get("/dashboard")

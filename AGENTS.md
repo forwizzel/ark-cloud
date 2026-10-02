@@ -7,7 +7,7 @@
 - Keep `ARK_BIND_ADDRESS=127.0.0.1`. Remote development access is through Tailscale Serve, not `0.0.0.0` or a direct Tailscale-IP bind.
 - Metrics intentionally describe the unprivileged API runtime view. Do not add host mounts for telemetry, Docker socket access, privileged namespaces, or claim exact host/cgroup telemetry. Local content mounts are explicitly owner-provisioned through `scripts/storage.py`; never mount host root or silently relabel existing directories.
 - Keep Tailscale credentials server-side and normalized. The adapter must not return raw upstream payloads or expose the API key to the browser.
-- Local host storage is the default content provider; the host-owned manifest assigns mounted roots and immutable user IDs isolate private folders. PostgreSQL holds control-plane state and the normalized optional Drive metadata index, never file bodies. Keep Google credentials server-side; never store or proxy Drive file content or return raw upstream responses. Local operations must use descriptor-relative Linux confinement and never follow symlinks or cross nested mounts.
+- Local host storage is the content provider; the host-owned manifest assigns mounted roots and immutable user IDs isolate private folders. PostgreSQL holds control-plane state, never file bodies. Local operations must use descriptor-relative Linux confinement and never follow symlinks or cross nested mounts.
 - UI storage administration uses the owner-enrolled `scripts/storage_manager.py`, typed API jobs and host-approved directory areas; provisioning reuses `scripts/storage.py`. Keep the API unprivileged. Status reads must not create account folders, and per-user starting-folder preferences are distinct from the managed host base.
 
 ## Run and verify

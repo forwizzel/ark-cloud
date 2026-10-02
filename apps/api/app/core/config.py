@@ -20,11 +20,6 @@ class Settings(BaseSettings):
     session_secret: SecretStr | None = None
     cookie_secure: bool = False
     session_max_age_seconds: int = 86_400
-    google_client_id: str | None = None
-    google_client_secret: SecretStr | None = None
-    google_redirect_uri: str | None = None
-    google_token_encryption_key: SecretStr | None = None
-    google_status_cache_seconds: int = 300
     storage_manifest: str = "/etc/ark-storage/manifest.json"
     storage_upload_max_bytes: int = Field(default=1_073_741_824, ge=1, le=10_737_418_240)
 
@@ -33,17 +28,6 @@ class Settings(BaseSettings):
         env_prefix="ARK_",
         extra="ignore",
     )
-
-    @property
-    def google_is_configured(self) -> bool:
-        return bool(
-            self.google_client_id
-            and self.google_client_secret
-            and self.google_client_secret.get_secret_value()
-            and self.google_redirect_uri
-            and self.google_token_encryption_key
-            and self.google_token_encryption_key.get_secret_value()
-        )
 
 
 @lru_cache

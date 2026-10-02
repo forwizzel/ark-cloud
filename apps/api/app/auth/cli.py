@@ -17,7 +17,7 @@ from app.auth.service import (
 )
 from app.core.config import get_settings
 from app.core.database import SessionLocal
-from app.models import AuthSession, BootstrapCode, GoogleDriveConnection, LocalUser, LoginAttempt
+from app.models import AuthSession, BootstrapCode, LocalUser, LoginAttempt
 
 
 def main() -> None:
@@ -34,10 +34,8 @@ def main() -> None:
 
     with SessionLocal() as db:
         if args.command == "bootstrap":
-            if db.scalar(select(func.count()).select_from(LocalUser)) or db.scalar(
-                select(func.count()).select_from(GoogleDriveConnection)
-            ):
-                parser.error("Accounts or legacy Drive data exist; setup cannot be reopened.")
+            if db.scalar(select(func.count()).select_from(LocalUser)):
+                parser.error("Accounts exist; setup cannot be reopened.")
             session_secret(db, get_settings())
             code = secrets.token_urlsafe(32)
             db.merge(

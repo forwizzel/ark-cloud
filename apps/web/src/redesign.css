@@ -128,12 +128,10 @@ h4 {
 }
 code,
 .account-users strong,
-.storage-access-list h4,
-.sidecar-list strong {
+.storage-access-list h4 {
   overflow-wrap: anywhere;
 }
 .account-users > li > div,
-.sidecar-list li > button,
 .service-row > div {
   min-width: 0;
 }
@@ -155,7 +153,6 @@ button[aria-busy="true"]::before {
   animation: orbit 800ms linear infinite;
 }
 .local-file-list > li,
-.ledger-row,
 .account-users > li,
 .storage-activity > li {
   content-visibility: auto;
@@ -267,9 +264,7 @@ summary:focus-visible {
 }
 
 .status-dot--healthy,
-.device-state--online,
-.sync-state--ready,
-.attempt-status--success {
+.device-state--online {
   background: var(--signal);
 }
 
@@ -305,11 +300,7 @@ h1 {
 .panel,
 .metric-card,
 .account-card,
-.workspace-shell,
-.workspace-modebar,
-.system-temperatures,
-.insights-panel,
-.workspace-lower-grid section {
+.system-temperatures {
   border: 1px solid var(--line-soft);
   border-radius: var(--radius);
   background: var(--panel);
@@ -448,14 +439,12 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 
-.meter,
-.sync-progress {
+.meter {
   height: 7px;
   border-radius: 20px;
 }
 
-.meter span,
-.sync-progress span {
+.meter span {
   border-radius: inherit;
 }
 
@@ -471,8 +460,6 @@ h1 {
 }
 
 .panel-heading h2,
-.insights-panel h2,
-.workspace-lower-grid h2,
 .system-section h2,
 .account-card h2,
 .system-temperatures-head h2 {
@@ -480,23 +467,6 @@ h1 {
   font-weight: 600;
   letter-spacing: -0.025em;
   line-height: 1.3;
-}
-
-.drive-panel-body {
-  padding: 20px 24px 26px;
-}
-
-.drive-panel .drive-summary {
-  display: block;
-  margin: 0 0 22px;
-}
-
-.drive-panel .drive-quota > div:first-child {
-  flex-wrap: wrap;
-}
-
-.drive-panel .drive-actions {
-  margin-top: 24px;
 }
 
 .panel-description {
@@ -537,7 +507,6 @@ h1 {
 }
 
 .refresh-button,
-.apply-filters,
 .error-dashboard button {
   border: 1px solid var(--signal);
   border-radius: 7px;
@@ -546,7 +515,6 @@ h1 {
 }
 
 .refresh-button:hover,
-.apply-filters:hover,
 .error-dashboard button:hover {
   color: var(--ink);
   background: var(--hover-surface);
@@ -554,19 +522,13 @@ h1 {
 
 .logout-button,
 .quiet-button,
-.sync-foot button,
-.folder-actions button,
-.folder-actions a,
-.sidecar-action,
-.load-more {
+.workspace-link {
   border-radius: 7px;
 }
 
 .logout-button:hover,
 .quiet-button:hover,
-.folder-actions button:hover,
-.folder-actions a:hover,
-.sidecar-action:hover {
+.workspace-link:hover {
   background: var(--panel-raised);
 }
 
@@ -576,124 +538,11 @@ textarea {
   border-radius: 7px !important;
 }
 
-.drive-workspace,
 .system-page,
 .account-page {
   padding-top: 26px;
 }
 
-.sync-toolbar {
-  position: sticky;
-  top: 12px;
-  z-index: 4;
-  min-height: 72px;
-  padding: 12px clamp(20px, 2.5vw, 28px);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius) var(--radius) 0 0;
-  background: var(--panel);
-  box-shadow: var(--shadow);
-}
-
-.sync-action-button {
-  min-height: 44px;
-  padding: 0 18px;
-  border: 1px solid var(--signal);
-  border-radius: 7px;
-  color: var(--canvas);
-  background: var(--signal);
-  font-weight: 600;
-}
-
-.sync-action-button:hover:not(:disabled) {
-  color: var(--ink);
-  background: var(--hover-surface);
-}
-
-.sync-console {
-  width: 100%;
-  padding: 16px clamp(20px, 2.5vw, 28px) 20px;
-  border-color: var(--line-soft);
-  border-top: 0;
-  border-radius: 0 0 var(--radius) var(--radius);
-  background: var(--panel);
-  box-shadow: var(--shadow);
-}
-
-.sync-progress-label {
-  color: var(--muted);
-  font-family: var(--data-font);
-  font-size: 0.72rem;
-}
-
-.sync-console .sync-progress {
-  margin-top: 10px;
-}
-
-.workspace-modebar {
-  margin-top: 16px;
-  padding: 0 12px;
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  box-shadow: none;
-}
-
-.workspace-modebar button {
-  border-bottom-width: 2px;
-}
-
-.workspace-modebar button.is-active {
-  background: transparent;
-}
-
-.workspace-shell {
-  grid-template-columns: minmax(0, 1fr) minmax(235px, 270px);
-  border-top: 0;
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-  overflow: hidden;
-}
-
-.workspace-filters,
-.workspace-sidecar,
-.ledger-status {
-  background: var(--panel-raised);
-}
-
-.workspace-filters {
-  grid-template-columns:
-    minmax(200px, 1.5fr) repeat(3, minmax(100px, 0.65fr))
-    auto;
-}
-
-.workspace-filters label,
-.inline-save label,
-.advanced-filters label {
-  font-family: var(--display-font);
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.workspace-filters input,
-.workspace-filters select,
-.inline-save input {
-  min-height: 42px;
-  background: var(--panel);
-}
-
-.advanced-filters,
-.filter-check {
-  border-radius: 7px;
-}
-
-.advanced-filters summary {
-  font-family: var(--display-font);
-  font-size: 0.75rem;
-  text-transform: none;
-}
-
-.ledger-row,
 .system-detail dd,
 .system-temperature-reading dd,
 .metric-head strong {
@@ -809,30 +658,6 @@ textarea {
   .dashboard-grid {
     grid-template-columns: minmax(0, 1fr) minmax(260px, 0.76fr);
   }
-
-  .workspace-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .ledger-panel {
-    border-right: 0;
-  }
-
-  .workspace-sidecar {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    border-top: 1px solid var(--line);
-  }
-
-  .workspace-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .workspace-filters .search-field,
-  .advanced-filters,
-  .apply-filters {
-    grid-column: 1 / -1;
-  }
 }
 
 @media (max-width: 980px) {
@@ -904,10 +729,6 @@ textarea {
     padding: 22px;
   }
 
-  .drive-panel-body {
-    padding: 20px 18px 24px;
-  }
-
   .system-uptime {
     min-width: 0;
   }
@@ -922,10 +743,6 @@ textarea {
 
   .account-grid,
   .system-section-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .workspace-sidecar {
     grid-template-columns: 1fr;
   }
 
@@ -945,13 +762,5 @@ textarea {
 
   .system-beacon {
     display: none;
-  }
-
-  .workspace-filters {
-    grid-template-columns: 1fr;
-  }
-
-  .workspace-filters > * {
-    grid-column: 1 / -1;
   }
 }

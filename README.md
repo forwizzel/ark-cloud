@@ -3,8 +3,8 @@
 Ark Cloud is a self-hosted personal cloud for accessing files on your host and reviewing its
 systems and services from a private browser session.
 
-Version 0.9 adds local host file storage alongside local account management, infrastructure integrations,
-metadata-only Google Drive workspace, detailed system information, and updated interface:
+Version 0.9 focuses on local host storage with private remote access, local account management,
+infrastructure status, detailed system information, and an accessible interface:
 
 - React 19, TypeScript, and Vite web client
 - FastAPI and SQLAlchemy API
@@ -17,16 +17,12 @@ metadata-only Google Drive workspace, detailed system information, and updated i
 - Optional UI-managed dedicated Tailscale node, private Serve HTTPS, and device inventory
 - Responsive infrastructure dashboard with partial-failure states
 - Backend and frontend tests, linting, formatting, and CI smoke tests
-- Local session authentication and server-side status for the Google Drive storage provider
+- Local session authentication with account-scoped storage access
 - In-app local username/password changes, administrator-managed invitations, and local recovery
-- Owned My Drive folder browsing, filtered search, recent and starred views
-- Saved searches, pinned folders, advisory storage insights, and sync-observed activity
-- Observable synchronization with history, retries, and expired-change-token recovery
 - Private local account folders and owner-assigned existing host directories
 - Administrator UI for connecting host folders, assignments, access checks, base relocation and upload policy
 - Explicit, account-persisted Local Files starting-folder preferences
 - Local browsing, streaming uploads/downloads, folders, rename, within-location moves, and deletion
-- Direct Google Drive links for every catalog result; Ark Cloud never proxies Drive file content
 - Dedicated System Information page with sensor, compute, identity, and storage details scoped to
   the API runtime view
 - Light/dark and high-contrast appearance controls, with browser-local preferences
@@ -46,7 +42,7 @@ run `./scripts/ark bootstrap` to receive a 15-minute setup code. Open
 <http://127.0.0.1:5173> and create the first administrator in the browser using that code.
 Username and password changes are available under **Account**; admins invite and manage local
 users under **Administration → Users**. See [Local accounts](docs/development.md#local-accounts) for upgrading and recovery.
-Google Drive and Tailscale are optional.
+Tailscale is optional; local access works without it.
 
 After creating your administrator, Ark opens the **Administration** landing page. Open **Storage →
 Add location**, choose a new or existing server folder, its private/shared purpose and accounts,
@@ -61,10 +57,9 @@ Without systemd, use `storage setup --no-install` and supervise `storage manager
 Failed connections have a **Repair connection** action that resumes the same registration and
 re-evaluates permissions. Selecting a registered directory never creates a duplicate location.
 Set the maximum file size in Administration without restarting. **Set as starting folder** in
-Local Files is a separate account preference; opening a location does not change it. No Google
-credentials are required.
+Local Files is a separate account preference; opening a location does not change it.
 
-Each location now offers **Manage access**: choose **No access**, **Read-only**, or **Read & write**
+Each location offers **Manage → Access**: choose **No access**, **Read-only**, or **Read & write**
 for accounts by username. `Ark-Files` keeps each account's private folder isolated. To share the
 same files with selected accounts, add a separate **Shared files** location and select its users.
 Existing access is preserved during upgrade; later accounts require an explicit grant. Permission
@@ -128,17 +123,11 @@ Authenticated control-plane endpoints include:
 - `GET /api/system/information`: detailed runtime information with per-section scope and availability
 - `GET /api/integrations`: health for every configured adapter
 - `GET /api/tailscale/devices`: normalized Tailscale device status
-- `GET /api/integrations/google-drive/status`: normalized Google Drive account and quota status
-- `GET /api/integrations/google-drive/items`: filtered, sorted Drive metadata workspace listing
-- `GET /api/integrations/google-drive/folders/{id}`: normalized folder and breadcrumb metadata
-- `GET /api/integrations/google-drive/insights`: advisory quota, type, large-file, and stale-file data
-- `GET /api/integrations/google-drive/saved-searches`: principal-scoped local search preferences
-- `GET /api/integrations/google-drive/pinned-locations`: principal-scoped local folder shortcuts
-- `GET /api/integrations/google-drive/catalog/status`: normalized sync state and progress
-- `GET /api/integrations/google-drive/catalog/syncs`: bounded synchronization history
-- `POST /api/integrations/google-drive/catalog/sync`: CSRF-protected metadata sync or recovery
-- `GET /api/integrations/google-drive/activity`: activity observed during catalog synchronization
-- `GET /api/search?q=...`: filtered, paginated, principal-scoped catalog search
+- `GET /api/storage/roots`: authorized local storage locations
+- `GET /api/storage/{id}/items`: bounded local directory listing
+- `/api/storage/{id}/*`: authenticated local file operations
+- `GET /api/admin/storage`: administrator storage configuration and job status
+- `GET /api/admin/tailscale`: administrator private-access configuration and status
 
 ## Configure Tailscale
 
@@ -172,21 +161,6 @@ An old manual host endpoint remains outside UI control until the owner retires i
 [migration and recovery](docs/development.md#use-tailscale-for-remote-access) for details,
 including backups of PostgreSQL and the `tailscale_secrets`, `tailscale_controller`, and
 `tailscale_state` named volumes.
-
-## Configure Google Drive
-
-Google Drive is an optional external metadata workspace; local host storage is the default file provider.
-The connection is optional at runtime and metadata-only: it shows the connected account and quota,
-then catalogs selected metadata for files owned by that account in My Drive. The first catalog sync
-runs after OAuth connection; later syncs consume Drive's changes feed and can be started from the
-Drive Workspace. Ark Cloud can browse folders, filter metadata, save local workspace preferences,
-and report advisory storage insights. All file operations remain in Drive. PostgreSQL stores Ark
-Cloud control-plane state, encrypted refresh tokens, and the derived metadata index; it is not a
-user file store.
-Follow the [Google Drive setup guide](docs/development.md#google-drive-setup) to create a Google
-OAuth web client, then add its client ID, client secret, exact redirect URI, and a Fernet encryption
-key only to the ignored `.env` file. Restart the stack, sign in, and use the dashboard's
-**Connect Google Drive** action to authorize the account.
 
 ## Metric Scope
 
@@ -240,6 +214,5 @@ compose.yaml       Local service topology
 - [Roadmap](docs/roadmap.md)
 - [Security](docs/security.md)
 
-Ark Cloud is currently development software. It has a deliberately narrow local single-user
-session boundary, not multi-user authorization or production hardening. Keep it private and do
-not expose it to the public Internet.
+Ark Cloud is currently development software with local accounts and account-scoped storage
+permissions. Keep it private and do not expose it to the public Internet.

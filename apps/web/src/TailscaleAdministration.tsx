@@ -228,7 +228,7 @@ export default function TailscaleAdministration({
               </p>
               {approvalUrl ? (
                 <a
-                  className="drive-link"
+                  className="workspace-link"
                   href={approvalUrl}
                   target="_blank"
                   rel="noreferrer"
@@ -247,9 +247,9 @@ export default function TailscaleAdministration({
             <div className="tailscale-url">
               <h4>Private URL</h4>
               <p>{serveUrl}</p>
-              <div className="drive-actions">
+              <div className="workspace-actions">
                 <a
-                  className="drive-link"
+                  className="workspace-link"
                   href={serveUrl}
                   target="_blank"
                   rel="noreferrer"
@@ -263,7 +263,7 @@ export default function TailscaleAdministration({
             </div>
           )}
           {status.configured && (
-            <div className="drive-actions">
+            <div className="workspace-actions">
               <button
                 type="button"
                 disabled={blocked || !status.controller_online}
@@ -384,7 +384,7 @@ export default function TailscaleAdministration({
           <p id="tailscale-key-note">
             The key is never shown again after saving.
           </p>
-          <div className="drive-actions">
+          <div className="workspace-actions">
             <button
               className="refresh-button"
               type="submit"

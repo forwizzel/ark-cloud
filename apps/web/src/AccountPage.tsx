@@ -141,9 +141,7 @@ export default function AccountPage({
       setDeleting(null);
       setDeleteName("");
       setDeletePassword("");
-      setNotice(
-        "Account and its Drive connection and indexed metadata deleted. Local files remain on the host.",
-      );
+      setNotice("Account deleted. Local files remain on the host.");
       await refreshUsers();
     });
   }
@@ -430,9 +428,8 @@ export default function AccountPage({
             <form className="account-delete" onSubmit={confirmDelete}>
               <h3>Delete {deleting.username}?</h3>
               <p>
-                This permanently removes the account, its Drive connection, and
-                locally indexed metadata. It does not delete files from Google
-                Drive.
+                This permanently removes the account and its access permissions.
+                Local files remain on the host.
               </p>
               <label>
                 Type {deleting.username} to confirm
@@ -482,8 +479,8 @@ export default function AccountPage({
       {!usersOnly && (
         <p className="scope-note account-note">
           Changing your password signs out every device, including this one.
-          Your account is stored on this Ark Cloud instance. Changes to your
-          login do not affect your Drive connection.
+          Your account is stored on this Ark Cloud instance. Your files stay in
+          their server storage locations when you update your login.
         </p>
       )}
     </div>

@@ -107,7 +107,7 @@ test("account changes use CSRF and password change signs the user out", async ()
   expect(
     screen.getByText(/Changing your password signs out every device/),
   ).toHaveTextContent(
-    "Your account is stored on this Ark Cloud instance. Changes to your login do not affect your Drive connection.",
+    "Your account is stored on this Ark Cloud instance. Your files stay in their server storage locations when you update your login.",
   );
   fireEvent.change(screen.getByLabelText("New username"), {
     target: { value: "new.name" },

@@ -1,619 +1,79 @@
 # Roadmap
 
-Ark Cloud advances one usable, verified phase at a time. Later phases may change as actual
-requirements become clearer.
-
-## UI-Managed Tailscale Dedicated Node Plan
-
-The deployment plan replaces manual host Serve setup with a dedicated userspace Tailscale
-service in default Compose, without a host installation or host networking privileges.
-**Administration → Tailscale → Connect** validates an API key from a user with device-create
-rights, persists credentials encrypted, automatically mints a one-use auth key, joins the
-managed node, and configures private Serve HTTPS. Saving requires no environment edits or
-commands. Unmet tailnet requirements expose only an approved HTTPS vendor approval link;
-connection resumes automatically after approval. Funnel/public access is excluded, and
-clients still need the Tailscale app and account login as well as Ark authentication.
-
-Remote-access disable retains credentials and node identity but stops Serve; Disconnect
-removes saved credentials, logs out the node, and explicitly disables legacy environment
-fallback. Local `127.0.0.1` access remains. Existing environment key/tailnet configuration
-supports read-only inventory until a UI save or explicit Disconnect. API key expiry can impair
-inventory/provisioning without stopping an already-joined Serve endpoint; replacement is via UI.
-
-PostgreSQL and the separate persistent `tailscale_secrets` encryption-key,
-`tailscale_controller` token, and `tailscale_state` identity volumes are the recovery set.
-Existing manual host Serve endpoints remain independent and are not adopted or removed by
-the UI. See [migration and recovery](development.md#use-tailscale-for-remote-access).
-Live acceptance with fresh credentials must verify joining, any required approval and automatic
-resume, HTTPS reachability, disable/re-enable, disconnect, and restore; this plan does not
-claim those live checks have passed.
-
-## Phase 0: Foundation
-
-Status: implemented.
-
-- Monorepo with web and API applications
-- Reproducible Docker Compose environment
-- Private PostgreSQL service and migration baseline
-- Validated environment configuration and structured API logging
-- Database-aware backend health endpoint
-- Responsive frontend status page
-- Backend and frontend tests, linting, formatting, and builds
-- Architecture, development, and security documentation
-
-## Phase 1: Version 0.1
-
-Status: implemented.
-
-- Minimal integration health and summary contract
-- Non-root runtime System integration for hostname, OS, kernel, uptime, CPU, memory, and
-  disk usage
-- Optional server-side Tailscale device integration with a mockable HTTP boundary
-- Dashboard assembled from normalized integration summaries
-- Connector failure, degraded resource, and unconfigured integration tests
-- Documented path from runtime collection to a dedicated least-privilege host agent
-
-The Phase 1 security review retains loopback-only binding by default. Authentication and
-HTTPS are still required before Ark Cloud is treated as more than a trusted private service.
-
-## Phase 2: Version 0.2
-
-Status: finalized.
-
-- Local single-user session authentication with CSRF protection
-- Optional server-side Google OAuth connection and encrypted refresh-token persistence
-- Normalized Google Drive connection health and storage quota on the dashboard
-- Google Drive remains the file manager and source of truth; Ark Cloud never proxies file content
-
-## Phase 3: Drive Catalog and Unified Search
-
-Status: implemented.
-
-- Catalog normalized Google Drive file metadata without storing file content in Ark Cloud
-- Search Drive metadata through an authenticated, principal-scoped API
-- Open results directly in Google Drive for file operations
-- Keep Google credentials, access tokens, and raw upstream payloads server-side
-- Preserve Google Drive as the source of truth and PostgreSQL as control-plane and search-index
-  storage only
-- Reviewed OAuth scopes, pagination, synchronization, indexing, and privacy boundaries
-
-The Phase 3 implementation retains `drive.metadata.readonly`, catalogs files owned by the connected
-account in My Drive, performs the initial synchronization after OAuth connection, and uses a manual
-incremental sync action backed by Drive change tokens. Shared files, shared drives, file-content
-access, and scheduled workers remain deferred.
-
-## Phase 4: Google Drive Workspace and Quality of Life
-
-Status: implemented.
-
-Make Google Drive a useful daily workspace inside Ark Cloud before adding another content
-platform. Ark Cloud remains a control plane and metadata index; Google Drive remains the source of
-truth for file content and file operations.
-
-- Add folder browsing with breadcrumbs, recent files, starred files, and direct links to Drive
-- Expand search with file-type, folder, date, size, ownership, and starred filters plus stable
-  sorting and pagination
-- Add saved searches and pinned Drive locations to the local control-plane state
-- Improve result metadata with file type, size, modified time, parent folder, and useful status
-  labels without storing file bodies
-- Add quota and storage insights, including usage by type and reports for large or stale files
-- Make quota and cleanup reports advisory; never delete or reorganize files automatically
-- Make synchronization observable with last-successful-sync time, progress, history, retry state,
-  and actionable failure messages
-- Recover safely from expired or invalid Drive change tokens with a bounded full resynchronization
-- Evaluate scheduled metadata synchronization only after its workload, locking, and failure
-  behavior are defined and tested
-- Review support for shared files and shared drives with explicit visibility and principal-scoping
-  rules before expanding catalog coverage
-- Add normalized Drive activity such as file creation, modification, and synchronization events
-- Preserve the metadata-only boundary and keep OAuth credentials, access tokens, raw responses,
-  and file content server-side
-- Consider narrowly scoped, non-destructive Drive actions such as creating folders, renaming,
-  moving, or starring files only after write scopes, confirmation, CSRF protection, audit events,
-  and recovery behavior have been reviewed
-
-Phase 4 does not require local photo storage, a NAS, or an Immich deployment. File uploads,
-downloads, content proxying, bulk destructive actions, and automatic cleanup remain out of scope.
-
-The Phase 4 implementation retains `drive.metadata.readonly` and adds a responsive Drive Workspace,
-normalized folder relationships, filtered revision-bound listings, local saved searches and pins,
-advisory storage reports, synchronization history, and activity derived from incremental catalog
-changes. Expired Drive change tokens trigger one bounded full rebuild while preserving the prior
-catalog if recovery fails. Upgrading from Version 0.3 also requires one full metadata sync to
-populate the new folder and starred fields.
-
-The scheduled-sync review found that durable job ownership, locking, shutdown recovery, backoff,
-and quota behavior require a real worker design, so scheduling remains deferred. Shared files and
-shared drives remain excluded until visibility, revoked-access, corpus, and per-drive cursor rules
-are designed. Drive write actions remain deferred because they require broader OAuth scopes,
-per-action confirmation, audit records, conflict handling, and recovery semantics.
-
-## Phase 5: System Information
-
-Status: implemented.
-
-Expand the existing System integration into an authenticated Runtime Information page. The Dashboard
-retains compact uptime, CPU, memory, storage, and health cards, with a link to the dedicated page.
-System information remains an `api-runtime-view`: configured labels, host-global kernel views,
-container-visible hardware, and usage of the configured filesystem path are identified separately.
-
-### Delivered Scope
-
-- Identity: configured hostname and OS, kernel, architecture, API/Python versions, and host boot
-  uptime distinguished from API runtime uptime.
-- Compute: CPU model when available from bounded `/proc/cpuinfo`, logical cores, utilization, load
-  averages, frequency, and detected GPUs. Inspect only bounded DRM device metadata under
-  `/sys/class/drm`; where available, match an NVIDIA PCI slot to the bounded driver-reported model
-  under `/proc/driver/nvidia/gpus`. Otherwise show vendor and PCI ID, or `Unavailable`. These are
-  kernel-visible devices, not proof the API can use them or measure GPU utilization.
-- Memory and storage: normalized RAM/swap and configured-path disk usage; filesystem type is
-  optional. Neither metric claims exact cgroup or user-content capacity.
-- Temperatures: normalized Celsius readings labeled by meaning rather than raw driver identifiers.
-  `Package id 0` becomes CPU package 0, `jc42` a memory module, and `acpitz` an ACPI thermal zone;
-  recognized motherboard labels distinguish chipset, motherboard CPU sensor, VRM, and external
-  header;
-  unfamiliar identifiers become Other temperature sensor. Keep the original identifier as supporting
-  context. Do not infer ambient temperature or a precise physical location from an ACPI zone.
-- Read-only `GET /api/system/information` with explicit section availability, source, safe warnings,
-  and collection time; `GET /api/system` remains the compact dashboard contract. The System page
-  fetches independently of dashboard integrations and offers retry and manual refresh.
-
-The page leads with grouped temperature readings and a nearby refresh control. It keeps the prior
-readings visible during refresh or failure, so checking new temperatures does not lose the user's
-place. Raw sensor IDs are available in a disclosure, while metric-scope guidance sits at the bottom.
-API package version and unqualified 1/5/15-minute load averages remain in the API contract for
-diagnostics but are omitted from the daily-use page.
-
-Missing sensors and GPU metadata are normal unavailable states, not page failures. No process list,
-process API, or background polling is provided: container-only processes did not give useful host
-information. No system snapshots are stored in PostgreSQL, and Phase 5 requires no database
-migration, host mounts, Docker socket, privileged namespaces, or root access.
-
-Backend checks cover normalized data, sensor naming and unknown labels, GPU model/PCI fallback and
-missing devices, partial collection failures, authentication, and dashboard compatibility. Frontend
-checks cover independent navigation and retry, meaningful labels, GPU availability, and empty
-sensor states. Run the standard backend/frontend checks and a loopback-proxy Compose smoke test.
-
-### Future Host Telemetry
-
-Exact host-wide processes, physical hardware, temperatures, and disks are not guaranteed from the
-API container. A later dedicated host agent may collect an allowlisted set of normalized metrics and
-expose them through a narrow authenticated local socket. The agent must be reviewed separately for
-privileges, authentication, authorization, freshness, failure behavior, and disclosure risk.
-
-### Out Of Scope
-
-- Exact host telemetry without a dedicated authenticated agent.
-- Container-only process listings or a process-control API.
-- Killing, restarting, pausing, or otherwise controlling processes.
-- Real-time process streaming or historical metric storage.
-- Charts, alerts, notifications, or automated remediation.
-- Network packet capture or unrestricted network inspection.
-- Filesystem browsing or file-content access.
-- Docker socket access, host-root mounts, privileged containers, and root-only collection.
-
-## Phase 6: Version 0.6 UI/UX Overhaul
-
-Status: implemented. This phase covers the presentation and usability of sign-in, Dashboard,
-Drive Workspace, and System Information. The original project prompt proposed a password-vault
-integration for Phase 6; the current roadmap defers that work to a later phase.
-
-### Scope and Constraints
-
-Make Ark Cloud a coherent, readable, professional private infrastructure console on desktop,
-tablet, and phone. Improve visual hierarchy, navigation clarity, interaction feedback, responsive
-layouts, and accessibility **without changing functionality**. Preserve all existing routes and
-hash links, API contracts and requests, authentication and OAuth flows, Drive sync and search
-semantics, mutation behavior, and the accuracy of data-source and availability labels. Do not add
-new pages, integrations, settings, actions, telemetry, charts, polling, theme toggles, or backend
-work. Google Drive remains the source of truth for file content and operations; system readings
-remain the API runtime's view, not exact host telemetry.
-
-### Design Direction
-
-Use a dark-first operations-console aesthetic specific to Ark's three daily tasks: checking system
-health, finding indexed Drive items, and understanding the provenance of readings. Keep the
-information density, but give primary readings and actions more prominence than supporting
-metadata. Start with a compact, reusable design system rather than introducing a component
-framework:
-
-- Foundation: midnight canvas `#0B1420`, slate surfaces `#132333`, raised surface `#1B3041`,
-  primary text `#E8F0F2`, signal blue `#89A8FF` in dark mode and `#174EA6` in light mode, and
-  restrained amber/red for existing warning and failure states. The stronger blue and thicker
-  horizontal indicators avoid the cyan-green shift seen while scrolling in Chrome.
-- Pair Barlow Condensed headings with IBM Plex Sans interface text and IBM Plex Mono readings,
-  timestamps, and source labels. Fonts are bundled locally with system fallbacks, without a
-  third-party font request.
-- Make the Dashboard's Ark server banner the signature **runtime readout**: compose its existing
-  hostname, health state, uptime, and measurement-scope context in a scannable hierarchy. Do not
-  imply that container-visible values are exact host measurements.
-- Use spacing, typography, and restrained dividers to organize content. Reduce decorative grids,
-  glow, and perpetual motion; reserve color for status, focus, and actionable information. Keep
-  reduced-motion support.
-
-### Implementation Record
-
-The original delivery checklist is retained below for future UI regressions:
-
-1. **Shared visual foundation:** Refine color, type, spacing, borders, density, buttons, inputs,
-   status treatments, and focus states in `apps/web/src/styles.css`. Consolidate repeated visual
-   rules as useful without obscuring the existing components. Give loading, error, unavailable,
-   and empty states consistent hierarchy and actionable wording where an existing action exists.
-2. **Sign-in and application shell:** Polish the login form, brand, sidebar, page titles, and action
-   placement in `apps/web/src/App.tsx`. Keep named navigation visible and operable at narrow widths:
-   the former tablet and phone layouts reduced the three links to `01`, `02`, and `03`. Keep the
-   Dashboard's existing Refresh control accessible below 400 px instead of hiding it. Retain the
-   same `#overview`, `#drive-workspace`, and `#system-information` destinations and logout flow.
-3. **Dashboard:** Establish a clear scan order from Ark health and runtime scope to CPU, memory,
-   and storage, then services, Tailscale devices, and Google Drive. Align card anatomy and state
-   labels; distinguish healthy, degraded, unavailable, and not-configured states by text as well
-   as color. Preserve the existing Drive actions, System Information link, timestamps, metrics,
-   and partial-failure behavior.
-4. **Drive Workspace:** Rebalance the sync console, My Drive/Recent/Starred modes, breadcrumbs,
-   filters, results, saved searches, pins, storage insights, sync history, and sync-observed
-   activity in `apps/web/src/DriveWorkspace.tsx`. Make the desktop listing efficiently scannable
-   and its phone layout a readable record with name, location, modified time, size, and Drive
-   action. Retain timestamps in the mobile history and activity views rather than hiding them.
-   Preserve draft-versus-applied filters, pagination, retries, sync progress, saved preferences,
-   and direct Google Drive links exactly as they work today.
-5. **System Information:** Keep grouped temperatures first and manual refresh nearby in
-   `apps/web/src/SystemInformationPage.tsx`. Improve alignment and wrapping for long sensor and
-   hardware names, source descriptions, partial/unavailable states, and the Sensor IDs disclosure.
-   Preserve independent fetching and the prior readings during a failed refresh.
-6. **Copy and accessibility pass:** Use consistent, plain-language action labels and feedback;
-   make errors and empty states explain the available next step. Review landmarks, control names,
-   keyboard navigation, visible focus, status announcements, contrast, touch targets, zoom,
-   overflow, and reduced motion. Avoid using color alone to communicate state.
-
-### Regression Checklist
-
-- Visually inspect signed-out and signed-in screens at desktop, tablet, and phone widths, including
-  a narrow phone and a long-content/zoom case. Review configured, disconnected, loading, empty,
-  partial, failure, and refreshing states using representative data; check that no important
-  information or existing control disappears at a breakpoint.
-- Exercise the existing journeys: sign in/out; navigate all three views and their links; refresh
-  Dashboard and System Information; connect, refresh, and disconnect Drive; browse folders,
-  search/filter, paginate, use saved searches and pins, sync and retry, and open items in Drive.
-  Verify the behavior and resulting requests remain unchanged.
-- Check keyboard-only operation, accessible names and status text, contrast, text enlargement,
-  screen-reader reading order, and reduced-motion preference. Keep API-runtime scope and
-  sync-observed/activity qualifiers visible and accurate.
-- Run the frontend checks from `apps/web`: `npm test`, `npm run lint`,
-  `npm run format:check`, and `npm run build`. Update focused frontend tests only where changed
-  markup or navigation warrants regression coverage. No API migration or backend change is
-  expected.
-
-The implementation uses locally bundled fonts and shared appearance tokens; it preserves named
-navigation and Dashboard refresh at phone widths, makes Drive result metadata and activity times
-readable at narrow widths, and shows partial System Information warnings. Existing frontend tests
-cover the links, controls, and Drive result labels without changing request behavior.
-
-## Version 0.6 Appearance Preferences (Post-Phase 6)
-
-Status: implemented. Light/dark mode and high contrast are two independent browser-local controls,
-available on both the sign-in and signed-in screens. The four combinations share the same layout,
-data, and actions. When a choice has not been saved, Ark Cloud follows the device's color-scheme
-or contrast preference, including changes while the page is open. Explicit choices persist across
-reloads and sign-in/out; unavailable browser storage does not prevent switching for the current
-page. A small script applies saved preferences before the app loads to prevent a theme flash.
-Theme tokens cover all existing screens and states, including status colors, focus rings, browser
-controls, and the page theme color. No backend or account-preference storage is involved.
-
-## Phase 7: Version 0.7 Local Accounts and In-App Credential Management
-
-Status: implemented. Replace the single `.env`-configured login with persistent, administrator-managed
-local accounts suitable for self-hosted, multi-user homelabs. The installer should set up the first
-administrator in the application; afterward users manage their own username and password in the
-application. No external identity provider, email service, or public registration is required.
-
-### Product Contract and Boundaries
-
-- PostgreSQL stores accounts with an immutable, opaque user ID (UUID), unique normalized login
-  username, Argon2id password hash, role (`admin` or `member`), creation/update timestamps, and
-  any explicit account state such as a required first-login password change. Never store plaintext
-  or reversible login passwords. Define username case/whitespace normalization, allowed length and
-  characters, password length limits, and uniqueness consistently in the API and database; do not
-  silently change the login name on display.
-- Use the immutable user ID everywhere ownership or authorization is needed: sessions, Drive
-  connections/catalog/sync state, saved searches, pins, activity, and any other principal-scoped
-  records. Fetch the current username and role from the account, not from a stale session value.
-  Changing a username must not create a new identity or disconnect Drive.
-- Keep `ARK_DATABASE_URL`/`POSTGRES_PASSWORD`, Google OAuth credentials, and other deployment
-  secrets server-side in `.env`. An explicit `ARK_SESSION_SECRET` remains supported; fresh
-  installations can use the database-generated persistent session key. Remove `ARK_AUTH_USERNAME` and
-  `ARK_AUTH_PASSWORD_HASH` from the steady-state login path after migration; do not treat `.env`
-  edits or container recreation as the account-management interface. A persistent named PostgreSQL
-  volume retains accounts across `./scripts/ark up`, restart, and image rebuild; backups and the
-  destructive `reset-data` behavior must be documented.
-- Continue the existing HttpOnly SameSite session-cookie and CSRF model, server-side Argon2id
-  verification, and principal-scoped Drive metadata boundary. Keep API/browser traffic same-origin
-  through `/api/*` and the existing loopback/Tailscale Serve deployment model.
-
-### Implementation Checklist
-
-1. **Data model and migration:** Add an Alembic revision for local users, uniqueness constraints,
-   role/account state, and session-to-user references. Inventory *every* `principal_id` column,
-   index, foreign key, query, cursor, and test fixture before replacing username-based IDs; plan
-   constraint ordering for PostgreSQL and a fresh-install path. Preserve all existing Drive
-   connection data, encrypted refresh tokens, catalog rows, sync state/history, saved searches,
-   pins, and activity under the new ID. Invalidate old sessions/cursors as necessary and explain
-   why; do not wipe volumes or silently orphan old data. Make upgrade/import idempotent and safe
-   to retry after a partial failure. Test both an empty database and an existing populated one;
-   keep the legacy environment variables available to the one-time importer until it succeeds.
-2. **Upgrade existing installations:** Import the configured legacy username and *existing* hash
-   into one admin account without reading or printing the plaintext password. Associate all rows
-   formerly owned by that username with the new immutable ID in one controlled migration, and
-   require re-login. Handle missing/partial legacy credentials, pre-existing accounts, and
-   ambiguous ownership explicitly (fail with an actionable message rather than create duplicate
-   admins or detach data). After a successful import, make the legacy variables inert and document
-   when they can be removed. Verify that an imported user can log in with the same password and
-   still see their Drive data before and after a username change.
-3. **First-run setup:** Expose a clear sign-in/setup state so an empty instance prompts creation
-   of the first administrator in the web UI. Gate creation with a one-time, short-lived bootstrap
-   code generated by a local instance-owner CLI (`./scripts/ark ...`); store only its digest,
-   never expose it through unauthenticated endpoints, browser bundles, or routine logs. Explain
-   where to obtain it on the setup screen. Create the first admin and consume the code atomically,
-   allowing exactly one winner under concurrent requests; reject further setup once an account
-   exists, even if an old code remains. No default credentials or unauthenticated public signup.
-   An empty user table with legacy principal-owned data must not be treated as a fresh install.
-   Define code expiry, retry limits, and safe reissue for an owner who has lost the code.
-4. **Login and sessions:** Authenticate active local users by normalized username and Argon2id
-   hash; keep invalid-user and wrong-password responses indistinguishable. Define bounded
-   login/setup attempt throttling that works with Compose restarts and does not trivially lock out
-   the instance owner; do not log submitted secrets. Reject sessions for deleted/disabled users;
-   enforce roles server-side, not by hiding UI controls. Retain logout, CSRF checks on every
-   state-changing endpoint (including setup where applicable), cookie flags, and session expiry.
-   Revoke sessions after a password reset/change (including the actor, with a clear re-login flow);
-   decide and test how username changes affect existing sessions and displayed identity.
-5. **Account and security UI/API:** Add a discoverable Account/Security view with current username,
-   change-username and change-password forms, inline validation, confirmation, accessible errors,
-   success/re-login feedback, and password-manager-friendly autocomplete. Require the current
-   password for either change; require and verify new-password confirmation without ever returning
-   hashes. Do not overwrite the password hash for a username-only change. Handle duplicate names,
-   stale sessions, and concurrent edits predictably. Update `/auth/session` and frontend session
-   state so the account name refreshes after a change. Preserve existing routes, Drive flows, and
-   responsive/keyboard-accessible navigation.
-6. **Admin-managed membership:** Only an admin can list/create/manage local accounts. Specify and
-   implement an in-app, one-time, expiring invitation or temporary-password handoff so an admin
-   can add members without email and without permanently exposing another user's password; force
-   a private password choice on first use. Ensure redemption is single-use and setup/redemption
-   requests have origin/CSRF protections appropriate to signed-out clients. Cover role changes,
-   disabling users, session revocation, and safe deletion semantics. Protect against removing,
-   disabling, or demoting the last active admin. Ensure member accounts cannot access admin
-   endpoints or each other's Drive metadata, tokens, saved items, or sessions. Decide explicitly
-   what happens to a deleted user's Drive connection and control-plane data; never silently
-   transfer it to another user.
-7. **Local recovery:** Provide a documented instance-owner CLI recovery action that can reset a
-   local account password or recover admin access when no administrator can sign in. Confirm the
-   target and avoid passing plaintext passwords in process arguments, output, or logs; use a
-   hidden prompt or short-lived one-time code. Revoke affected sessions and expiring invitations;
-   do not create a hidden permanent backdoor, expose recovery over the public API, or depend on
-   email/SSO. Document what an owner can and cannot recover if the database volume or session
-   secret is lost.
-8. **Docs and deployment:** Update `.env.example`, `README.md`, `docs/development.md`,
-   `docs/security.md`, Compose/`scripts/ark` help, and relevant architecture notes with first-run
-   setup, migration, admin invitations, self-service changes, recovery, backup/restore, and
-   session-secret rotation. Avoid including real credentials or hashes in fixtures or examples.
-
-### Acceptance and Verification
-
-- Fresh Compose install: setup page explains how to generate a local bootstrap code; first admin
-  can be created and can log in, and setup cannot be reopened by another browser or after restart.
-  Simultaneous setup attempts yield one admin. Missing or expired codes fail safely.
-- Upgrade from a populated v0.6 database: existing credentials still work after import; the
-  existing Drive connection, catalog, pins, searches, and sync history remain accessible. A
-  repeated migration/start does not create another account or rewrite passwords. Changing the
-  username leaves ownership intact; changing/resetting the password invalidates prior sessions.
-- Multi-user: admin can enroll a member, the member completes first-use password setup and
-  changes credentials in the UI, and a member cannot self-promote, manage users, or access another
-  user's data. Last-admin protection and disabled-user session rejection work across requests.
-- Security regressions: unauthorized/CSRF/malformed requests cannot mutate accounts; login errors
-  do not reveal which username exists; setup and invite tokens cannot be reused; brute-force
-  limits, cookie behavior, recovery, and revocation are exercised. Tests verify secrets/hashes
-  never appear in API payloads or logged request data.
-- Run API pytest, Ruff lint/format checks, frontend tests/lint/format/build, and a Compose
-  loopback-proxy smoke test covering first setup, login, account changes, admin enrollment,
-  logout, and upgrade with preserved Drive metadata. Use PostgreSQL for migration/constraint
-  tests; SQLite-only unit tests do not establish PostgreSQL migration correctness.
-
-### Out Of Scope
-
-- SSO/OIDC/SAML, external identity providers, email recovery, and open self-registration.
-- Password vault features, plaintext password display/storage, Drive file-content storage, and
-  changes to Google Drive OAuth scope or system telemetry privileges.
-
-The implementation retains legacy environment credentials only for the one-time Alembic import;
-subsequent logins use PostgreSQL users. A missing explicit session secret is generated and retained
-in PostgreSQL. The API enforces admin roles, CSRF for authenticated mutations, single-use setup and
-invitations, session revocation, and persisted login throttling. CLI recovery requires local
-instance access. SQLite unit tests cover account flows, and disposable PostgreSQL upgrades cover
-fresh setup and preservation of populated Drive ownership. The existing installation was upgraded
-through `./scripts/ark up` and checked through the loopback web proxy.
-
-## Phase 8: Version 0.9 Local Storage
-
-Status: implemented; Fedora with SELinux-confined Docker still needs independent validation.
-Make files on the Ark host usable from a signed-in browser without a Google
-account. Local Files is the default file workspace; keep the existing metadata-only Google Drive
-connection and Drive Workspace as an optional, independent integration. No automatic import,
-sync, or transfer between local files and Drive is implied.
-
-### Product Contract and Trust Boundary
-
-- Give each local account a private Ark-managed directory, identified by its immutable user ID
-  rather than its username. Permit the instance owner to configure one or more additional,
-  **explicitly mounted** host directories and assign each existing-directory root to one account
-  through owner-operated host configuration or a local CLI. Show only that account's authorized
-  roots and contents. Prevent overlapping assignments/roots and implicit sharing; an app admin
-  must not gain access to another account's files simply by changing an assignment in the UI.
-  Renaming, disabling, or deleting an account must not silently reassign or delete its files.
-  Define a deliberate owner-only recovery/reassignment process.
-- Configuration determines which host directories enter the container; the browser and API cannot
-  mount new host paths, accept an arbitrary absolute host path, or widen access by editing an
-  assignment. The owner configures mounts and assignments on the host and recreates the stack.
-  The initial release supports non-root directories, not `/` or arbitrary host-wide file
-  management. A full-host mode needs a separate privilege and authorization design, not a hidden
-  escape hatch in this phase.
-- File bytes stay in the explicitly configured host directories, never in PostgreSQL or the
-  source-code bind mount. PostgreSQL stores only minimal control-plane metadata, including
-  assignments if needed; the host manifest remains authoritative for mounts and their owners.
-  Local listings reflect filesystem state rather than a Drive-style catalog; a missing mount, an
-  unreadable directory, or an out-of-band host edit must have an honest unavailable or changed
-  state. `ARK_SYSTEM_STORAGE_PATH` continues to describe runtime telemetry and must not be
-  repurposed as a user-file root or claimed as exact local-content capacity.
-- Keep same-origin `/api/*`, authenticated sessions, CSRF on mutations, loopback web binding, and
-  Tailscale Serve for private remote access. File-content routes are a new, narrower capability;
-  the Google Drive OAuth scope, content prohibition, and existing Drive routes remain unchanged.
-  Update the earlier Google-only storage statements in `AGENTS.md`, architecture, security,
-  development, product, and user documentation when implementing this phase. Continue to prohibit
-  host-root, Docker-socket, `/proc`, and privileged mounts for telemetry.
-
-### Deployment Audit: Non-Root Docker and Fedora SELinux
-
-1. **Default location and mount contract:** Choose an explicit Ark-owned host data directory
-   outside the repository, PostgreSQL volume, and application source. Provide a documented
-   first-run provisioning/preflight step before `./scripts/ark up`; fail closed if the directory or
-   any configured root is absent, is a symlink, or is not mounted at its expected in-container
-   location. Do not let Compose silently create an empty root-owned directory at a mistyped path
-   or let the API write to its container overlay when a mount is missing. Keep data persistent
-   across `up`, `restart`, and `down`. Use an explicit owner-maintained Compose mount declaration
-   for additional directories and a validated, stable root-ID-to-mount mapping; changing a mount
-   must not silently point an existing account assignment at different host data.
-2. **Unix permissions and rootless UID mapping:** The API image runs as the non-root `arkcloud`
-   user; a bind mount does not change host ownership or confer host access. Document and test the
-   container user's *effective host UID/GID* with the supported rootless Docker setup, including
-   the daemon's user-namespace mapping. Provision the Ark-owned directory with the right owner,
-   group, or narrowly scoped ACL and verify read/write/create/rename/delete from inside the
-   running API container. Existing host directories may belong to another user or require search
-   permission on parent directories; expose a clear permission error and an owner-operated
-   remediation path. Do not default to root containers, privileged mode, host user namespaces,
-   blanket `chmod 777`, or broad ownership changes to make a bind mount work.
-3. **SELinux under Fedora enforcing mode:** Verify both DAC/ACL permissions **and** SELinux file
-   labels in a real Fedora enforcing/rootless Compose smoke test. A private `:Z` bind label can be
-   appropriate for a new Ark-owned directory used by one container, but Docker relabels host
-   files recursively: do not apply `:Z` or `:z` automatically to an existing Documents/Photos
-   tree, another container's data, a home directory, or a system path. `:z` shares a container
-   label; it is not a harmless read-only switch. Document an explicit, reviewed labeling or
-   staging approach for each existing mount, check host-side access still works, and fail with
-   actionable diagnostics rather than disabling SELinux (`setenforce 0` or `--privileged`). If
-   sharing a tree cannot be made safe with its existing use and labels, require a dedicated
-   directory or a copy into Ark-managed storage instead of claiming support for that mount.
-4. **Mount and availability checks:** Verify the effective mount, expected root identity, access
-   mode, and write capability at startup and before mutations; distinguish missing mounts,
-   read-only mounts, disk-full errors, and disconnected underlying drives where detectable in
-   normalized API/UI messages without exposing unrelated host paths. An `EACCES` alone cannot prove
-   whether Unix permissions or SELinux caused denial; offer diagnostics for both without guessing.
-   Define how to handle removable or separately mounted disks disappearing mid-request. Never fall
-   back to writing inside the container, and do not label filesystem usage as an account quota
-   unless one is enforced.
-
-### Implementation Checklist
-
-1. **Control plane and lifecycle:** Define stable root IDs, host-configured mount targets, access
-   mode, and owner-operated account assignments; validate canonical configured paths, uniqueness,
-   overlap, mount identity, and changes on restart. Add an Alembic revision only if
-   assignment/control-plane state is persisted in PostgreSQL; keep the host manifest authoritative
-   for mounted roots and ownership. Per-account directories are created safely and lazily beneath
-   the Ark-owned root.
-   Establish explicit behavior for username changes, disabled accounts, account deletion, DB
-   reset/restore, and assignments to missing roots: retain file bytes, revoke access, and require
-   owner review before reassignment. Avoid orphaned-file surprises and accidental reuse of an
-   old account's directory by a new account.
-2. **Filesystem service and API:** Implement authenticated, account-scoped, paginated/bounded
-   listing and metadata, folder creation, streaming upload/download, rename, within-root move,
-   and confirmed deletion. Use opaque root IDs and relative item identifiers, never client-supplied
-   host absolute paths. For every operation, enforce authorization and root confinement using
-   descriptor-relative filesystem operations (or an equivalently race-safe approach), including
-   during rename and delete; string prefix checks and `Path.resolve()` alone are insufficient
-   when the host can change entries concurrently. Reject traversal, symlinks, special files,
-   directory mount crossings, and unsafe hard-link cases rather than dereferencing into other
-   host data. Define filename, hidden-file, depth, listing-size, and file-size limits; return
-   predictable conflicts for existing targets and changed files. Reject cross-root moves in v0.9
-   instead of silently copying/deleting across devices or permissions boundaries.
-3. **Transfers and destructive actions:** Stream uploads to a bounded temporary file on the
-   destination filesystem, use exclusive creation/atomic finalization and cleanup on cancellation,
-   and never present a partial upload as complete. Bound concurrency and request size, report
-   progress/failure in the browser, and handle disk-full and permission changes without corrupting
-   an existing file. Stream downloads with safe content-disposition and MIME handling; do not
-   render untrusted host content as same-origin active HTML. Make overwrite and recursive deletion
-   rules explicit, require confirmation for destructive actions, and decide/document whether
-   deletion is permanent or recoverable before enabling it. Do not delete files automatically
-   during account deletion, root unmounting, or DB reset. Avoid logging file contents, tokens,
-   or unnecessary full filesystem paths; record bounded audit events for writes and deletions.
-4. **UI and integration:** Add an accessible Local Files view as the primary file destination,
-   with location switching, breadcrumbs, a responsive file list, transfers, and file actions.
-   Make Google Drive visibly optional and separately accessible, including its disconnected and
-   error states. Show an empty/setup state when local storage is unavailable; do not block the
-   dashboard or Drive on a failed local root. Expose normalized local-storage availability and
-   per-root usage only when its source and meaning are accurate. Keep local and Drive search and
-   links distinct until a deliberate cross-provider contract exists.
-5. **Operations and documentation:** Document Fedora/rootless setup and troubleshooting,
-   permissions and SELinux labeling decisions, safe mount configuration, multi-user assignments,
-   Tailscale/HTTPS settings for remote file transfer, backup and tested restore of **both** host
-   file trees and PostgreSQL assignments, and which actions preserve or remove file bytes. Update
-   `./scripts/ark reset-data --confirm` help and warnings: it currently removes named volumes and
-   accounts, whereas bind-mounted files survive and become inaccessible without restored account
-   IDs/assignments. Keep local-file roots out of source control and PostgreSQL backups. Review
-   deployment hardening for a web application now serving host file content.
-
-### Acceptance and Verification
-
-- Fresh Fedora enforcing/rootless Compose install with **no Google credentials**: provision local
-  storage, bootstrap an admin, upload/download/browse/organize/delete from a second device through
-  Tailscale Serve, restart the stack, and verify files remain on the host. Confirm the API stays
-  non-root, the web port remains loopback-only, and no Google flow is required.
-- Mount an existing, explicitly approved directory without relabeling a user's unrelated home
-  tree; assign it to one account through the owner-only workflow. Check both SELinux and Unix
-  permissions, host-side usability, and read/write behavior from inside the container. A second
-  account must not list, download, mutate, or infer that directory's contents, including with
-  guessed root IDs or URLs.
-- Exercise misconfigured or disappearing mounts, read-only roots, mislabeled directories, UID/GID
-  mismatch, full disks, large transfers, interruption, concurrent rename/delete, hostile paths,
-  symlinks/hard links, and external host edits. The API must fail closed without writing to the
-  overlay, overwriting unrelated data, or crossing an assigned root. Verify disabled/deleted
-  accounts lose access while their host files remain recoverable by the instance owner.
-- Keep the existing Google Drive connection, catalog, and Drive Workspace working unchanged for
-  connected users; test local-only, Drive-only, both configured, and one-provider-failed states.
-  Run backend pytest/Ruff and frontend test/lint/format/build checks, PostgreSQL migration tests,
-  and Fedora enforcing Compose smoke tests. SQLite-only tests and a permissive-SELinux CI runner
-  cannot establish host-mount safety.
-
-### Out Of Scope
-
-- Browsing or modifying `/` and arbitrary host paths, privileged host agents, Docker-socket
-  access, and process or system configuration management.
-- Sharing a root across accounts, public file links, ACL editing in the web UI, quotas without
-  enforcement, file versioning, sync clients, automatic Drive import/export, and cross-root moves.
-- Treating an exposed host directory as a sandbox when other host processes can modify it; v0.9
-  must reject unsupported file types and race-prone operations rather than imply universal safety.
-
-Implementation: owner-only `scripts/storage.py` creates a new private root with a mapped-UID ACL,
-and registers assigned existing roots without changing their labels or ownership. Ignored
-`compose.storage.yaml` and `.ark-storage/` carry explicit mounts and the authoritative manifest;
-`./scripts/ark storage check` probes the live non-root API. The API exposes authenticated
-`/storage` routes for bounded listings, streaming uploads/downloads, create, rename, within-root
-move, and confirmed permanent deletion of files/empty folders. The Local Files page is independent
-of the optional Drive Workspace. No Alembic revision was required because root assignments live in
-the host-owned manifest rather than PostgreSQL. Backend, frontend, host-tool, and live rootless
-Compose/proxy checks include real upload/download and host-file persistence. The checked Fedora
-host was enforcing but Docker's `SecurityOptions` did not include SELinux; a separate smoke test
-with **SELinux-confined** rootless Docker and real existing-root policy is still required before
-claiming that deployment combination is verified.
-
-## Later Direction
-
-1. Immich status and metadata integration rather than custom photo management, once local or NAS
-   storage is available and useful.
-2. Backup monitoring with documented and tested restoration.
-3. Safe Vaultwarden or Bitwarden metadata only, never custom password cryptography.
-4. Extend unified search to supported integrations while excluding secrets.
-5. Normalized activity and notifications across integrations.
-6. Observational container and service health.
-7. Focused notes or bookmarks where they support the control-plane purpose.
-8. Mobile and PWA improvements.
-9. Broader threat modeling, audit events, MFA/passkeys, and production hardening beyond the
-   local-account protections in Phase 7.
-
-Kubernetes, Kafka, Elasticsearch, Redis, native mobile applications, public exposure, and
-destructive infrastructure controls remain non-goals until a concrete requirement justifies
-them.
+Ark Cloud focuses on files that stay on the owner's server and remain usable from authorized
+remote devices. New work should strengthen that local-storage and private-access experience.
+
+## Delivered Foundation
+
+- React/TypeScript browser client, FastAPI control plane, and PostgreSQL persistence.
+- Reproducible Compose lifecycle, reviewed Alembic upgrades, and loopback-only host exposure.
+- Local accounts, expiring setup codes and invitations, administrator/member roles, and
+  terminal-only account recovery.
+- Argon2id passwords, session-bound CSRF, persisted login throttling, and session revocation.
+- Dashboard health, runtime System Information, normalized Tailscale devices, and honest
+  partial-failure states.
+- Responsive named navigation, keyboard access, light/dark and high-contrast appearance,
+  bundled fonts, and reduced-motion support.
+
+## Local Files And Storage Administration
+
+Status: implemented. Local Files is the file workspace.
+
+- Private account folders use immutable user IDs. Shared locations have explicit per-account
+  No access, Read-only, or Read & write grants. Administrator status does not bypass private
+  folder confinement.
+- Administration connects new or existing locations within owner-approved host areas, prepares
+  narrow filesystem access, verifies the API's mounts, and repairs the same registration.
+- Location management separates Connection, Access, Configuration, and Activity. Upload policy,
+  diagnostics, and job history have dedicated views.
+- Browsing, streaming uploads/downloads, folder creation, rename, within-location moves, and
+  confirmed deletion of files or empty folders operate directly on the host filesystem.
+- Descriptor-relative Linux confinement rejects symlinks, nested mounts, traversal, unsupported
+  file types, and unsafe hard-link cases. Publication is atomic and does not clobber targets.
+- Account starting-folder preferences are explicit; status reads never create private folders.
+- Missing or deleted host locations become unavailable and do not block core startup. Files
+  remain on the host when access is revoked, an account is deleted, or a location is disconnected.
+
+The host manifest remains the mount authority. PostgreSQL stores control-plane policy and jobs,
+never file bodies. Backups must preserve both host content and immutable account/registration IDs.
+SELinux-confined rootless Docker with real existing-directory policies still needs independent
+validation; checks on a Docker daemon without SELinux confinement do not establish that support.
+
+## UI-Managed Private Remote Access
+
+Status: implemented; fresh live-tailnet acceptance remains to be verified.
+
+Administration → Tailscale accepts an API key, saves it encrypted, creates a single-use auth key,
+registers a dedicated userspace node, and enables private HTTPS Serve. Tailscale's required HTTPS
+approval is presented as a vendor link when needed; Ark resumes automatically afterward.
+No host Tailscale installation or host networking privileges are required.
+
+Private-access disable preserves credentials and node identity; disconnect removes saved
+credentials and logs out the managed node. Local loopback access remains available. API inventory
+status is independent of Serve, and API-key expiry does not inherently stop an already-joined node.
+Independent host Serve endpoints remain outside the managed node's control.
+
+PostgreSQL and the `tailscale_secrets`, `tailscale_controller`, and `tailscale_state` volumes form
+the recovery set. Live acceptance should cover registration, required approval, HTTPS reachability,
+large transfers, restart recovery, disable/re-enable, disconnect, and backup restoration.
+
+## Next Priorities
+
+1. Test large and interrupted transfers, disappearing mounts, permission changes, disk-full
+   errors, and concurrent host edits on supported deployment configurations.
+2. Exercise and document restoration of host files, accounts, storage grants, and managed
+   Tailscale identity together.
+3. Improve mobile file workflows and evaluate PWA behavior against real usage.
+4. Review production packaging, strict security headers, audit coverage, backup encryption,
+   dependency scanning, MFA/passkeys, and multi-user authorization.
+5. Consider a narrow authenticated host telemetry agent when exact host measurements justify
+   its separate privileges, freshness contract, and failure handling.
+
+## Boundaries
+
+Public exposure, arbitrary host-root access, privileged API containers, Docker-socket mounts,
+process-control APIs, unrestricted ACL editing, cross-location moves, implicit overwrites, and
+automatic destructive cleanup remain outside the supported feature set. Quotas, file versioning,
+sync clients, notifications, and new integrations need concrete requirements and a reviewed design.
+
+Kubernetes, Kafka, Elasticsearch, Redis, and microservices are not required by the current workload.

@@ -62,7 +62,7 @@ instance owner's terminal:
 
 Enter the code on <http://127.0.0.1:5173> and choose the first administrator username and
 password (at least 12 characters). The code expires after 15 minutes; rerun the command to
-replace an unused/expired code. Only an instance with no accounts **and no legacy Drive data** can
+replace an unused/expired code. Only an instance with no accounts can
 issue a code. No default login exists and the setup page closes after the first account.
 
 Users change their username or password under **Account**. They must supply their current
@@ -71,8 +71,8 @@ An administrator can create an invitation in **Administration → Users** and sh
 code privately. The invitee selects **Redeem invitation** on the sign-in screen to choose a
 password. Invitations expire after 24 hours; an admin can issue a replacement code. Admins can
 change roles, disable/enable accounts, or delete an account with an explicit username and admin
-password confirmation. Deletion permanently removes that user's Drive connection and locally
-indexed metadata, but not Drive files. The last active administrator cannot be removed.
+password confirmation. Deletion removes that user's account and storage permissions while
+preserving files on the host. The last active administrator cannot be removed.
 
 For local recovery when no admin can log in, use `./scripts/ark reset-password USERNAME` or
 `./scripts/ark recover-admin USERNAME`. Both prompt for a new password without showing it in
@@ -81,8 +81,8 @@ access to the running stack. Recovery cannot restore a deleted database volume; 
 
 Existing single-user installs: **keep** `ARK_AUTH_USERNAME` and `ARK_AUTH_PASSWORD_HASH` in the
 ignored `.env` for the first `./scripts/ark up` on v0.7. The migration imports that existing
-Argon2id hash, assigns a stable account ID, moves the user's Drive control-plane data, and
-invalidates old sessions. Log in with the same password, confirm Drive Workspace data is present,
+Argon2id hash, assigns a stable account ID, and invalidates old sessions. Log in with the same
+password and confirm the imported account is present,
 then remove those two legacy values from `.env` if desired. Future username/password changes
 are only made in the application. Do not delete the PostgreSQL volume during an upgrade.
 
@@ -253,45 +253,18 @@ implicitly at application startup.
 
 These URLs pass through Vite because the API intentionally has no host port.
 
-## Google Drive Setup
+## Local Storage
 
-Local storage setup and Fedora mount requirements are documented in [Local storage](local-storage.md).
-Google Drive is an optional metadata integration. The integration requests only
-the `https://www.googleapis.com/auth/drive.metadata.readonly` scope for normalized account/quota status
-and selected metadata for files owned by the connected account in My Drive. Ark Cloud does not
-upload, download, export, change, or proxy Drive file content. PostgreSQL stores sessions, encrypted
-tokens, synchronization state, and the derived metadata search index rather than user file content.
+Provisioning, Fedora mount requirements, file-operation limits, and recovery are documented in
+[Local storage](local-storage.md). File content remains in owner-approved host directories;
+PostgreSQL stores only control-plane state. The managed Tailscale gateway automatically marks
+remote HTTPS session cookies Secure while local loopback HTTP remains available for recovery.
 
-Generate the Drive token-encryption key inside the API image (after the first stack build):
+## Retired Integration Cleanup
 
-```bash
-docker compose run --rm --no-deps api python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
-```
-
-Use the generated value for `ARK_GOOGLE_TOKEN_ENCRYPTION_KEY` in ignored `.env`. The OAuth client
-secret and Fernet key remain only in `.env`. The Google refresh token is encrypted before PostgreSQL
-storage; it is not an environment variable.
-
-1. In Google Cloud, create or select a project, configure the OAuth consent screen, and enable the
-   Google Drive API.
-2. Create an OAuth client of type **Web application**. Add the exact redirect URI from
-   `ARK_GOOGLE_REDIRECT_URI`; the default is
-   `http://127.0.0.1:5173/api/integrations/google-drive/oauth/callback`.
-3. If the consent screen is in Testing, add the Google account that will connect Drive as a test
-   user.
-4. Configure [local sign-in](#local-sign-in), then set `ARK_GOOGLE_CLIENT_ID`,
-   `ARK_GOOGLE_CLIENT_SECRET`, and `ARK_GOOGLE_TOKEN_ENCRYPTION_KEY` in ignored `.env`.
-   Retain the redirect URI exactly as registered in Google Cloud.
-5. Run `./scripts/ark up`, sign in locally, and select **Connect Google Drive** in the dashboard.
-
-The OAuth callback runs the initial My Drive catalog synchronization. If that metadata sync fails,
-the Drive connection remains available and **Drive Workspace** offers **Retry sync**. Later
-syncs use Google's changes feed and its persisted page token instead of enumerating the full catalog.
-Search matches normalized filenames and opens results directly in Google Drive. Shared drives and
-scheduled/background synchronization are not supported.
-
-Automated tests use local response doubles and must never use a real Google account.
-
-For local HTTP development retain `ARK_COOKIE_SECURE=false`. Set it to `true` before using an HTTPS
-reverse proxy. Google Drive remains the source of truth for Drive files: Ark Cloud exposes normalized
-connection, quota, catalog, and search data and opens Drive for all file operations.
+The removal migration permanently drops the former Google Drive credentials, cached catalog,
+workspace preferences, and synchronization history, and removes OAuth state from sessions.
+It preserves local accounts, sessions, host-storage configuration, grants, and Tailscale state.
+Historical migration revisions remain in the upgrade chain so existing installations can upgrade.
+The retired integration's routes and environment settings are no longer supported. Restoring its
+deleted database data requires a pre-removal backup; it cannot be recovered by downgrading.

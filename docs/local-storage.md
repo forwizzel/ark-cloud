@@ -1,7 +1,7 @@
 # Local storage (v0.9)
 
-Local Files makes your host's files available through your Ark account. Google Drive remains an
-optional metadata workspace. Files never pass through Google or live in PostgreSQL.
+Local Files makes your host's files available through your Ark account, locally or remotely
+through Tailscale Serve. File content stays on the host and never lives in PostgreSQL.
 
 ## Configure storage in Ark Cloud
 
@@ -324,4 +324,5 @@ For a deliberate transfer to a new account after losing the database, the owner 
 recipient UUID, stop Ark, and move the old managed UUID directory to the new UUID **only if the
 new target is absent**, preserving metadata. For an assigned root, explicitly remove/re-add its
 registration with the reviewed new UUID. Never infer ownership from a matching username. Resume
-Ark and run `storage check`. Google credentials/tokens retain their existing recovery rules.
+Ark and run `storage check`. Restore the managed Tailscale secret and identity volumes alongside
+PostgreSQL when recovering private remote access.

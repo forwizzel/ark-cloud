@@ -8,10 +8,8 @@ from fastapi.responses import JSONResponse
 
 from app.api.auth import router as auth_router
 from app.api.dashboard import router as dashboard_router
-from app.api.google_drive import router as google_drive_router
 from app.api.health import router as health_router
 from app.api.local_storage import router as local_storage_router
-from app.api.search import router as search_router
 from app.api.storage_admin import router as storage_admin_router
 from app.api.tailscale_admin import router as tailscale_admin_router
 from app.core.config import get_settings
@@ -47,8 +45,6 @@ def create_app() -> FastAPI:
     application.include_router(health_router)
     application.include_router(dashboard_router)
     application.include_router(auth_router)
-    application.include_router(google_drive_router)
-    application.include_router(search_router)
     application.include_router(storage_admin_router)
     application.include_router(local_storage_router)
     application.include_router(tailscale_admin_router)
