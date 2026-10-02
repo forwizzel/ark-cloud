@@ -1,182 +1,192 @@
 # Ark Cloud
 
-Ark Cloud is a self-hosted personal cloud for accessing files on your host and reviewing its
-systems and services from a private browser session.
+**Your files. Your server. Private access from wherever you are.**
 
-Version 0.9 focuses on local host storage with private remote access, local account management,
-infrastructure status, detailed system information, and an accessible interface:
+Ark Cloud is a self-hosted personal cloud with a browser-based file workspace, local accounts,
+and optional private remote access through Tailscale. Keep file content on your own Linux
+server, choose who can access it, and manage storage and accounts from one interface.
 
-- React 19, TypeScript, and Vite web client
-- FastAPI and SQLAlchemy API
-- PostgreSQL 18 database
-- Alembic migration baseline
-- Docker Compose development environment
-- Database-aware platform health and structured application logs
-- Normalized integration abstraction
-- Non-root CPU, memory, storage, uptime, OS, and kernel telemetry
-- Optional UI-managed dedicated Tailscale node, private Serve HTTPS, and device inventory
-- Responsive infrastructure dashboard with partial-failure states
-- Backend and frontend tests, linting, formatting, and CI smoke tests
-- Local session authentication with account-scoped storage access
-- In-app local username/password changes, administrator-managed invitations, and local recovery
-- Private local account folders and owner-assigned existing host directories
-- Administrator UI for connecting host folders, assignments, access checks, base relocation and upload policy
-- Explicit, account-persisted Local Files starting-folder preferences
-- Local browsing, streaming uploads/downloads, folders, rename, within-location moves, and deletion
-- Dedicated System Information page with sensor, compute, identity, and storage details scoped to
-  the API runtime view
-- Light/dark and high-contrast appearance controls, with browser-local preferences
+**v1.0 · MVP** brings together local file management, private and shared storage, UI-managed
+Tailscale access, and a dashboard for service health and runtime system information.
 
-## Quick Start
+[Get started](#get-started) · [Features](#features) · [Remote access](#private-remote-access) ·
+[Documentation](#documentation) · [Report an issue](https://github.com/forwizzel/ark-cloud/issues)
 
-Requirements: Docker Engine with Docker Compose.
+## Features
+
+- **A file workspace in your browser.** Browse, upload, download, create folders, rename,
+  move items within a location, and delete files or empty folders. Choose a starting folder
+  that is saved to your account.
+- **Private folders and shared locations.** Give each account an isolated private folder,
+  or share a host directory with selected users. Set access to **No access**, **Read-only**,
+  or **Read & write** per account.
+- **Storage administration without leaving the app.** Connect new or existing host folders
+  within owner-approved areas, manage access, adjust the upload limit, inspect activity,
+  and repair failed connections.
+- **Private HTTPS access through Tailscale.** Connect from Administration to provision a
+  dedicated Tailscale node and Serve endpoint. No host Tailscale installation is required.
+- **Local accounts you control.** Create the first administrator with a one-time setup code,
+  invite users, manage roles, and change usernames and passwords. Terminal recovery is available
+  if an administrator cannot sign in.
+- **Service health and system information.** Check database and integration status, view
+  Tailscale devices, and inspect CPU, memory, storage, uptime, and available sensor metadata.
+- **An adaptable interface.** Responsive layouts, keyboard access, light and dark themes,
+  high-contrast options, and reduced-motion support.
+
+File content lives in host directories, not PostgreSQL. The database stores accounts,
+permissions, settings, and other control-plane state.
+
+## Get started
+
+### Requirements
+
+Use a Linux host with:
+
+- Git, Bash, and `curl`.
+- Docker Engine and Docker Compose v2, with access to a local Docker daemon.
+- Python 3.10+ for the host storage helpers.
+- `setfacl` from your distribution's `acl` package and systemd user services for automatic
+  storage-manager setup.
+
+The storage manager runs as the deployment owner and prepares access only within approved
+host areas. The API container remains unprivileged. For hosts without systemd, see the
+[manual storage-manager setup](docs/local-storage.md).
+
+### 1. Clone and configure
 
 ```bash
+git clone https://github.com/forwizzel/ark-cloud.git
+cd ark-cloud
 cp .env.example .env
+```
+
+Edit `.env` before starting:
+
+- Replace the example password in **both** `POSTGRES_PASSWORD` and `ARK_DATABASE_URL` with
+  the same randomly generated password. URL-encode reserved characters in the URL's password.
+- Keep `ARK_BIND_ADDRESS=127.0.0.1`.
+- Leave `ARK_TAILSCALE_API_KEY` blank; remote access is configured in the app.
+- Optionally adjust `ARK_SYSTEM_HOSTNAME` and `ARK_SYSTEM_OS_NAME` to label your instance.
+
+### 2. Start Ark Cloud
+
+```bash
 ./scripts/ark up
+./scripts/ark bootstrap
 ```
 
-Before the first start, replace the example database password in both
-`POSTGRES_PASSWORD` and `ARK_DATABASE_URL`. The two values must match. After `./scripts/ark up`,
-run `./scripts/ark bootstrap` to receive a 15-minute setup code. Open
-<http://127.0.0.1:5173> and create the first administrator in the browser using that code.
-Username and password changes are available under **Account**; admins invite and manage local
-users under **Administration → Users**. See [Local accounts](docs/development.md#local-accounts) for upgrading and recovery.
-Tailscale is optional; local access works without it.
+The first command builds the images, applies database migrations, starts the services, and
+waits for health checks. It also sets up the owner-run storage helper and a dedicated
+`~/Ark-Locations` area for additional storage locations.
 
-After creating your administrator, Ark opens the **Administration** landing page. Open **Storage →
-Add location**, choose a new or existing server folder, its private/shared purpose and accounts,
-then press **Connect**. Ark configures narrow filesystem access and verifies the running API
-automatically. Normal deployment startup enables the owner-run helper and provisions a dedicated
-`~/Ark-Locations` area for additional locations; existing `Ark-Files` and registered paths are preserved.
-Locations, access/configuration/activity, Settings, Diagnostics and Users occupy separate pages.
+The second command prints a one-time setup code that expires after 15 minutes. Open
+**<http://127.0.0.1:5173> on the server**, enter the code, and create your first administrator
+account with a password of at least 12 characters. There is no default login.
 
-Linux, Python 3.10+, a local Docker daemon, systemd user services and `setfacl` (Fedora's `acl`
-package) are needed. The helper runs as the deployment owner; the API remains unprivileged.
-Without systemd, use `storage setup --no-install` and supervise `storage manager run` as that owner.
-Failed connections have a **Repair connection** action that resumes the same registration and
-re-evaluates permissions. Selecting a registered directory never creates a duplicate location.
-Set the maximum file size in Administration without restarting. **Set as starting folder** in
-Local Files is a separate account preference; opening a location does not change it.
+### 3. Connect your storage
 
-Each location offers **Manage → Access**: choose **No access**, **Read-only**, or **Read & write**
-for accounts by username. `Ark-Files` keeps each account's private folder isolated. To share the
-same files with selected accounts, add a separate **Shared files** location and select its users.
-Existing access is preserved during upgrade; later accounts require an explicit grant. Permission
-changes take effect without restarting containers and preserve files when access is revoked.
+After setup, open **Administration → Storage → Add location**:
 
-The retained storage CLI remains available for owner recovery and installations without a manager;
-see [Local storage](docs/local-storage.md) for its reference and advanced host details.
+1. Choose a new or existing server folder within an owner-approved area.
+2. Select private or shared storage and the accounts that should have access.
+3. Press **Connect**. Ark prepares filesystem access and checks the running API's mounts.
 
-`./scripts/ark up` builds and recreates the complete stack, applies migrations, and waits for
-all health checks. It preserves named volumes, so changes to `.env` are applied without manually
-choosing which containers to recreate. Use `./scripts/ark restart` for a fresh full restart and
-`./scripts/ark down` for a safe shutdown.
+Open **Local Files** to start working with your files. Use **Set as starting folder** to save
+your preferred opening location. Administrators can invite more users under
+**Administration → Users** and adjust location permissions under **Manage → Access**.
 
-```bash
-./scripts/ark status
-./scripts/ark health
-./scripts/ark logs api
-```
+For existing directories, SELinux, rootless Docker, custom approved areas, and recovery,
+see [Local storage](docs/local-storage.md).
 
-The lifecycle commands always force the web service onto loopback. Use UI-managed Tailscale Serve for private
-remote access. `./scripts/ark reset-data --confirm` is the only lifecycle helper that removes
-named volumes and permanently deletes local PostgreSQL data, managed Tailscale identity, and secrets.
+## Private remote access
 
-The only published port is `127.0.0.1:5173`. In the mapping
-`127.0.0.1:5173:5173`, the first address and port belong to Ark and the final port belongs
-to the web container. PostgreSQL and the API have no host port; the web development server
-proxies browser requests to them through Docker's private network.
+Local access works without Tailscale. To reach Ark from another device:
 
-For private remote access, open **Administration → Tailscale**, enter a Tailscale API key,
-and press **Connect**. Default Compose runs a dedicated userspace Tailscale service; no host
-Tailscale installation or host networking privileges are needed. Ark creates its own node and
-configures private Serve HTTPS while `ARK_BIND_ADDRESS` stays `127.0.0.1`.
-Open the HTTPS URL shown in the UI from a device running the Tailscale app and signed in to
-an authorized Tailscale account. See [Configure Tailscale](#configure-tailscale) below.
+1. Create a Tailscale API key using an account with device-create rights in your tailnet.
+2. Open **Administration → Tailscale**, enter the key, and press **Connect**.
+3. Complete any Tailscale approval requested by the UI. Ark resumes setup automatically.
+4. Open the displayed HTTPS URL from a device running Tailscale and authorized by your
+   tailnet's access policy, then sign in with your Ark Cloud account.
 
-## Verify Health
+Ark stores the API credentials encrypted and manages its own userspace Tailscale node.
+Setup requires no `.env` edits, manual Serve commands, or stack restart.
 
-```bash
-curl http://127.0.0.1:5173/api/health
-./scripts/ark status
-```
+- **Disable remote access** stops the managed HTTPS endpoint while retaining credentials
+  and node identity for re-enabling it later.
+- **Disconnect** removes saved credentials and logs out the managed node.
+- Both preserve local access. An independently configured host Tailscale endpoint is managed
+  separately and is not stopped by these controls.
 
-Expected response:
+See [Tailscale setup and recovery](docs/development.md#use-tailscale-for-remote-access) for
+credential expiry, existing configurations, and backups.
 
-```json
-{
-  "status": "healthy",
-  "service": "ark-cloud-api",
-  "database": "connected"
-}
-```
+## Deployment scope
 
-OpenAPI JSON is available through the proxy at
-<http://127.0.0.1:5173/api/openapi.json>, and interactive API documentation is at
-<http://127.0.0.1:5173/api/docs>.
+**The source repository can be public; your running Ark Cloud instance should remain private.**
+v1.0 is an MVP for localhost and authorized Tailscale access. Public Internet hosting is outside
+the supported deployment model. Ark uses private Tailscale Serve, not public Tailscale Funnel.
 
-Authenticated control-plane endpoints include:
+The supplied Compose stack currently runs Vite and a reload-enabled API. The v1.0 milestone
+marks the MVP feature set; it does not establish hardened public-hosting support. The only
+published host port defaults to `127.0.0.1:5173`; the API and PostgreSQL have no host ports.
 
-- `GET /api/dashboard`: aggregated data used by the web dashboard
-- `GET /api/system`: normalized runtime system metrics
-- `GET /api/system/information`: detailed runtime information with per-section scope and availability
-- `GET /api/integrations`: health for every configured adapter
-- `GET /api/tailscale/devices`: normalized Tailscale device status
-- `GET /api/storage/roots`: authorized local storage locations
-- `GET /api/storage/{id}/items`: bounded local directory listing
-- `/api/storage/{id}/*`: authenticated local file operations
-- `GET /api/admin/storage`: administrator storage configuration and job status
-- `GET /api/admin/tailscale`: administrator private-access configuration and status
+Storage access is enforced by the application within owner-provisioned mounts. Administrators
+do not automatically bypass file grants or another account's private-folder boundary. Revoking
+access, deleting an account, or disconnecting a location preserves the files on the host.
 
-## Configure Tailscale
+System metrics describe the **unprivileged API runtime view**, not exact host or cgroup
+telemetry. Some kernel readings can reflect host-wide information; storage readings can reflect
+the container filesystem. GPU and sensor details appear only when available. Telemetry does
+not require host-root mounts, Docker socket access, or privileged containers.
 
-Tailscale is optional; local access works without a connection.
+Read [Security](docs/security.md) for trust boundaries and production-hardening considerations,
+and [Roadmap](docs/roadmap.md) for validation work, planned improvements, and feature boundaries.
 
-1. Create an API key in the Tailscale admin console using an account with device-create rights
-   in the intended tailnet.
-2. Open **Administration → Tailscale**, enter the API key, and press **Connect**. Ark validates
-   the credentials, persists them encrypted, mints a one-use auth key, joins a dedicated node,
-   and configures Tailscale Serve HTTPS automatically. Saving needs no `.env` edits, shell
-   commands, or stack restart.
-3. If a tailnet requirement needs approval, follow the HTTPS Tailscale approval link shown in
-   the UI. Ark resumes automatically after approval. No manual auth-key creation or Serve
-   command is required.
-4. Open the displayed HTTPS address from an authorized tailnet device. Clients still need
-   the Tailscale app and account login, followed by their Ark Cloud login. Serve is private;
-   Ark does not enable Funnel or public access.
+## Running your instance
 
-**Disable remote access** stops the managed Serve endpoint while retaining the connection,
-credentials, and node identity. **Disconnect** removes the saved credentials and logs out
-the managed node; it also explicitly disables legacy environment fallback. Both leave
-<http://127.0.0.1:5173> available locally.
+| Command | Purpose |
+| --- | --- |
+| `./scripts/ark up` | Build and recreate the stack, apply migrations, and wait for health checks |
+| `./scripts/ark status` | Show service status |
+| `./scripts/ark health` | Check API health through the browser-facing proxy |
+| `./scripts/ark logs api` | Follow API logs |
+| `./scripts/ark restart` | Perform a fresh full restart while preserving volumes |
+| `./scripts/ark down` | Stop and remove containers and networks while preserving volumes |
+| `./scripts/ark reset-password USERNAME` | Reset a local password using a hidden terminal prompt |
+| `./scripts/ark recover-admin USERNAME` | Restore administrator access from the owner's terminal |
 
-Existing `ARK_TAILSCALE_API_KEY` / `ARK_TAILSCALE_TAILNET` configuration remains a read-only
-inventory fallback until credentials are saved in the UI or an explicit Disconnect disables
-it. It does not provision a node. An API key's expiry can interrupt inventory or provisioning
-without disconnecting an already-joined node's Serve endpoint; replace the key in the UI.
+Normal lifecycle commands preserve database and Tailscale volumes. After updating the source
+or changing `.env`, run `./scripts/ark up` to rebuild and apply the changes.
 
-Existing host-installed Tailscale Serve is independent: Ark neither adopts nor removes it.
-An old manual host endpoint remains outside UI control until the owner retires it. See
-[migration and recovery](docs/development.md#use-tailscale-for-remote-access) for details,
-including backups of PostgreSQL and the `tailscale_secrets`, `tailscale_controller`, and
-`tailscale_state` named volumes.
+### Backups
 
-## Metric Scope
+Back up host file content together with the storage configuration and PostgreSQL state.
+Private folders are tied to immutable account IDs, so files alone are not a complete
+account-and-permissions backup.
 
-Ark Cloud reads metrics with `psutil` inside the unprivileged API container and labels them
-`api-runtime-view`. The dedicated **System Information** page separates configured identity
-labels, kernel views, configured-path storage, optional GPU detection, and temperatures labeled
-by sensor purpose with their original identifiers shown as context. GPU models may be visible
-through DRM and NVIDIA driver metadata even without device access; missing GPUs or sensors show
-as unavailable. CPU, memory, and uptime can reflect host-global kernel data, while storage can
-reflect the container overlay or backing filesystem. These signals are not exact host or cgroup
-measurements. No Docker socket, host root, or privileged namespace is mounted. A narrow,
-authenticated local system agent is the planned path to exact host telemetry.
+For managed Tailscale recovery, also preserve the `tailscale_secrets`, `tailscale_controller`,
+and `tailscale_state` named volumes. Protect these backups as secrets. See
+[managed-node recovery](docs/development.md#back-up-and-recover-the-managed-node) and
+[local-storage recovery](docs/local-storage.md).
 
-## Quality Checks
+`./scripts/ark reset-data --confirm` permanently deletes Compose-managed named volumes,
+including accounts, database state, and managed Tailscale identity and secrets. It is a reset
+operation, not a routine shutdown; host file content remains on disk.
 
-With images built, run backend checks in the reproducible API container:
+## Development and contributions
+
+Ark Cloud uses React 19, TypeScript, and Vite for the client; Python 3.14, FastAPI, SQLAlchemy,
+and Alembic for the API; and PostgreSQL 18 for persistence. Compose provides the integrated
+environment with Node.js 22.
+
+For bugs or feature requests, [open an issue](https://github.com/forwizzel/ark-cloud/issues)
+with the expected behavior, what happened, and relevant reproduction steps. Remove credentials
+and private filenames from logs before sharing them. For code changes, start with the
+[development guide](docs/development.md) and [architecture](docs/architecture.md).
+
+### Quality checks
+
+With the API image built, run backend checks in the container:
 
 ```bash
 docker compose run --rm --no-deps -e ARK_DATABASE_URL=sqlite:// api pytest
@@ -184,35 +194,44 @@ docker compose run --rm --no-deps -e ARK_DATABASE_URL=sqlite:// api ruff check .
 docker compose run --rm --no-deps -e ARK_DATABASE_URL=sqlite:// api ruff format --check .
 ```
 
-Run frontend checks from `apps/web` after `npm install`:
+For frontend checks, run these commands from `apps/web` with Node.js 22:
 
 ```bash
+npm ci
 npm test
 npm run lint
 npm run format:check
 npm run build
 ```
 
-`--rm` removes a one-off check container after it exits. `--no-deps` avoids starting
-PostgreSQL because these unit tests use an isolated in-memory SQLite database; live
-PostgreSQL connectivity is verified by the running stack.
+Host storage helper checks use disposable directories without Docker:
 
-## Repository Layout
+```bash
+python3 -m unittest discover -s scripts -p 'test_storage*.py'
+```
+
+The API's interactive documentation is available at <http://127.0.0.1:5173/api/docs>, with
+OpenAPI JSON at <http://127.0.0.1:5173/api/openapi.json>. Browser requests use same-origin
+`/api/*` routes through the web proxy.
+
+### Repository layout
 
 ```text
 apps/api/          FastAPI application, migrations, and backend tests
 apps/web/          React application and frontend tests
-docs/              Architecture, development, roadmap, and security notes
-compose.yaml       Local service topology
-.env.example       Safe configuration template
+docs/              Deployment, architecture, storage, roadmap, and security guides
+graphics/          Ark Cloud branding assets
+scripts/           Stack lifecycle, account recovery, and host storage helpers
+compose.yaml       Integrated service topology
+.env.example       Configuration template
 ```
 
 ## Documentation
 
-- [Architecture](docs/architecture.md)
-- [Development](docs/development.md)
-- [Roadmap](docs/roadmap.md)
-- [Security](docs/security.md)
-
-Ark Cloud is currently development software with local accounts and account-scoped storage
-permissions. Keep it private and do not expose it to the public Internet.
+| Guide | What you'll find |
+| --- | --- |
+| [Development](docs/development.md) | Setup details, accounts, recovery, Tailscale, and checks |
+| [Local storage](docs/local-storage.md) | Host provisioning, access rules, SELinux, and storage recovery |
+| [Architecture](docs/architecture.md) | Components, data flow, and system boundaries |
+| [Security](docs/security.md) | Authentication, secrets, network exposure, and trust boundaries |
+| [Roadmap](docs/roadmap.md) | Delivered capabilities, next priorities, and supported scope |
