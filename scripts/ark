@@ -85,7 +85,7 @@ up() {
     storage_manager_service stop
     compose up --build --force-recreate --remove-orphans --detach --wait
     health
-    storage_manager_service start
+    python3 "$ROOT/scripts/storage_bootstrap.py"
 }
 
 down() {

@@ -22,6 +22,8 @@ import DriveWorkspace from "./DriveWorkspace";
 import LocalFiles, { LocalStorageSummary } from "./LocalFiles";
 import SystemInformationPage from "./SystemInformationPage";
 import StorageAdministration from "./StorageAdministration";
+import AdministrationTabs from "./AdministrationTabs";
+import { administrationRoute } from "./administrationRoutes";
 import arkCloudLogo from "../../../graphics/arkcloud-logo.svg?raw";
 
 type DashboardState =
@@ -59,11 +61,13 @@ function App() {
     | "users"
   >("overview");
   const [connectionNotice, setConnectionNotice] = useState(readOAuthNotice);
+  const [activeHash, setActiveHash] = useState(window.location.hash);
   const [signInNotice, setSignInNotice] = useState("");
 
   useEffect(() => {
     const onHashChange = () => {
       setActivePage(pageFromHash());
+      setActiveHash(window.location.hash);
       scrollPageToTop();
     };
     window.addEventListener("hashchange", onHashChange);
@@ -77,13 +81,17 @@ function App() {
       `${window.location.pathname}${window.location.search}`,
     );
     setActivePage("overview");
+    setActiveHash("");
     scrollPageToTop();
   };
 
   useEffect(() => {
     fetchSession()
       .then((session) => {
-        if (session.authenticated) showDashboard();
+        if (session.authenticated) {
+          setActivePage(pageFromHash());
+          setActiveHash(window.location.hash);
+        }
         setSessionState(
           session.authenticated
             ? { phase: "authenticated", session }
@@ -121,10 +129,14 @@ function App() {
   };
 
   const onLogin = (session: AuthSession, firstSetup = false) => {
-    showDashboard();
+    if (window.location.hash.startsWith("#administration") && !firstSetup) {
+      setActivePage(pageFromHash());
+      setActiveHash(window.location.hash);
+    } else showDashboard();
     if (firstSetup) {
       window.location.hash = "administration";
       setActivePage("administration");
+      setActiveHash("#administration");
     }
     setSignInNotice("");
     setSessionState({ phase: "authenticated", session });
@@ -317,43 +329,33 @@ function App() {
         )}
         {(activePage === "administration" || activePage === "users") &&
           (sessionState.session.role === "admin" ? (
-            <>
-              <nav
-                className="local-actions"
-                aria-label="Administration sections"
+            <div className="administration-workspace">
+              <AdministrationTabs route={activeHash} />
+              <div
+                id="administration-panel"
+                role="tabpanel"
+                aria-labelledby={`administration-tab-${activePage === "users" ? "users" : administrationRoute(activeHash).page === "overview" ? "overview" : "storage"}`}
+                tabIndex={0}
               >
-                <a
-                  href="#administration"
-                  aria-current={
-                    activePage === "administration" ? "page" : undefined
-                  }
-                >
-                  Local Storage
-                </a>
-                <a
-                  href="#administration-users"
-                  aria-current={activePage === "users" ? "page" : undefined}
-                >
-                  Users
-                </a>
-              </nav>
-              {activePage === "administration" ? (
-                <StorageAdministration
-                  csrfToken={sessionState.session.csrf_token ?? ""}
-                />
-              ) : (
-                <AccountPage
-                  session={sessionState.session}
-                  usersOnly
-                  onUpdate={(session) =>
-                    setSessionState({ phase: "authenticated", session })
-                  }
-                  onPasswordChanged={() =>
-                    setSessionState({ phase: "unauthenticated" })
-                  }
-                />
-              )}
-            </>
+                {activePage === "administration" ? (
+                  <StorageAdministration
+                    csrfToken={sessionState.session.csrf_token ?? ""}
+                    route={activeHash}
+                  />
+                ) : (
+                  <AccountPage
+                    session={sessionState.session}
+                    usersOnly
+                    onUpdate={(session) =>
+                      setSessionState({ phase: "authenticated", session })
+                    }
+                    onPasswordChanged={() =>
+                      setSessionState({ phase: "unauthenticated" })
+                    }
+                  />
+                )}
+              </div>
+            </div>
           ) : (
             <p role="alert">
               Administrator access is required to manage storage and accounts.
@@ -1092,8 +1094,16 @@ function pageFromHash():
   | "account"
   | "administration"
   | "users" {
-  if (window.location.hash === "#administration") return "administration";
-  if (window.location.hash === "#administration-users") return "users";
+  if (
+    window.location.hash === "#administration-users" ||
+    window.location.hash === "#administration/users"
+  )
+    return "users";
+  if (
+    window.location.hash === "#administration" ||
+    window.location.hash.startsWith("#administration/")
+  )
+    return "administration";
   if (
     window.location.hash === "#local-files" ||
     window.location.hash.startsWith("#local-files/")

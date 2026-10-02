@@ -160,7 +160,7 @@ test("signing in starts on Dashboard instead of the previous page", async () => 
   );
 });
 
-test("restoring a session also starts on Dashboard", async () => {
+test("restoring a session preserves the requested page", async () => {
   window.history.replaceState({}, "", "/#drive-workspace");
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     if (String(input) === "/api/auth/session") {
@@ -177,9 +177,58 @@ test("restoring a session also starts on Dashboard", async () => {
   render(<App />);
 
   expect(
-    await screen.findByRole("heading", { name: "Dashboard", level: 1 }),
+    await screen.findByRole("heading", { name: "Drive Workspace", level: 1 }),
   ).toBeInTheDocument();
-  expect(window.location.hash).toBe("");
+  expect(window.location.hash).toBe("#drive-workspace");
+});
+
+test("administration storage deep links survive session restore and hash navigation", async () => {
+  window.history.replaceState({}, "", "/#administration/storage/settings");
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const path = String(input);
+    if (path === "/api/auth/session")
+      return jsonResponse({
+        authenticated: true,
+        username: "ark",
+        role: "admin",
+        csrf_token: "csrf",
+      });
+    if (path === "/api/dashboard") return jsonResponse(dashboard);
+    if (path === "/api/admin/storage")
+      return jsonResponse({
+        configuration_error: null,
+        manager: {
+          enrolled: true,
+          online: true,
+          approved_paths: [],
+          managed_area: "/host/locations",
+        },
+        setup: {
+          default_path: "~/Ark-Files",
+          repository_path: null,
+          job: null,
+        },
+        roots: [],
+        jobs: [],
+        users: [],
+        upload_max_bytes: 1024,
+        upload_limit_source: "environment",
+      });
+    return new Response(null, { status: 404 });
+  });
+  render(<App />);
+  expect(
+    await screen.findByRole("heading", { name: "Storage settings" }),
+  ).toBeInTheDocument();
+  expect(window.location.hash).toBe("#administration/storage/settings");
+  window.location.hash = "administration/storage";
+  fireEvent(window, new HashChangeEvent("hashchange"));
+  expect(
+    await screen.findByRole("heading", { name: "Storage locations" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Storage settings" }),
+  ).not.toBeInTheDocument();
 });
 
 test("renders normalized system and integration health", async () => {

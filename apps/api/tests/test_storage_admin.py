@@ -603,3 +603,146 @@ def test_stalled_setup_exposes_resume_guidance_without_abandoning_work(manager, 
     assert data["setup"]["job"]["state"] == "applying"
     assert client.post(f"/admin/storage/jobs/{job['id']}/dismiss", headers=csrf).status_code == 409
     assert begin_setup(db_session, "/disk/private", "personal")["id"] == job["id"]
+
+
+def test_connecting_failed_registered_path_becomes_repair_and_restores_initial_intent(
+    manager, db_session, monkeypatch, tmp_path
+):
+    root = RootConfig(
+        id="second",
+        label="Second",
+        path="/srv/ark-storage/second",
+        kind="shared",
+        device=1,
+        inode=2,
+        registration=str(uuid4()),
+    )
+    source = {**root.model_dump(), "source": "/host/second", "selinux": "preserve"}
+    value = db_session.get(StorageControl, 1)
+    value.snapshot = {"roots": [source]}
+    value.blocked_roots = ["second"]
+    original = StorageJob(
+        id=str(uuid4()),
+        principal_id="ark",
+        action="add",
+        state="failed",
+        payload={
+            "root_id": "second",
+            "path": "/host/second",
+            "grants": [{"user_id": "ark", "level": "write"}],
+            "grant_access": False,
+        },
+        message="Write access denied",
+        result={},
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    db_session.add(original)
+    db_session.commit()
+    monkeypatch.setattr("app.api.storage_admin.load_manifest", lambda _: Manifest(roots=[root]))
+    client = TestClient(app)
+    csrf = sign_in(client)
+    response = client.post(
+        "/admin/storage/jobs",
+        headers=csrf,
+        json={
+            "action": "add",
+            "label": "Second",
+            "path": "/host/second",
+            "shared": True,
+            "confirmed": True,
+        },
+    )
+    assert response.status_code == 202
+    job = response.json()
+    assert job["action"] == "repair"
+    assert job["payload"]["root_id"] == "second"
+    assert job["payload"]["automatic_access"]
+    assert job["payload"]["restore_grants"]
+    assert job["payload"]["grants"] == original.payload["grants"]
+
+    @contextmanager
+    def mounted(*args, **kwargs):
+        fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            yield fd
+        finally:
+            os.close(fd)
+
+    monkeypatch.setattr(LocalStorage, "root", mounted)
+    report = {
+        "roots": [source],
+        "approved_paths": ["/host/second"],
+        "generation": "test",
+        "job_id": job["id"],
+        "state": "completed",
+        "message": "Connected",
+    }
+    assert client.post("/storage-manager/report", headers=manager, json=report).status_code == 200
+    db_session.expire_all()
+    assert db_session.get(StorageControl, 1).blocked_roots == []
+    from app.models import StorageGrant
+
+    assert db_session.get(StorageGrant, (root.registration, "ark")).level == "write"
+
+
+def test_retry_upgrades_stale_access_checkbox_to_automatic_repair(manager, db_session, monkeypatch):
+    root = RootConfig(
+        id="second",
+        label="Second",
+        path="/srv/ark-storage/second",
+        kind="shared",
+        device=1,
+        inode=2,
+        registration=str(uuid4()),
+    )
+    value = db_session.get(StorageControl, 1)
+    value.snapshot = {
+        "roots": [{**root.model_dump(), "source": "/host/second", "selinux": "preserve"}]
+    }
+    value.blocked_roots = ["second"]
+    job = failed_job(db_session, action="add", root_id="second")
+    job.payload = {
+        "action": "add",
+        "root_id": "second",
+        "path": "/host/second",
+        "label": "Second",
+        "shared": True,
+        "grant_access": False,
+        "grants": [{"user_id": "ark", "level": "write"}],
+    }
+    db_session.commit()
+    monkeypatch.setattr("app.api.storage_admin.load_manifest", lambda _: Manifest(roots=[root]))
+    client = TestClient(app)
+    response = client.post(f"/admin/storage/jobs/{job.id}/retry", headers=sign_in(client))
+    assert response.status_code == 202
+    assert response.json()["action"] == "repair"
+    assert response.json()["payload"]["automatic_access"]
+    assert response.json()["payload"]["registration"] == root.registration
+
+
+def test_existing_private_source_cannot_be_reclassified_by_connect(
+    manager, private_storage, db_session
+):
+    _, manifest = private_storage
+    value = db_session.get(StorageControl, 1)
+    value.snapshot = {
+        "roots": [
+            {**manifest.roots[0].model_dump(), "source": "/host/private", "selinux": "private"}
+        ]
+    }
+    db_session.commit()
+    client = TestClient(app)
+    response = client.post(
+        "/admin/storage/jobs",
+        headers=sign_in(client),
+        json={
+            "action": "add",
+            "path": "/host/private",
+            "label": "Shared",
+            "shared": True,
+            "grants": [{"user_id": "ark", "level": "write"}],
+            "confirmed": True,
+        },
+    )
+    assert response.status_code == 409

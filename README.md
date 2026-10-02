@@ -48,32 +48,25 @@ Username and password changes are available under **Account**; admins invite and
 users under **Administration → Users**. See [Local accounts](docs/development.md#local-accounts) for upgrading and recovery.
 Google Drive and Tailscale are optional.
 
-After creating your administrator, Ark opens **Administration → Local Storage**. Choose
-**Create my cloud storage** in the setup wizard. From the ArkCloud repository on the host,
-run this as the account that runs the deployment:
-
-```bash
-./scripts/ark storage setup
-```
-
-Ark creates `~/Ark-Files` for you, configures isolated private account folders, installs the host
-helper, applies mounts and verifies access. Return to the wizard and choose **Open my files**.
-You do not need to create a directory or complete a second UI configuration step. Existing
-unregistered folders are never overwritten; use **Connect an existing folder** for those, or
-`./scripts/ark storage setup --path /a/new/directory` to create a different new base.
+After creating your administrator, Ark opens the **Administration** landing page. Open **Storage →
+Add location**, choose a new or existing server folder, its private/shared purpose and accounts,
+then press **Connect**. Ark configures narrow filesystem access and verifies the running API
+automatically. Normal deployment startup enables the owner-run helper and provisions a dedicated
+`~/Ark-Locations` area for additional locations; existing `Ark-Files` and registered paths are preserved.
+Locations, access/configuration/activity, Settings, Diagnostics and Users occupy separate pages.
 
 Linux, Python 3.10+, a local Docker daemon, systemd user services and `setfacl` (Fedora's `acl`
 package) are needed. The helper runs as the deployment owner; the API remains unprivileged.
 Without systemd, use `storage setup --no-install` and supervise `storage manager run` as that owner.
-Setup resumes recorded work; repeating it verifies the existing base without replacing files.
+Failed connections have a **Repair connection** action that resumes the same registration and
+re-evaluates permissions. Selecting a registered directory never creates a duplicate location.
 Set the maximum file size in Administration without restarting. **Set as starting folder** in
 Local Files is a separate account preference; opening a location does not change it. No Google
 credentials are required.
 
 Each location now offers **Manage access**: choose **No access**, **Read-only**, or **Read & write**
 for accounts by username. `Ark-Files` keeps each account's private folder isolated. To share the
-same files with selected accounts, choose **Create shared folder** or run
-`./scripts/ark storage setup --shared` to create a separate `~/Ark-Shared`, then grant users access.
+same files with selected accounts, add a separate **Shared files** location and select its users.
 Existing access is preserved during upgrade; later accounts require an explicit grant. Permission
 changes take effect without restarting containers and preserve files when access is revoked.
 

@@ -8,7 +8,9 @@ export type StorageOperation = {
     | "check"
     | "browse"
     | "preflight"
-    | "relocate";
+    | "relocate"
+    | "repair";
+  // All mounted-location repair uses the existing registration.
   root_id?: string;
   path?: string;
   label?: string;
@@ -21,6 +23,8 @@ export type StorageOperation = {
   shared?: boolean;
   create_directory?: boolean;
   grants?: { user_id: string; level: AccessLevel }[];
+  registration?: string;
+  automatic_access?: boolean;
 };
 
 export type AccessLevel = "none" | "read" | "write";
@@ -66,6 +70,8 @@ export type StorageJob = {
     parent?: string | null;
     message?: string;
     api_host_uid?: number;
+    existing_root_id?: string;
+    checks?: StorageCheck[];
   };
   created_at: string;
 };
@@ -83,6 +89,17 @@ export type ManagedLocation = {
   message: string;
   access_count?: number;
   access_accounts?: { user_id: string; level: AccessLevel }[];
+  registration?: string | null;
+  blocked?: boolean;
+  pending_grants?: { user_id: string; level: AccessLevel }[] | null;
+  connection_state?: "connected" | "needs_repair" | "preparing" | "verifying";
+  checks?: StorageCheck[];
+};
+
+export type StorageCheck = {
+  code: string;
+  state: "passed" | "blocked" | "pending";
+  message: string;
 };
 
 export type StorageAdministration = {
@@ -93,6 +110,7 @@ export type StorageAdministration = {
     last_seen_at: string | null;
     approved_paths: string[];
     approved_areas?: { path: string; state: string; message: string }[];
+    managed_area?: string | null;
   };
   setup: {
     default_path: string;

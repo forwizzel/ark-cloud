@@ -67,6 +67,28 @@ def probe():
     return mapped(info["uid"], info["uids"]), mapped(info["gid"], info["gids"])
 
 
+def runtime_identity():
+    """Use the running API's identity, not an image that may have changed."""
+    local_daemon()
+    command = ["docker", "compose", "-f", str(REPO / "compose.yaml")]
+    if OVERRIDE.exists():
+        command += ["-f", str(OVERRIDE)]
+    code = (
+        "import json,os; print(json.dumps({'uid':os.getuid(),'gid':os.getgid(),"
+        "'uids':open('/proc/self/uid_map').read(),'gids':open('/proc/self/gid_map').read()}))"
+    )
+    info = json.loads(run(*command, "exec", "-T", "api", "python", "-c", code))
+
+    def mapped(value, mapping):
+        for line in mapping.splitlines():
+            inside, outside, size = map(int, line.split())
+            if inside <= value < inside + size:
+                return outside + value - inside
+        raise ValueError("The running API's host identity could not be determined.")
+
+    return mapped(info["uid"], info["uids"]), mapped(info["gid"], info["gids"])
+
+
 def state():
     return json.loads(STATE.read_text()) if STATE.exists() else {"version": 1, "roots": []}
 
@@ -179,7 +201,7 @@ def atomic_write(path, content, mode=0o600):
         temp.unlink(missing_ok=True)
 
 
-def add(args, managed=False, *, shared=False, create=False):
+def add(args, managed=False, *, shared=False, create=False, identity=None):
     local_daemon()
     data = state()
     path = source_path(args.path)
@@ -199,7 +221,10 @@ def add(args, managed=False, *, shared=False, create=False):
         if path == existing or path in existing.parents or existing in path.parents:
             raise ValueError("Storage roots must not overlap.")
     if managed or create:
-        provision_new(path)
+        if identity is None:
+            provision_new(path)
+        else:
+            provision_new(path, identity=identity)
     if not path.is_dir():
         raise ValueError("Source must be an existing directory.")
     info = path.stat()
@@ -224,14 +249,14 @@ def add(args, managed=False, *, shared=False, create=False):
     save(data)
 
 
-def provision_new(path):
+def provision_new(path, *, identity=None):
     if path.exists():
         raise ValueError(
             "Init requires a NEW directory; it will not relabel or change existing data."
         )
     if not shutil.which("setfacl"):
         raise ValueError("Install Fedora's acl package (setfacl) before provisioning.")
-    uid, gid = probe()
+    uid, gid = identity or probe()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.mkdir(mode=0o700)
     try:

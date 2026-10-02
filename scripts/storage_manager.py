@@ -19,6 +19,7 @@ from types import SimpleNamespace
 
 import storage
 import storage_fs
+import storage_permissions
 
 CONFIG = storage.CONFIG / "manager.json"
 JOURNAL = storage.CONFIG / "manager-journal.json"
@@ -176,6 +177,7 @@ def snapshot(config):
         "approved_areas": areas,
         "repository_path": str(storage.REPO),
         "default_path": str(Path.home() / "Ark-Files"),
+        "managed_area": config.get("managed_area", ""),
         "generation": hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest(),
     }
 
@@ -193,6 +195,76 @@ def grant_access(path, read_only):
     )
 
 
+def inspect_folder(config, path, root=None):
+    uid, gid = storage.runtime_identity()
+    info = path.stat()
+    if root and (info.st_dev, info.st_ino) != (root["device"], root["inode"]):
+        raise ValueError("This directory changed identity. Verify the disk before reconnecting it.")
+    if not path.is_dir():
+        raise ValueError("Choose a directory on the server.")
+    with storage_fs.opened(path) as fd:
+        for _, _, child in storage_permissions.walk(fd):
+            if child.st_uid not in {os.getuid(), uid}:
+                raise ValueError(
+                    "Content owned by another host account cannot be prepared automatically."
+                )
+        read_only = bool(os.fstatvfs(fd).f_flag & os.ST_RDONLY)
+    return {
+        "path": str(path),
+        "api_host_uid": uid,
+        "api_host_gid": gid,
+        "existing_root_id": root["id"] if root else None,
+        "checks": [
+            {
+                "code": "directory_identity",
+                "state": "passed",
+                "message": "Directory identity verified",
+            },
+            {
+                "code": "provisioning_authority",
+                "state": "passed",
+                "message": "Host ownership permits automatic access preparation",
+            },
+            {
+                "code": "filesystem_writable",
+                "state": "blocked" if read_only else "passed",
+                "message": "Filesystem is read-only" if read_only else "Filesystem permits writes",
+            },
+            {
+                "code": "runtime_access",
+                "state": "pending",
+                "message": "The running API will verify access before accounts are enabled",
+            },
+        ],
+        "message": "Directory inspected. Ark prepares access automatically and verifies the running API before connecting.",
+    }
+
+
+def prepare_access(config, job, path, root=None):
+    result = inspect_folder(config, path, root)
+    if not job["payload"]["read_only"] and any(
+        check["code"] == "filesystem_writable" and check["state"] == "blocked"
+        for check in result["checks"]
+    ):
+        raise ValueError(
+            "The filesystem is read-only. Choose read-only access or restore the filesystem."
+        )
+    storage_permissions.prepare(
+        path,
+        result["api_host_uid"],
+        job["payload"]["read_only"],
+        storage.CONFIG / ("permissions-" + job["id"] + ".jsonl"),
+    )
+    result["checks"].append(
+        {
+            "code": "unix_access",
+            "state": "passed",
+            "message": "API access ACLs prepared; existing effective permissions and labels preserved",
+        }
+    )
+    return result
+
+
 def execute(config, job):
     body = job["payload"]
     action = job["action"]
@@ -205,6 +277,8 @@ def execute(config, job):
         shared = body.get("shared", False)
         create = body.get("create_directory", False)
         path = approved(config, body["path"], new=managed or create)
+        if root is None:
+            root = next((r for r in data["roots"] if r["source"] == str(path)), None)
         if root is not None:
             if root["source"] != str(path):
                 raise ValueError("The requested ID already belongs to another location.")
@@ -220,11 +294,17 @@ def execute(config, job):
                     "The assignment changed since this operation. "
                     "Configure the current location instead."
                 )
+            if action == "preflight":
+                return inspect_folder(config, path, root)
+            if body.get("automatic_access"):
+                result = prepare_access(config, job, path, root)
+            else:
+                result = {}
             if body.get("grant_access") and not managed:
                 grant_access(path, body["read_only"])
             root["label"] = body["label"]
             storage.save(data)  # Reconcile a crash during the multi-file save.
-            return {}  # Resume a saved configuration after interruption; never create twice.
+            return result  # Resume a saved configuration after interruption; never create twice.
         for existing in data["roots"]:
             source = Path(existing["source"])
             if source == path or source in path.parents or path in source.parents:
@@ -236,14 +316,15 @@ def execute(config, job):
         if not managed and not create and not path.is_dir():
             raise ValueError("Choose an existing directory.")
         if action == "preflight":
-            uid, gid = storage.probe()
-            return {
-                "path": str(path),
-                "api_host_uid": uid,
-                "api_host_gid": gid,
-                "message": "Path is eligible. Existing permissions and labels are preserved "
-                "unless explicitly selected. API access is verified after connecting.",
-            }
+            if managed or create:
+                return {
+                    "path": str(path),
+                    "message": "Ark will create and verify this new directory.",
+                }
+            return inspect_folder(config, path)
+        result = {}
+        if body.get("automatic_access") and not managed and not create:
+            result = prepare_access(config, job, path)
         args = SimpleNamespace(
             path=str(path),
             id=body["root_id"],
@@ -252,7 +333,13 @@ def execute(config, job):
             read_only=body["read_only"],
             selinux=body["selinux"],
         )
-        storage.add(args, managed=managed, shared=shared, create=create)
+        storage.add(
+            args,
+            managed=managed,
+            shared=shared,
+            create=create,
+            identity=storage.runtime_identity() if body.get("automatic_access") else None,
+        )
         if body.get("grant_access") and not managed:
             grant_access(path, body["read_only"])
         if managed and body["label"] != "My files":
@@ -261,6 +348,14 @@ def execute(config, job):
                 "label"
             ]
             storage.save(data)
+        return result
+    elif action == "repair":
+        if root is None:
+            raise ValueError("The location was disconnected. Select a new location to connect.")
+        if body.get("registration") and body["registration"] != root.get("registration"):
+            raise ValueError("This registration changed. Reopen the location before repairing it.")
+        path = approved(config, root["source"])
+        return prepare_access(config, job, path, root)
     elif action == "relocate":
         if root is None or root["kind"] != "managed":
             raise ValueError("Only a private-folder base can be relocated.")
@@ -295,6 +390,8 @@ def execute(config, job):
             raise ValueError("The storage location no longer exists.")
         path = approved(config, root["source"])
         if action == "update":
+            if body.get("automatic_access"):
+                prepare_access(config, job, path, root)
             storage.pin_registration(root)
             root["label"] = body["label"]
             if root["kind"] == "assigned":
@@ -488,7 +585,20 @@ def cycle(config):
                 ),
             )
         except (ValueError, OSError, subprocess.SubprocessError) as error:
-            pending.update(phase="report", state="failed", message=str(error)[:2000], result={})
+            pending.update(
+                phase="report",
+                state="failed",
+                message=str(error)[:2000],
+                result={
+                    "checks": [
+                        {
+                            "code": "host_preparation",
+                            "state": "blocked",
+                            "message": str(error)[:2000],
+                        }
+                    ]
+                },
+            )
         storage.atomic_write(JOURNAL, json.dumps(pending))
     elif pending["phase"] == "apply":
         # A crash between saving configuration and recreating the API is safe to replay.
@@ -541,11 +651,22 @@ def cycle(config):
                 detail = json.loads(error.read(8192)).get("detail")
             except (ValueError, AttributeError):
                 detail = None
+            runtime_checks = []
+            if isinstance(detail, dict):
+                runtime_checks = detail.get("checks", [])
+                detail = detail.get("message")
             detail = detail[:1000] if isinstance(detail, str) else "The API access check failed."
             pending.update(
                 state="failed",
-                message=f"Configuration was applied, but verification failed: {detail} "
-                "Review the location, configure access if needed, then retry.",
+                message=f"Runtime verification needs attention: {detail}",
+                result={
+                    **pending.get("result", {}),
+                    "checks": [
+                        *pending.get("result", {}).get("checks", []),
+                        *runtime_checks,
+                        {"code": "runtime_access", "state": "blocked", "message": detail},
+                    ],
+                },
             )
             storage.atomic_write(JOURNAL, json.dumps(pending))
         raise

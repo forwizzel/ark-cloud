@@ -36,6 +36,13 @@ User device | Tailscale or local host | Web proxy | API | PostgreSQL / Google Dr
   Retired registrations cannot be reused to inherit old grants or silently change a private base
   into shared storage. File bodies stay outside PostgreSQL; grant and audit metadata are backed up
   with the control plane.
+- Supported deployment startup provisions an owner-run helper and a pinned dedicated managed area.
+  Browser administrators can prepare access only within owner-authorized areas. Automatic ACL
+  preparation is descriptor-relative, rejects symlinks/nested mounts/special or multiply-linked
+  files, and preserves existing named users' effective mask-limited rights. Original ACL and inode
+  metadata are journaled privately; file content and existing labels are preserved. Final activation
+  requires a successful running-API check. A failed registration stays blocked until repaired;
+  duplicate connections resolve to that registration, and retries recompute access preparation.
 - Appearance choices live only in browser localStorage; they contain no credentials and are not
   sent to the API.
 

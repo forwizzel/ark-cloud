@@ -176,6 +176,22 @@ class ManagerTests(unittest.TestCase):
         execute.assert_not_called()
         self.assertFalse(manager.JOURNAL.exists())
 
+    def test_automatic_existing_connection_prepares_acl_and_replays_same_registration(self):
+        folder = self.area / "photos"
+        folder.mkdir(mode=0o755)
+        job = self.job("add", automatic_access=True, shared=True, owner=None, read_only=False)
+        with patch.object(storage, "runtime_identity", return_value=(62000, 62000)):
+            result = manager.execute(self.config, job)
+            registration = storage.state()["roots"][0]["registration"]
+            manager.execute(self.config, job)
+            review = manager.execute(
+                self.config, self.job("preflight", shared=True, owner=None, read_only=False)
+            )
+        self.assertTrue(result["checks"])
+        self.assertEqual(review["existing_root_id"], "photos")
+        self.assertEqual(storage.state()["roots"][0]["registration"], registration)
+        self.assertEqual(len(storage.state()["roots"]), 1)
+
     def test_descriptor_copy_rejects_links_hardlinks_and_real_nested_mounts(self):
         source = self.area / "source"
         target = self.area / "target"

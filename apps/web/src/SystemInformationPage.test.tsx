@@ -105,7 +105,10 @@ test("system page survives dashboard failure and shows GPU and understandable se
   render(<App />);
 
   expect(
-    await screen.findByRole("heading", { name: "Dashboard unavailable" }),
+    await screen.findByRole("heading", {
+      name: "System Information",
+      level: 1,
+    }),
   ).toBeInTheDocument();
   fireEvent.click(screen.getByRole("link", { name: "System Information" }));
 

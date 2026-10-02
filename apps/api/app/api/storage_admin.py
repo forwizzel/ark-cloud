@@ -96,6 +96,7 @@ class Operation(BaseModel):
         "browse",
         "preflight",
         "relocate",
+        "repair",
     ]
     root_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]{0,39}$")
     path: str = Field(default="", max_length=4096)
@@ -109,6 +110,9 @@ class Operation(BaseModel):
     shared: bool = False
     create_directory: bool = False
     grants: list[AccountAccess] | None = Field(default=None, max_length=1000)
+    automatic_access: bool = True
+    registration: str | None = Field(default=None, min_length=36, max_length=36)
+    restore_grants: bool = False
 
 
 class HostRoot(RootConfig):
@@ -133,6 +137,7 @@ class Report(BaseModel):
     approved_areas: list[ApprovedArea] = Field(default_factory=list, max_length=32)
     repository_path: str = Field(default="", max_length=4096)
     default_path: str = Field(default="", max_length=4096)
+    managed_area: str = Field(default="", max_length=4096)
 
 
 def job_view(job):
@@ -185,7 +190,7 @@ def job_presentation(
         elif job.result.get("resolved"):
             disposition = "resolved"
         elif (
-            job.action in {"update", "remove", "check", "refresh-identity", "relocate"}
+            job.action in {"update", "remove", "check", "refresh-identity", "relocate", "repair"}
             and not root
             and manifest is not None
             and not any(r.id == job.payload.get("root_id") for r in manifest.roots)
@@ -221,6 +226,68 @@ def job_presentation(
         can_dismiss=job.state not in ACTIVE and not job.result.get("dismissed_at"),
     )
     return view
+
+
+def pending_connection(db, root):
+    """Only failed initial connection intent, never a saved user's live grants."""
+    for job in db.scalars(
+        select(StorageJob)
+        .where(StorageJob.state == "failed", StorageJob.action.in_(("add", "init", "repair")))
+        .order_by(StorageJob.created_at.desc())
+    ):
+        if (
+            job.payload.get("root_id") == root["id"]
+            and job.payload.get("path") == root["source"]
+            and job.payload.get("grants") is not None
+            and not job.result.get("resolved")
+        ):
+            return job
+    return None
+
+
+def normalize_repair(body, current, value, db):
+    if body.registration and body.registration != current.get("registration"):
+        raise HTTPException(409, "This location changed. Reopen it before repairing.")
+    intent = pending_connection(db, current) if current["id"] in value.blocked_roots else None
+    body.action = "repair"
+    body.root_id, body.path = current["id"], current["source"]
+    body.label, body.owner = current["label"], current.get("owner")
+    body.read_only, body.selinux = current["read_only"], current["selinux"]
+    body.managed, body.shared = current["kind"] == "managed", current["kind"] == "shared"
+    body.registration = current.get("registration")
+    body.restore_grants = intent is not None
+    selections = (
+        (body.grants if body.grants is not None else intent.payload["grants"]) if intent else None
+    )
+    body.grants = (
+        [AccountAccess.model_validate(item) for item in selections]
+        if selections is not None
+        else None
+    )
+    body.automatic_access, body.grant_access = True, False
+    return body
+
+
+def connected_now(root, value, settings, owner):
+    if root["id"] in value.blocked_roots:
+        return False
+    try:
+        manifest = load_manifest(settings.storage_manifest)
+        config = next((item for item in manifest.roots if item.id == root["id"]), None)
+        if config is None or config.model_dump() != {
+            key: root.get(key) for key in config.model_dump()
+        }:
+            return False
+        with LocalStorage(manifest, verification=True).root(config.id, owner, base=True) as fd:
+            return os.access(".", os.R_OK | os.X_OK, dir_fd=fd) and (
+                config.read_only
+                or (
+                    os.access(".", os.W_OK | os.X_OK, dir_fd=fd)
+                    and not os.fstatvfs(fd).f_flag & os.ST_RDONLY
+                )
+            )
+    except StorageError, OSError:
+        return False
 
 
 def begin_setup(db, path, root_id, kind="managed"):
@@ -492,6 +559,19 @@ def inventory(principal: Admin, db: DB, settings: Config):
                     error if isinstance(error, StorageError) else filesystem_error(error)
                 )
         items.append(item)
+        item["blocked"] = source["id"] in value.blocked_roots
+        intent = pending_connection(db, source) if item["blocked"] else None
+        item["pending_grants"] = intent.payload.get("grants") if intent else None
+        item["connection_state"] = "connected" if item["state"] == "healthy" else "needs_repair"
+        relevant = db.scalars(select(StorageJob).where(StorageJob.state.in_(ACTIVE))).all()
+        for job in relevant:
+            if job.payload.get("root_id") == source["id"]:
+                item["connection_state"] = "verifying" if job.state == "verifying" else "preparing"
+        item["checks"] = []
+        for job in db.scalars(select(StorageJob).order_by(StorageJob.created_at.desc()).limit(30)):
+            if job.payload.get("root_id") == source["id"] and job.result.get("checks"):
+                item["checks"] = job.result["checks"]
+                break
         if config:
             try:
                 location = ensure_location(db, config)
@@ -536,6 +616,7 @@ def inventory(principal: Admin, db: DB, settings: Config):
             "last_seen_at": value.last_seen_at,
             "approved_paths": snapshot.get("approved_paths", []),
             "approved_areas": snapshot.get("approved_areas", []),
+            "managed_area": snapshot.get("managed_area") or None,
         },
         "setup": {
             "default_path": snapshot.get("default_path") or "~/Ark-Files",
@@ -599,6 +680,7 @@ def policy(body: Policy, principal: Admin, db: DB):
 
 @router.post("/admin/storage/jobs", status_code=202)
 def submit(body: Operation, principal: Admin, db: DB, settings: Config):
+    body.restore_grants = False
     value = control(db)
     # Serialize deployment mutations, including operations awaiting recovery.
     db.execute(select(type(value)).where(type(value).id == 1).with_for_update())
@@ -610,6 +692,45 @@ def submit(body: Operation, principal: Admin, db: DB, settings: Config):
         raise HTTPException(409, "Another storage operation is in progress.")
     roots = value.snapshot.get("roots", [])
     current = next((root for root in roots if root["id"] == body.root_id), None)
+    if body.action in {"add", "init", "preflight"} and body.path:
+        exact = next((root for root in roots if root["source"] == body.path), None)
+        if exact:
+            desired = (
+                "managed"
+                if body.managed or body.action == "init"
+                else "shared"
+                if body.shared
+                else "assigned"
+            )
+            if exact["kind"] != desired:
+                raise HTTPException(
+                    409,
+                    "This folder has a different registered purpose. Open its location details.",
+                )
+            body.root_id = exact["id"]
+            current = exact
+            if body.action != "preflight":
+                if connected_now(exact, value, settings, principal.id):
+                    job = StorageJob(
+                        id=str(uuid4()),
+                        principal_id=principal.id,
+                        action="inspect",
+                        payload={"root_id": exact["id"]},
+                        state="completed",
+                        message="This directory is already connected. Open its location details.",
+                        result={"existing_root_id": exact["id"]},
+                        created_at=now(),
+                        updated_at=now(),
+                    )
+                    db.add(job)
+                    db.commit()
+                    return job_view(job)
+                body = normalize_repair(body, current, value, db)
+    if body.action == "repair":
+        if current is None:
+            raise HTTPException(404, "This location is no longer registered.")
+        body = normalize_repair(body, current, value, db)
+    body.automatic_access, body.grant_access = True, False
     if body.action in {"add", "init", "preflight"}:
         if not body.path.startswith("/") or not body.label.strip():
             raise HTTPException(422, "Choose an absolute host path and a location name.")
@@ -627,6 +748,8 @@ def submit(body: Operation, principal: Admin, db: DB, settings: Config):
             user = db.get(LocalUser, body.owner) if body.owner else None
             if user is None or not user.active:
                 raise HTTPException(422, "Choose an active account.")
+    if body.action == "repair":
+        body.create_directory = False
     if body.create_directory and (not body.shared or body.action not in {"add", "preflight"}):
         raise HTTPException(422, "New shared directories use Connect shared folder.")
     if body.create_directory:
@@ -664,14 +787,14 @@ def submit(body: Operation, principal: Admin, db: DB, settings: Config):
         raise HTTPException(422, "Choose a new absolute path for the existing private-folder base.")
     if body.action not in {"browse", "preflight", "check"} and not body.confirmed:
         raise HTTPException(422, "Review and confirm the storage change first.")
-    if body.action in {"add", "init", "remove", "update", "refresh-identity", "relocate"}:
+    if body.action in {"add", "init", "remove", "update", "refresh-identity", "relocate", "repair"}:
         load_manifest(settings.storage_manifest)
     if body.action == "add":
         body.root_id = "folder-" + uuid4().hex[:12]
     if body.action == "init":
         body.root_id = "personal"
     previously_blocked = body.root_id in value.blocked_roots
-    if body.action in {"add", "init", "remove", "update", "refresh-identity", "relocate"}:
+    if body.action in {"add", "init", "remove", "update", "refresh-identity", "relocate", "repair"}:
         value.blocked_roots = sorted(set(value.blocked_roots) | {body.root_id})
     job = StorageJob(
         id=str(uuid4()),
@@ -725,12 +848,27 @@ def retry(job_id: str, principal: Admin, db: DB, settings: Config):
     )
     if not view["can_retry"]:
         raise HTTPException(409, view["retry_reason"])
+    payload = {**job.payload, "automatic_access": True, "grant_access": False}
+    roots = value.snapshot.get("roots", [])
+    current = next((root for root in roots if root["id"] == payload.get("root_id")), None)
+    action = job.action
+    if action in {"add", "init", "repair"} and current:
+        repaired = normalize_repair(
+            Operation.model_validate(
+                {key: val for key, val in payload.items() if key in Operation.model_fields}
+            ),
+            current,
+            value,
+            db,
+        )
+        payload.update(repaired.model_dump())
+        action = "repair"
     replacement = StorageJob(
         id=str(uuid4()),
         principal_id=principal.id,
-        action=job.action,
+        action=action,
         payload={
-            **job.payload,
+            **payload,
             "resume_id": job.payload.get("resume_id", job.id),
             "previously_blocked": job.payload.get("root_id") in value.blocked_roots,
         },
@@ -740,7 +878,7 @@ def retry(job_id: str, principal: Admin, db: DB, settings: Config):
         created_at=now(),
         updated_at=now(),
     )
-    if job.action in {"add", "init", "remove", "update", "refresh-identity", "relocate"}:
+    if job.action in {"add", "init", "remove", "update", "refresh-identity", "relocate", "repair"}:
         value.blocked_roots = sorted(set(value.blocked_roots) | {job.payload["root_id"]})
     db.add(replacement)
     job.result = {**job.result, "superseded_by": replacement.id}
@@ -845,6 +983,7 @@ def report(body: Report, manager: Manager, db: DB, settings: Config):
         "approved_areas": [area.model_dump() for area in body.approved_areas],
         "repository_path": body.repository_path,
         "default_path": body.default_path,
+        "managed_area": body.managed_area,
     }
     value.last_seen_at = now()
     if body.job_id:
@@ -878,7 +1017,11 @@ def report(body: Report, manager: Manager, db: DB, settings: Config):
                 )
             locations = {root.id: ensure_location(db, root) for root in manifest.roots}
             target = locations.get(job.payload.get("root_id"))
-            if target and job.action in {"add", "init"} and job.payload.get("grants") is not None:
+            if (
+                target
+                and (job.action in {"add", "init"} or job.payload.get("restore_grants"))
+                and job.payload.get("grants") is not None
+            ):
                 for grant in db.scalars(
                     select(StorageGrant).where(StorageGrant.location_id == target.id)
                 ):
@@ -944,15 +1087,71 @@ def report(body: Report, manager: Manager, db: DB, settings: Config):
                         )
                     owner = config.owner or job.principal_id
                     with service.root(config.id, owner, base=True) as fd:
+                        checks = [
+                            {
+                                "code": "mount_identity",
+                                "state": "passed",
+                                "message": "Runtime mount identity verified",
+                            }
+                        ]
                         if not os.access(".", os.R_OK | os.X_OK, dir_fd=fd):
-                            raise StorageError("The API cannot read this directory.")
+                            raise HTTPException(
+                                503,
+                                {
+                                    "message": "Runtime read denied by host access policy.",
+                                    "checks": [
+                                        *checks,
+                                        {
+                                            "code": "runtime_read",
+                                            "state": "blocked",
+                                            "message": "Runtime directory read/traverse denied",
+                                        },
+                                    ],
+                                },
+                            )
+                        checks.append(
+                            {
+                                "code": "runtime_read",
+                                "state": "passed",
+                                "message": "Runtime read and traverse verified",
+                            }
+                        )
+                        if not config.read_only and os.fstatvfs(fd).f_flag & os.ST_RDONLY:
+                            raise HTTPException(
+                                503,
+                                {
+                                    "message": "The mounted filesystem is read-only.",
+                                    "checks": [
+                                        *checks,
+                                        {
+                                            "code": "filesystem_writable",
+                                            "state": "blocked",
+                                            "message": "Filesystem is read-only",
+                                        },
+                                    ],
+                                },
+                            )
                         if not config.read_only and not os.access(
                             ".", os.W_OK | os.X_OK, dir_fd=fd
                         ):
-                            raise StorageError(
-                                "The API cannot write to this directory. "
-                                "Check permissions and SELinux."
+                            raise HTTPException(
+                                503,
+                                {
+                                    "message": "Runtime write denied by host access policy.",
+                                    "checks": [
+                                        *checks,
+                                        {
+                                            "code": "runtime_write",
+                                            "state": "blocked",
+                                            "message": "Runtime directory write denied",
+                                        },
+                                    ],
+                                },
                             )
+                        job.result = {
+                            **body.result,
+                            "checks": [*body.result.get("checks", []), *checks],
+                        }
                     if config.kind == "managed":
                         ids = db.scalars(
                             select(StorageGrant.principal_id).where(
@@ -995,9 +1194,27 @@ def report(body: Report, manager: Manager, db: DB, settings: Config):
         job.state, job.message, job.result, job.updated_at = (
             body.state,
             body.message,
-            body.result,
+            job.result
+            if body.state == "completed" and job.action not in {"browse", "preflight"}
+            else body.result,
             now(),
         )
+        if body.state == "completed" and job.action not in {"browse", "preflight"}:
+            job.result = {
+                **job.result,
+                "checks": [
+                    *[
+                        check
+                        for check in job.result.get("checks", [])
+                        if check.get("code") != "runtime_access"
+                    ],
+                    {
+                        "code": "runtime_access",
+                        "state": "passed",
+                        "message": "API read and requested write operations verified",
+                    },
+                ],
+            }
     db.commit()
     return {"message": "Host configuration recorded.", "accepted": True}
 

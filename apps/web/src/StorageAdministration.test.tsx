@@ -15,104 +15,183 @@ vi.mock("./storageAdminApi", async (original) => ({
   submitStorageOperation: vi.fn(),
   storageRequest: vi.fn(),
 }));
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.history.replaceState({}, "", "/");
+});
 const inventory: api.StorageAdministration = {
   configuration_error: null,
-  setup: { default_path: "~/Ark-Files", repository_path: null, job: null },
   manager: {
     enrolled: true,
     online: true,
-    last_seen_at: "2026-09-30T12:00:00Z",
-    approved_paths: ["/disk/files"],
+    last_seen_at: null,
+    approved_paths: ["/host/area"],
+    managed_area: "/host/area",
   },
+  setup: { default_path: "~/Ark-Files", repository_path: null, job: null },
   roots: [],
   jobs: [],
   upload_max_bytes: 1024 ** 3,
   upload_limit_source: "environment",
   users: [
-    { id: "account-id", username: "alice", active: true, pending: false },
+    {
+      id: "account-id",
+      username: "alice",
+      active: true,
+      pending: false,
+      current: true,
+    },
   ],
+};
+const root: api.ManagedLocation = {
+  id: "second",
+  label: "Second Directory",
+  source: "/host/area/second",
+  kind: "shared",
+  owner: null,
+  username: null,
+  read_only: false,
+  selinux: "preserve",
+  state: "unavailable",
+  message: "Runtime write access needs repair",
+  registration: "00000000-0000-0000-0000-000000000001",
+  blocked: true,
+  access_count: 0,
+  connection_state: "needs_repair",
+};
+const job: api.StorageJob = {
+  id: "job",
+  action: "add",
+  payload: { root_id: "second" },
+  state: "queued",
+  message: "Preparing access",
+  result: {},
+  created_at: "2026-10-01T12:00:00Z",
 };
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.fetchStorageAdministration).mockResolvedValue(inventory);
-  vi.mocked(api.storageRequest).mockResolvedValue({});
+  vi.mocked(api.storageRequest).mockResolvedValue({ message: "Saved" });
+  vi.mocked(api.submitStorageOperation).mockResolvedValue(job);
 });
 
-test("connect flow chooses account by name and reviews before applying", async () => {
-  let current = inventory;
-  vi.mocked(api.fetchStorageAdministration).mockImplementation(
-    async () => current,
+test("overview is a landing page rather than a stack of storage panels", async () => {
+  render(<StorageAdministration csrfToken="csrf" route="#administration" />);
+  expect(
+    await screen.findByRole("heading", { name: "Administration overview" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /Storage/ })).toHaveAttribute(
+    "href",
+    "#administration/storage",
   );
-  vi.mocked(api.submitStorageOperation).mockImplementation(async (body) => {
-    const job: api.StorageJob = {
-      id: "job",
-      action: body.action,
-      payload: body,
-      state: "completed",
-      message: "Checked",
-      result: { message: "Eligible path", api_host_uid: 1000 },
-      created_at: "2026-09-30T12:00:00Z",
-    };
-    current = { ...inventory, jobs: [job] };
-    return job;
+  expect(
+    screen.queryByRole("heading", { name: "Maximum file size" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Storage locations" }),
+  ).not.toBeInTheDocument();
+});
+
+test("locations page only shows the ledger and task links", async () => {
+  vi.mocked(api.fetchStorageAdministration).mockResolvedValue({
+    ...inventory,
+    roots: [root],
   });
-  render(<StorageAdministration csrfToken="csrf" />);
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Connect existing folder" }),
+  render(
+    <StorageAdministration csrfToken="csrf" route="#administration/storage" />,
   );
+  expect(
+    await screen.findByRole("heading", { name: "Storage locations" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("Needs repair")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Manage access" })).toHaveAttribute(
+    "href",
+    "#administration/storage/locations/second/access",
+  );
+  expect(screen.queryByText("Maximum file size")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Current issues & progress"),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText(/copy.*command/i)).not.toBeInTheDocument();
+});
+
+test("existing-folder connection submits once with automatic preparation", async () => {
+  render(
+    <StorageAdministration
+      csrfToken="csrf"
+      route="#administration/storage/new"
+    />,
+  );
+  await screen.findByRole("heading", { name: "Add location" });
   fireEvent.change(screen.getByLabelText("Location name"), {
-    target: { value: "Photos" },
+    target: { value: "Second Directory" },
   });
-  fireEvent.change(screen.getByLabelText("Existing folder on the server"), {
-    target: { value: "/disk/files/photos" },
+  fireEvent.change(screen.getByLabelText("Folder"), {
+    target: { value: "existing" },
   });
-  fireEvent.change(screen.getByLabelText("Access for alice"), {
-    target: { value: "write" },
+  fireEvent.change(screen.getByLabelText("Existing server folder"), {
+    target: { value: "/host/area/second" },
   });
-  expect(api.submitStorageOperation).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Review folder" }));
+  fireEvent.click(screen.getByRole("button", { name: "Connect" }));
   await waitFor(() =>
     expect(api.submitStorageOperation).toHaveBeenCalledWith(
       expect.objectContaining({
-        action: "preflight",
-        shared: true,
-        grants: [{ user_id: "account-id", level: "write" }],
-        path: "/disk/files/photos",
-      }),
-      "csrf",
-    ),
-  );
-  expect(
-    await screen.findByText("Ready to connect", {}, { timeout: 4500 }),
-  ).toBeInTheDocument();
-  const buttons = screen.getAllByRole("button", { name: "Connect folder" });
-  fireEvent.click(buttons.at(-1)!);
-  await waitFor(() =>
-    expect(api.submitStorageOperation).toHaveBeenLastCalledWith(
-      expect.objectContaining({
         action: "add",
-        confirmed: true,
+        path: "/host/area/second",
         shared: true,
+        automatic_access: true,
+        confirmed: true,
         grants: [{ user_id: "account-id", level: "write" }],
       }),
       "csrf",
     ),
   );
-}, 10000);
+  expect(api.submitStorageOperation).toHaveBeenCalledTimes(1);
+  expect(screen.queryByText("Review folder")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Grant API access to this folder and future content"),
+  ).not.toBeInTheDocument();
+});
 
-test("offline manager gives inline setup guidance and disables provisioning", async () => {
+test("failed location repairs the existing registration from its own page", async () => {
   vi.mocked(api.fetchStorageAdministration).mockResolvedValue({
     ...inventory,
-    manager: { ...inventory.manager, enrolled: false, online: false },
+    roots: [root],
   });
-  render(<StorageAdministration csrfToken="csrf" />);
-  expect(await screen.findByText("Set up Local Files")).toBeInTheDocument();
+  render(
+    <StorageAdministration
+      csrfToken="csrf"
+      route="#administration/storage/locations/second/overview"
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Repair connection" }),
+  );
+  await waitFor(() =>
+    expect(api.submitStorageOperation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "repair",
+        root_id: "second",
+        registration: root.registration,
+        automatic_access: true,
+      }),
+      "csrf",
+    ),
+  );
   expect(
-    screen.getByRole("button", { name: "Connect existing folder" }),
-  ).toBeDisabled();
-  expect(screen.getByText("./scripts/ark storage setup")).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("File size"), {
+    screen.queryByRole("heading", { name: "Add location" }),
+  ).not.toBeInTheDocument();
+});
+
+test("settings is a separate view and saves without restarting", async () => {
+  render(
+    <StorageAdministration
+      csrfToken="csrf"
+      route="#administration/storage/settings"
+    />,
+  );
+  await screen.findByRole("heading", { name: "Storage settings" });
+  fireEvent.change(screen.getByLabelText("File size (MiB)"), {
     target: { value: "20" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Save limit" }));
@@ -124,247 +203,79 @@ test("offline manager gives inline setup guidance and disables provisioning", as
       { upload_max_bytes: 20 * 1024 ** 2 },
     ),
   );
-});
-
-test("disconnect explains file retention and requires confirmation", async () => {
-  vi.mocked(api.fetchStorageAdministration).mockResolvedValue({
-    ...inventory,
-    roots: [
-      {
-        id: "photos",
-        label: "Photos",
-        source: "/disk/files/photos",
-        kind: "assigned",
-        owner: "account-id",
-        username: "alice",
-        read_only: true,
-        selinux: "preserve",
-        state: "healthy",
-        message: "Connected",
-      },
-    ],
-  });
-  vi.mocked(api.submitStorageOperation).mockResolvedValue({
-    id: "disconnect",
-    action: "remove",
-    payload: { action: "remove" },
-    state: "queued",
-    message: "Waiting",
-    result: {},
-    created_at: "2026-09-30T12:00:00Z",
-  });
-  render(<StorageAdministration csrfToken="csrf" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
-  expect(api.submitStorageOperation).not.toHaveBeenCalled();
   expect(
-    screen.getByText(
-      /Files stay on the server; permissions and labels are not undone/,
-    ),
-  ).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Confirm disconnect" }));
-  await waitFor(() =>
-    expect(api.submitStorageOperation).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: "remove",
-        root_id: "photos",
-        confirmed: true,
-      }),
-      "csrf",
-    ),
-  );
+    screen.queryByRole("heading", { name: "Storage locations" }),
+  ).not.toBeInTheDocument();
 });
 
-test("unreadable manifest keeps diagnostics visible while pausing changes", async () => {
+test("diagnostics stays reachable for invalid configuration and retains dismissible history", async () => {
   vi.mocked(api.fetchStorageAdministration).mockResolvedValue({
     ...inventory,
-    configuration_error:
-      "The API cannot read or validate its storage manifest.",
-    roots: [
-      {
-        id: "photos",
-        label: "Photos",
-        source: "/disk/files/photos",
-        kind: "assigned",
-        owner: "account-id",
-        username: "alice",
-        read_only: true,
-        selinux: "preserve",
-        state: "unavailable",
-        message: "The API cannot read or validate its storage manifest.",
-      },
-    ],
+    configuration_error: "Manifest access is invalid",
     jobs: [
       {
-        id: "failed",
+        ...job,
         action: "update",
-        payload: { action: "update" },
         state: "failed",
-        disposition: "attention",
+        disposition: "obsolete",
         can_retry: false,
         can_dismiss: true,
-        retry_reason: "Restore manifest access before retrying.",
-        message: "Configuration was applied, but verification failed.",
-        result: {},
-        created_at: "2026-09-30T12:00:00Z",
       },
     ],
   });
-  render(<StorageAdministration csrfToken="csrf" />);
+  render(
+    <StorageAdministration
+      csrfToken="csrf"
+      route="#administration/storage/diagnostics"
+    />,
+  );
   expect(
     await screen.findByRole("heading", {
-      name: "Storage configuration needs host attention",
+      name: "Storage diagnostics & history",
     }),
   ).toBeInTheDocument();
   expect(
-    screen.getByRole("heading", { name: "Activity & diagnostics" }),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByText("Configuration was applied, but verification failed."),
-  ).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Disconnect" })).toBeDisabled();
-  expect(
-    screen.queryByRole("button", { name: "Retry configure location" }),
-  ).not.toBeInTheDocument();
-  expect(
-    screen.getByText("Restore manifest access before retrying."),
-  ).toBeInTheDocument();
-});
-
-test("wizard copies the setup command and explains host context without manual mkdir", async () => {
-  const writeText = vi.fn().mockResolvedValue(undefined);
-  Object.defineProperty(navigator, "clipboard", {
-    value: { writeText },
-    configurable: true,
-  });
-  render(<StorageAdministration csrfToken="csrf" />);
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Copy setup command" }),
-  );
-  await waitFor(() =>
-    expect(writeText).toHaveBeenCalledWith("./scripts/ark storage setup"),
-  );
-  expect(
-    screen.getByText(/You do not need to create the directory yourself/),
-  ).toBeInTheDocument();
-  expect(screen.getByText(/not inside a container/)).toBeInTheDocument();
-  fireEvent.click(screen.getByLabelText("Connect an existing folder"));
-  expect(
-    screen.getByRole("button", { name: "Choose existing folder" }),
-  ).toBeInTheDocument();
-});
-
-test("wizard follows host progress and opens a verified private location", async () => {
-  const job: api.StorageJob = {
-    id: "setup",
-    action: "setup",
-    payload: { action: "init" },
-    state: "verifying",
-    message: "Verifying access as the API user.",
-    result: {},
-    created_at: "2026-09-30T12:00:00Z",
-  };
-  let current: api.StorageAdministration = {
-    ...inventory,
-    setup: { ...inventory.setup, job },
-    jobs: [job],
-  };
-  vi.mocked(api.fetchStorageAdministration).mockImplementation(
-    async () => current,
-  );
-  render(<StorageAdministration csrfToken="csrf" />);
-  expect(
-    (await screen.findAllByText("Verifying access as the API user.")).length,
-  ).toBeGreaterThan(0);
-  current = {
-    ...inventory,
-    setup: { ...inventory.setup, job: { ...job, state: "completed" } },
-    roots: [
-      {
-        id: "personal",
-        label: "My files",
-        source: "/home/owner/Ark-Files",
-        kind: "managed",
-        owner: null,
-        username: null,
-        read_only: false,
-        selinux: "private",
-        state: "healthy",
-        message: "Connected",
-      },
-    ],
-  };
-  expect(
-    await screen.findByText("Local Files is ready", {}, { timeout: 4500 }),
-  ).toBeInTheDocument();
-  expect(
-    screen
-      .getAllByRole("link", { name: "Open my files" })
-      .some((link) => link.getAttribute("href") === "#local-files/personal"),
-  ).toBe(true);
-}, 10000);
-
-test("obsolete failures are history and dismiss without retrying a removed location", async () => {
-  const job: api.StorageJob = {
-    id: "obsolete",
-    action: "update",
-    payload: { action: "update", root_id: "personal" },
-    state: "failed",
-    disposition: "obsolete",
-    can_retry: false,
-    can_dismiss: true,
-    message: "Old configuration failure",
-    result: {},
-    created_at: "2026-09-30T12:00:00Z",
-  };
-  vi.mocked(api.fetchStorageAdministration).mockResolvedValue({
-    ...inventory,
-    jobs: [job],
-  });
-  render(<StorageAdministration csrfToken="csrf" />);
-  expect(
-    await screen.findByText(
-      "No pending operations or current failure notifications.",
-    ),
+    screen.getByRole("link", { name: "Open diagnostics" }),
   ).toBeInTheDocument();
   fireEvent.click(screen.getByText("History", { selector: "summary" }));
-  expect(
-    screen.queryByRole("button", { name: "Retry configure location" }),
-  ).not.toBeInTheDocument();
   fireEvent.click(
     screen.getByRole("button", { name: "Dismiss configure location" }),
   );
   await waitFor(() =>
     expect(api.storageRequest).toHaveBeenCalledWith(
-      "admin/storage/jobs/obsolete/dismiss",
+      "admin/storage/jobs/job/dismiss",
       "csrf",
       "POST",
     ),
   );
-  expect(api.submitStorageOperation).not.toHaveBeenCalled();
+  expect(
+    screen.queryByRole("button", { name: "Retry configure location" }),
+  ).not.toBeInTheDocument();
 });
 
-test("stalled host setup explains how to resume instead of waiting indefinitely", async () => {
+test("disconnect requires confirmation and preserves files", async () => {
   vi.mocked(api.fetchStorageAdministration).mockResolvedValue({
     ...inventory,
-    setup: {
-      ...inventory.setup,
-      interrupted: true,
-      job: {
-        id: "stalled",
-        action: "setup",
-        payload: {},
-        state: "applying",
-        message: "Applying mounts",
-        result: {},
-        created_at: "2026-09-30T12:00:00Z",
-      },
-    },
+    roots: [root],
   });
-  render(<StorageAdministration csrfToken="csrf" />);
-  expect(
-    await screen.findByText("Resume the host setup command"),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByText(/If the host command stopped, rerun the same command/),
-  ).toBeInTheDocument();
+  render(
+    <StorageAdministration
+      csrfToken="csrf"
+      route="#administration/storage/locations/second/configuration"
+    />,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
+  expect(api.submitStorageOperation).not.toHaveBeenCalled();
+  expect(screen.getByText(/files stay on the server/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Confirm disconnect" }));
+  await waitFor(() =>
+    expect(api.submitStorageOperation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "remove",
+        root_id: "second",
+        confirmed: true,
+      }),
+      "csrf",
+    ),
+  );
 });

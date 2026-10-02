@@ -5,56 +5,44 @@ optional metadata workspace. Files never pass through Google or live in PostgreS
 
 ## Configure storage in Ark Cloud
 
-Administrators use **Administration → Local Storage**. Account invitations and management live
+Administrators use **Administration → Storage**. Account invitations and management live
 under **Administration → Users**. Regular users choose their default location/folder inside
 **Local Files**; that preference persists with their account across devices.
 
-### Create your cloud storage (recommended)
+### Add and connect a location
 
-The UI-led wizard explains the host step and follows progress automatically. From the ArkCloud
-repository on the server, as the account running the deployment, run:
+Administration is a landing page with separate Storage and Users pages. Storage shows a locations
+ledger; Add location, per-location access/configuration/activity, Settings, and Diagnostics are
+distinct routed views. Refresh and browser Back/Forward preserve the selected view.
 
-```bash
-./scripts/ark storage setup
-```
+Choose **Add location**, enter its name, select a new or existing server folder, choose private
+account folders or shared files, assign accounts, and press **Connect** once. Ark prepares narrow
+filesystem access automatically, applies the mount, and verifies the running API before enabling
+accounts. No command-copy panel, permission checkbox or separate review step is involved.
 
-There is no manual `mkdir` step. Ark creates a **new** `~/Ark-Files`, applies mapped-UID ACLs and
-private container labels, connects the base, installs the host helper, and verifies access as the
-unprivileged API user. Active accounts receive isolated private folders. When the wizard says
-**Local Files is ready**, choose **Open my files**. This opens the location without changing your
-saved starting-folder preference.
+Normal `./scripts/ark up` provisions the deployment owner's storage helper and a dedicated
+`~/Ark-Locations` area for new UI-created folders. Existing paths and credentials are preserved.
+`ARK_STORAGE_MANAGED_AREA` can select a different **new** dedicated area at deployment time;
+its identity is pinned in `.ark-storage/managed-area.json`. An unrelated existing directory is
+never silently adopted. Linux, the acl package and a systemd user service are deployment prerequisites.
+Owner-supervised installations retain the CLI below. User-service lifetime follows the deployment
+owner's systemd login/linger configuration. Lifecycle helpers pause the manager during stack changes.
 
-Use `--path /a/new/directory` for another new base. An existing unregistered directory is a conflict,
-not permission to overwrite or repurpose it: use the existing-folder flow below. Repeating setup
-preserves an established base and its files. `.ark-storage/setup-journal.json` pins setup-created
-directories for recovery after interruption; changed or missing identities require review. If
-interrupted before a new directory's identity was recorded, setup refuses to adopt it automatically.
-For an established base, use **Change base directory** to relocate, **Reconnect** after reviewing
-a replacement disk, or **Disconnect** to remove its registration. Setup never silently performs
-these operations. A pending manager journal must finish first; terminal report-only journals are
-archived during setup. Without systemd, use `--no-install` and supervise the helper separately.
-If setup stops reporting progress for five minutes, the wizard shows resume guidance rather than
-waiting indefinitely. Rerun the same command after confirming the previous command stopped;
-the unfinished job and access block stay intact until verification succeeds.
+An existing directory must be inside an owner-authorized area. Ark inspects identity, ownership,
+supported entry types and filesystem access, then applies narrow API ACLs to eligible owner-owned
+directories/files and default ACLs for future content. ACL mask expansion preserves other users'
+effective rights. File bodies and existing SELinux labels are preserved; new directories receive
+the configured Ark-only labels. Symlinks, nested mounts, hard links, special files and foreign-owned
+content cannot be silently traversed or re-permissioned. Host policy blockers appear in Diagnostics.
 
-### Connect an existing folder
-
-Select **Connect an existing folder** in the wizard. If the helper is not connected, the host
-owner enrolls it with an existing dedicated directory:
-
-```bash
-./scripts/ark storage manager enroll --approve /your/disk/files --install
-```
-
-The approved area must already exist and be a dedicated directory. Repeat `--approve` for more
-areas. Valid, already-connected roots retain management access when another area is enrolled.
-Enrollment provisions no file location and grants no content ACL. It installs a systemd
-user service under the deployment owner's account; use the host's user-service/linger policy if
-it should run without a logged-in session. Without systemd, omit `--install` and supervise
-`./scripts/ark storage manager run` as the same host owner. Re-enrollment rotates its credential.
-Lifecycle helpers pause the installed systemd manager before `up`/`down`/data reset, and start
-an enabled manager after `up` passes health checks. A separately supervised foreground manager
-must be paused by its owner during deployment/teardown.
+A failed runtime verification leaves one registered **Needs repair** location with account access
+paused. Open its Connection page and press **Repair connection**. Repair reuses its registration,
+prepares access automatically and restores failed initial account intent only after verification.
+Selecting the same failed path in Add location also resolves to repair instead of an overlap error;
+selecting an already-connected path opens the existing location. Genuine overlapping roots remain
+unsupported. Retry re-evaluates automatic access rather than replaying an obsolete checkbox value.
+The durable manager and ACL journals preserve recovery state; dismissing history does not release
+access blocks. Missing or replaced disk identities require explicit owner review.
 
 ### Control account access
 
@@ -69,17 +57,8 @@ It is not a shared directory, and granting another account access never reveals 
 Existing active accounts retain access during the permissions migration; later accounts require
 an explicit grant. Legacy assigned directories preserve their assigned account's initial access.
 
-For a separate shared location, choose **Create shared folder** and run this from the repository
-on the host:
-
-```bash
-./scripts/ark storage setup --shared
-```
-
-This creates a new `~/Ark-Shared` and connects it without granting any account access. Use
-**Manage access** to select users afterward. `--shared --path /a/new/shared-folder` supports another
-new location. Alternatively, create a shared directory inside an already-approved, non-overlapping
-area or connect an existing directory, choosing account permissions before confirmation. Authorized
+For a separate shared location, use **Add location → Shared files**, selecting account permissions
+before connecting. Existing private bases are preserved. Authorized
 users of a shared location see the same files; its permissions do not apply to private account folders.
 
 The API enforces grants on every file operation. Read-only accounts cannot upload, create, rename,

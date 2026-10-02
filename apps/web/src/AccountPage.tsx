@@ -398,11 +398,13 @@ export default function AccountPage({
           )}
         </section>
       )}
-      <p className="scope-note account-note">
-        Changing your password signs out every device, including this one. Your
-        account is stored on this Ark Cloud instance. Changes to your login do
-        not affect your Drive connection.
-      </p>
+      {!usersOnly && (
+        <p className="scope-note account-note">
+          Changing your password signs out every device, including this one.
+          Your account is stored on this Ark Cloud instance. Changes to your
+          login do not affect your Drive connection.
+        </p>
+      )}
     </div>
   );
 }

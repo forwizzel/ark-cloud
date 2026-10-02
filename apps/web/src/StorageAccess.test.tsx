@@ -139,14 +139,18 @@ test("Manage access remains available with the host helper offline", async () =>
     upload_limit_source: "environment",
     users: [],
   });
-  render(<StorageAdministration csrfToken="csrf" />);
-  const button = await screen.findByRole("button", { name: "Manage access" });
-  expect(button).toBeEnabled();
-  expect(screen.getByRole("button", { name: "Configure" })).toBeDisabled();
-  fireEvent.click(button);
+  render(
+    <StorageAdministration
+      csrfToken="csrf"
+      route="#administration/storage/locations/personal/access"
+    />,
+  );
   expect(await screen.findByLabelText("Access for member")).toHaveValue(
     "write",
   );
+  expect(
+    screen.getByRole("link", { name: "Configuration" }),
+  ).toBeInTheDocument();
 });
 
 test("shared access editor explains shared files and respects the host read-only ceiling", async () => {
