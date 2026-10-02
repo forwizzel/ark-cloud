@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -17,6 +18,7 @@ vi.mock("./storageAdminApi", async (original) => ({
 }));
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   window.history.replaceState({}, "", "/");
 });
 const inventory: api.StorageAdministration = {
@@ -150,6 +152,92 @@ test("existing-folder connection submits once with automatic preparation", async
   expect(screen.queryByText("Review folder")).not.toBeInTheDocument();
   expect(
     screen.queryByText("Grant API access to this folder and future content"),
+  ).not.toBeInTheDocument();
+});
+
+test("connecting a new shared folder reconnects without a false failure", async () => {
+  vi.useFakeTimers();
+  await act(async () => {
+    render(
+      <StorageAdministration
+        csrfToken="csrf"
+        route="#administration/storage/new"
+      />,
+    );
+  });
+  fireEvent.change(screen.getByLabelText("Location name"), {
+    target: { value: "Second Directory" },
+  });
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Connect location" }));
+  });
+  expect(screen.getByText("Preparing access")).toBeInTheDocument();
+  expect(api.submitStorageOperation).toHaveBeenCalledWith(
+    expect.objectContaining({ create_directory: true, shared: true }),
+    "csrf",
+  );
+  vi.mocked(api.fetchStorageAdministration).mockRejectedValue(
+    new api.StorageRequestError(
+      "Storage request failed. Refresh and retry.",
+      500,
+    ),
+  );
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(3000);
+  });
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(
+    screen.getByText("Applying storage mounts. Reconnecting automatically…"),
+  ).toBeInTheDocument();
+  vi.mocked(api.fetchStorageAdministration).mockResolvedValue({
+    ...inventory,
+    roots: [root],
+    jobs: [
+      { ...job, state: "completed", message: "Storage operation completed." },
+    ],
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(3000);
+  });
+  expect(
+    screen.queryByText("Applying storage mounts. Reconnecting automatically…"),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(window.location.hash).toBe(
+    "#administration/storage/locations/second/overview",
+  );
+});
+
+test.each([
+  { name: "idle outage", jobs: [], status: 503, delay: 3000 },
+  { name: "permission failure", jobs: [job], status: 403, delay: 3000 },
+  {
+    name: "prolonged provisioning outage",
+    jobs: [job],
+    status: 502,
+    delay: 33_000,
+  },
+])("$name still displays an error", async ({ jobs, status, delay }) => {
+  vi.useFakeTimers();
+  vi.mocked(api.fetchStorageAdministration)
+    .mockResolvedValueOnce({ ...inventory, jobs })
+    .mockRejectedValue(
+      new api.StorageRequestError("Connection unavailable", status),
+    );
+  await act(async () => {
+    render(
+      <StorageAdministration
+        csrfToken="csrf"
+        route="#administration/storage"
+      />,
+    );
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(delay);
+  });
+  expect(screen.getByRole("alert")).toHaveTextContent("Connection unavailable");
+  expect(
+    screen.queryByText("Applying storage mounts. Reconnecting automatically…"),
   ).not.toBeInTheDocument();
 });
 

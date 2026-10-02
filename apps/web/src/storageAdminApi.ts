@@ -131,6 +131,19 @@ export type StorageAdministration = {
   }[];
 };
 
+export class StorageRequestError extends Error {
+  readonly retryable: boolean;
+
+  constructor(
+    message: string,
+    readonly status: number | null,
+  ) {
+    super(message);
+    this.name = "StorageRequestError";
+    this.retryable = status === null || [500, 502, 503, 504].includes(status);
+  }
+}
+
 export async function storageRequest<T>(
   path: string,
   csrf: string,
@@ -138,20 +151,31 @@ export async function storageRequest<T>(
   body?: unknown,
   signal?: AbortSignal,
 ): Promise<T> {
-  const response = await fetch(`/api/${path}`, {
-    method,
-    signal,
-    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`/api/${path}`, {
+      method,
+      signal,
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  } catch (error) {
+    if (error instanceof TypeError)
+      throw new StorageRequestError(
+        "Storage is temporarily unavailable. Retrying automatically.",
+        null,
+      );
+    throw error;
+  }
   if (!response.ok) {
     const error = (await response.json().catch(() => null)) as {
       detail?: unknown;
     } | null;
-    throw new Error(
+    throw new StorageRequestError(
       typeof error?.detail === "string"
         ? error.detail
         : "Storage request failed. Refresh and retry.",
+      response.status,
     );
   }
   return response.json() as Promise<T>;

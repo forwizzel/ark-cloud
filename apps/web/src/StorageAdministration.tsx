@@ -1,8 +1,9 @@
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { administrationRoute, locationHref } from "./administrationRoutes";
 import {
   fetchStorageAdministration,
   storageRequest,
+  StorageRequestError,
   submitStorageOperation,
   type ManagedLocation,
   type StorageAdministration as Snapshot,
@@ -48,10 +49,14 @@ export default function StorageAdministration({
   const [notice, setNotice] = useState("");
   const [sending, setSending] = useState(false);
   const [waiting, setWaiting] = useState<string | null>(null);
+  const [reconnecting, setReconnecting] = useState(false);
+  const reconnectStarted = useRef<number | null>(null);
   const page = administrationRoute(route);
   const accept = useEffectEvent((next: Snapshot) => {
     setData(next);
     setError("");
+    setReconnecting(false);
+    reconnectStarted.current = null;
     if (!waiting) return;
     const job = next.jobs.find((item) => item.id === waiting);
     if (!job || active(job)) return;
@@ -61,6 +66,26 @@ export default function StorageAdministration({
       const id = job.result.existing_root_id ?? job.payload.root_id;
       if (id) window.location.hash = locationHref(id).slice(1);
     }
+  });
+  const reportPollFailure = useEffectEvent((problem: unknown) => {
+    const applyingMounts = data?.jobs.some(
+      (job) =>
+        active(job) && !["browse", "preflight", "check"].includes(job.action),
+    );
+    if (
+      applyingMounts &&
+      problem instanceof StorageRequestError &&
+      problem.retryable
+    ) {
+      reconnectStarted.current ??= Date.now();
+      if (Date.now() - reconnectStarted.current < 30_000) {
+        setError("");
+        setReconnecting(true);
+        return;
+      }
+    }
+    setReconnecting(false);
+    setError(failure(problem));
   });
   useEffect(() => {
     const controller = new AbortController();
@@ -73,7 +98,7 @@ export default function StorageAdministration({
         );
         if (!controller.signal.aborted) accept(next);
       } catch (problem) {
-        if (!controller.signal.aborted) setError(failure(problem));
+        if (!controller.signal.aborted) reportPollFailure(problem);
       } finally {
         if (!controller.signal.aborted)
           timer = setTimeout(() => void poll(), 3000);
@@ -182,7 +207,12 @@ export default function StorageAdministration({
       )}
       {error && (
         <p className="local-error" role="alert">
-          {error} Ark reconnects automatically while mounts are applied.
+          {error}
+        </p>
+      )}
+      {reconnecting && (
+        <p className="storage-notice" role="status">
+          Applying storage mounts. Reconnecting automatically…
         </p>
       )}
       {notice && (
@@ -196,7 +226,7 @@ export default function StorageAdministration({
           <a href="#administration/storage/diagnostics">Open diagnostics</a>
         </p>
       )}
-      {waiting && (
+      {waiting && !reconnecting && (
         <p role="status">
           {data.jobs.find((job) => job.id === waiting)?.message ??
             "Preparing access and verifying the connection…"}
