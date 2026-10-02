@@ -14,7 +14,7 @@ metadata-only Google Drive workspace, detailed system information, and updated i
 - Database-aware platform health and structured application logs
 - Normalized integration abstraction
 - Non-root CPU, memory, storage, uptime, OS, and kernel telemetry
-- Optional server-side Tailscale device integration
+- Optional UI-managed dedicated Tailscale node, private Serve HTTPS, and device inventory
 - Responsive infrastructure dashboard with partial-failure states
 - Backend and frontend tests, linting, formatting, and CI smoke tests
 - Local session authentication and server-side status for the Google Drive storage provider
@@ -84,26 +84,21 @@ choosing which containers to recreate. Use `./scripts/ark restart` for a fresh f
 ./scripts/ark logs api
 ```
 
-The lifecycle commands always force the web service onto loopback. Use Tailscale Serve for private
+The lifecycle commands always force the web service onto loopback. Use UI-managed Tailscale Serve for private
 remote access. `./scripts/ark reset-data --confirm` is the only lifecycle helper that removes
-named volumes and permanently deletes local PostgreSQL data.
+named volumes and permanently deletes local PostgreSQL data, managed Tailscale identity, and secrets.
 
 The only published port is `127.0.0.1:5173`. In the mapping
 `127.0.0.1:5173:5173`, the first address and port belong to Ark and the final port belongs
 to the web container. PostgreSQL and the API have no host port; the web development server
 proxies browser requests to them through Docker's private network.
 
-To use the development UI from another device over Tailscale, keep `ARK_BIND_ADDRESS` set to
-`127.0.0.1` and use Tailscale Serve on the Ark host. This keeps the Compose port off the host
-network interfaces and works with the rootless Docker setup:
-
-```bash
-sudo tailscale serve --bg http://127.0.0.1:5173
-tailscale serve status
-```
-
-Open the HTTPS URL shown by `tailscale serve status` from an authorized device on the tailnet.
-Review Tailscale grants before enabling access. Do not use `0.0.0.0` or open router ports.
+For private remote access, open **Administration → Tailscale**, enter a Tailscale API key,
+and press **Connect**. Default Compose runs a dedicated userspace Tailscale service; no host
+Tailscale installation or host networking privileges are needed. Ark creates its own node and
+configures private Serve HTTPS while `ARK_BIND_ADDRESS` stays `127.0.0.1`.
+Open the HTTPS URL shown in the UI from a device running the Tailscale app and signed in to
+an authorized Tailscale account. See [Configure Tailscale](#configure-tailscale) below.
 
 ## Verify Health
 
@@ -147,35 +142,36 @@ Authenticated control-plane endpoints include:
 
 ## Configure Tailscale
 
-Tailscale is optional. Without credentials, its dashboard panel reports `Not configured`
-while every other feature continues to work.
+Tailscale is optional; local access works without a connection.
 
-Create an API access token in the Tailscale admin console, then add it only to your ignored
-`.env` file:
+1. Create an API key in the Tailscale admin console using an account with device-create rights
+   in the intended tailnet.
+2. Open **Administration → Tailscale**, enter the API key, and press **Connect**. Ark validates
+   the credentials, persists them encrypted, mints a one-use auth key, joins a dedicated node,
+   and configures Tailscale Serve HTTPS automatically. Saving needs no `.env` edits, shell
+   commands, or stack restart.
+3. If a tailnet requirement needs approval, follow the HTTPS Tailscale approval link shown in
+   the UI. Ark resumes automatically after approval. No manual auth-key creation or Serve
+   command is required.
+4. Open the displayed HTTPS address from an authorized tailnet device. Clients still need
+   the Tailscale app and account login, followed by their Ark Cloud login. Serve is private;
+   Ark does not enable Funnel or public access.
 
-```dotenv
-ARK_TAILSCALE_API_KEY=tskey-api-your-token
-ARK_TAILSCALE_TAILNET=-
-```
+**Disable remote access** stops the managed Serve endpoint while retaining the connection,
+credentials, and node identity. **Disconnect** removes the saved credentials and logs out
+the managed node; it also explicitly disables legacy environment fallback. Both leave
+<http://127.0.0.1:5173> available locally.
 
-The shorthand tailnet ID `-` uses the tailnet associated with the token. Restart the API
-after changing configuration:
+Existing `ARK_TAILSCALE_API_KEY` / `ARK_TAILSCALE_TAILNET` configuration remains a read-only
+inventory fallback until credentials are saved in the UI or an explicit Disconnect disables
+it. It does not provision a node. An API key's expiry can interrupt inventory or provisioning
+without disconnecting an already-joined node's Serve endpoint; replace the key in the UI.
 
-```bash
-./scripts/ark up
-```
-
-The API calls Tailscale server-side when the dashboard requests device status. The token is
-never sent to the browser. Verify the integration through the normalized endpoint:
-
-```bash
-curl http://127.0.0.1:5173/api/tailscale/devices
-```
-
-Tailscale access tokens expire after 1 to 90 days. The API sends the token only to the fixed
-HTTPS Tailscale API origin and refuses redirects; it is never included in normalized API
-responses or browser configuration. Use the shortest practical expiration. The security
-guide documents the least-privilege path for continuous operation.
+Existing host-installed Tailscale Serve is independent: Ark neither adopts nor removes it.
+An old manual host endpoint remains outside UI control until the owner retires it. See
+[migration and recovery](docs/development.md#use-tailscale-for-remote-access) for details,
+including backups of PostgreSQL and the `tailscale_secrets`, `tailscale_controller`, and
+`tailscale_state` named volumes.
 
 ## Configure Google Drive
 

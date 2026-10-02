@@ -149,7 +149,7 @@ reset_data() {
     [[ "${1:-}" == "--confirm" && "$#" -eq 1 ]] || fail "This destroys PostgreSQL data. Use: ./scripts/ark reset-data --confirm"
     prepare
     storage_manager_service stop
-    printf 'Removing containers, networks, accounts, and named volumes. Host files survive; restore account IDs and storage configuration to recover access.\n'
+    printf 'Removing containers, networks, accounts, Tailscale identity and secrets, and named volumes. Host files survive; restore account IDs and storage configuration to recover access.\n'
     compose down --volumes --remove-orphans
 }
 

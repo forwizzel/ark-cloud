@@ -3,6 +3,31 @@
 Ark Cloud advances one usable, verified phase at a time. Later phases may change as actual
 requirements become clearer.
 
+## UI-Managed Tailscale Dedicated Node Plan
+
+The deployment plan replaces manual host Serve setup with a dedicated userspace Tailscale
+service in default Compose, without a host installation or host networking privileges.
+**Administration → Tailscale → Connect** validates an API key from a user with device-create
+rights, persists credentials encrypted, automatically mints a one-use auth key, joins the
+managed node, and configures private Serve HTTPS. Saving requires no environment edits or
+commands. Unmet tailnet requirements expose only an approved HTTPS vendor approval link;
+connection resumes automatically after approval. Funnel/public access is excluded, and
+clients still need the Tailscale app and account login as well as Ark authentication.
+
+Remote-access disable retains credentials and node identity but stops Serve; Disconnect
+removes saved credentials, logs out the node, and explicitly disables legacy environment
+fallback. Local `127.0.0.1` access remains. Existing environment key/tailnet configuration
+supports read-only inventory until a UI save or explicit Disconnect. API key expiry can impair
+inventory/provisioning without stopping an already-joined Serve endpoint; replacement is via UI.
+
+PostgreSQL and the separate persistent `tailscale_secrets` encryption-key,
+`tailscale_controller` token, and `tailscale_state` identity volumes are the recovery set.
+Existing manual host Serve endpoints remain independent and are not adopted or removed by
+the UI. See [migration and recovery](development.md#use-tailscale-for-remote-access).
+Live acceptance with fresh credentials must verify joining, any required approval and automatic
+resume, HTTPS reachability, disable/re-enable, disconnect, and restore; this plan does not
+claim those live checks have passed.
+
 ## Phase 0: Foundation
 
 Status: implemented.

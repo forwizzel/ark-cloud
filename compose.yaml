@@ -1,6 +1,46 @@
 name: ark-cloud
 
 services:
+  tailscale-init:
+    build:
+      context: ./apps/api
+    user: "0:0"
+    entrypoint: ["python", "/bootstrap/tailscale_bootstrap.py"]
+    restart: "no"
+    network_mode: none
+    volumes:
+      - ./scripts/tailscale_bootstrap.py:/bootstrap/tailscale_bootstrap.py:ro,Z
+      - tailscale_secrets:/run/ark-secrets
+      - tailscale_controller:/run/ark-tailscale
+      - tailscale_state:/var/lib/tailscale
+
+  tailscale:
+    build:
+      context: ./apps/tailscale
+    depends_on:
+      tailscale-init:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs:
+      - /tmp:uid=10001,gid=10001,mode=0700
+    volumes:
+      - tailscale_controller:/run/ark-tailscale:ro
+      - tailscale_state:/var/lib/tailscale
+    healthcheck:
+      test: ["CMD", "python3", "/app/healthcheck.py"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    stop_grace_period: 45s
+    restart: unless-stopped
+    networks:
+      - app
+
   db:
     image: postgres:18.6-alpine3.24
     environment:
@@ -46,6 +86,8 @@ services:
       sh -c "alembic upgrade head &&
       uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --no-access-log"
     depends_on:
+      tailscale-init:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
     healthcheck:
@@ -63,6 +105,9 @@ services:
     restart: unless-stopped
     volumes:
       - ./apps/api:/app:Z
+      - tailscale_secrets:/run/ark-secrets
+      - tailscale_controller:/run/ark-tailscale
+    group_add: ["10001"]
     networks:
       - app
       - data
@@ -104,6 +149,9 @@ services:
       - app
 
 volumes:
+  tailscale_secrets:
+  tailscale_controller:
+  tailscale_state:
   postgres_data:
   web_node_modules:
 

@@ -21,7 +21,7 @@ Browser (127.0.0.1:5173 locally; HTTPS via Tailscale Serve remotely)
 
 Compose creates two bridge networks:
 
-- `app` connects the web client and API.
+- `app` connects the web client, API, and dedicated userspace Tailscale service.
 - `data` connects only the API and PostgreSQL and is marked `internal`.
 
 Docker's internal DNS resolves service names such as `api` and `db`. Container addresses
@@ -57,6 +57,8 @@ browser-visible paths while the internal route remains `GET /health`.
 PostgreSQL is the system of record for Ark Cloud control-plane state, not user file content.
 It stores local sessions, OAuth state, encrypted Google refresh tokens, cached Drive account/quota
 status, the derived Drive metadata index, sync history, and local Drive workspace preferences.
+It also stores encrypted UI-saved Tailscale credentials and desired managed connection state;
+the Tailscale encryption key is kept separately in the `tailscale_secrets` named volume.
 The host filesystem is the source of truth for local files; Google Drive remains authoritative for
 Drive files. An Alembic migration history tracks schema changes; Compose applies migrations before
 starting the API.
@@ -146,11 +148,33 @@ size, maps only approved fields, and never returns raw third-party payloads. Dev
 uses `connectedToControl` when Tailscale provides it. For older or partial responses without
 that boolean, Ark Cloud falls back to a `lastSeen` window of five minutes.
 
-This server-side integration is independent of browser network access. The web container is
-published on loopback by default, while Tailscale Serve can proxy that local port to authorized
-tailnet devices. The development environment uses rootless Docker, so publishing the port
-directly on the host's `100.x.y.z` Tailscale address is not supported. Tailscale provides a
-network boundary only; it does not replace Ark Cloud application authentication.
+Default Compose also runs a dedicated userspace Tailscale service. It requires no host
+installation, TUN device, privileged networking, or Docker socket. The service configures
+private Serve HTTPS to the web container over the `app` network; the host's published web
+port remains `127.0.0.1:5173`. Funnel is not enabled.
+
+Administrators connect through **Administration → Tailscale** with an API key whose user has
+device-create rights. The API validates and encrypts persisted credentials, mints a one-use
+auth key, and lets the dedicated controller reconcile joining the node and enabling Serve.
+No environment edit or command is needed to save. An unmet tailnet requirement exposes only
+an approved HTTPS vendor approval link; reconciliation resumes automatically after approval.
+The browser receives normalized state, not saved credentials or raw upstream/command output.
+
+The controller token persists in `tailscale_controller`, while node identity persists in
+`tailscale_state`. Together with `tailscale_secrets` and PostgreSQL, these volumes form the
+managed connection's recovery set; see [backup and recovery](development.md#back-up-and-recover-the-managed-node).
+
+Disabling remote access stops managed Serve while preserving credentials and node identity.
+Disconnect removes saved credentials, logs out the managed node, and explicitly disables
+legacy environment fallback. Both preserve local loopback access. Existing environment key
+and tailnet settings support read-only inventory only until a UI save or explicit Disconnect.
+API key expiry can impair inventory/provisioning without disconnecting an already-joined
+Serve endpoint; administrators replace it in the UI.
+
+Independent host Serve installations are neither adopted nor removed. Their endpoints remain
+outside UI control and must be retired separately during migration. Tailscale clients still
+need the app and an authorized account login; the network boundary does not replace Ark Cloud
+application authentication.
 
 ## Google Drive Integration
 

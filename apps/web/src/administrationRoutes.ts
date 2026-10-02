@@ -1,12 +1,20 @@
 export type AdministrationRoute = {
   page:
-    "overview" | "storage" | "new" | "settings" | "diagnostics" | "location";
+    | "overview"
+    | "storage"
+    | "tailscale"
+    | "new"
+    | "settings"
+    | "diagnostics"
+    | "location";
   rootId?: string;
   tab?: "overview" | "access" | "configuration" | "activity";
 };
 
 export function administrationRoute(hash: string): AdministrationRoute {
   const parts = hash.replace(/^#/, "").split("/");
+  if (parts[0] === "administration" && parts[1] === "tailscale")
+    return { page: "tailscale" };
   if (parts[0] !== "administration" || parts[1] !== "storage")
     return { page: "overview" };
   if (parts[2] === "new") return { page: "new" };

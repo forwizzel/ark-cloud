@@ -24,6 +24,7 @@ import LocalFiles, { LocalStorageSummary } from "./LocalFiles";
 import SystemInformationPage from "./SystemInformationPage";
 import StorageAdministration from "./StorageAdministration";
 import AdministrationTabs from "./AdministrationTabs";
+import TailscaleAdministration from "./TailscaleAdministration";
 import { administrationRoute } from "./administrationRoutes";
 import arkCloudLogo from "../../../graphics/arkcloud-logo.svg?raw";
 
@@ -345,10 +346,14 @@ function App() {
               <div
                 id="administration-panel"
                 role="tabpanel"
-                aria-labelledby={`administration-tab-${activePage === "users" ? "users" : administrationRoute(activeHash).page === "overview" ? "overview" : "storage"}`}
+                aria-labelledby={`administration-tab-${activePage === "users" ? "users" : administrationRoute(activeHash).page === "tailscale" ? "tailscale" : administrationRoute(activeHash).page === "overview" ? "overview" : "storage"}`}
                 tabIndex={0}
               >
-                {activePage === "administration" ? (
+                {administrationRoute(activeHash).page === "tailscale" ? (
+                  <TailscaleAdministration
+                    csrfToken={sessionState.session.csrf_token ?? ""}
+                  />
+                ) : activePage === "administration" ? (
                   <StorageAdministration
                     csrfToken={sessionState.session.csrf_token ?? ""}
                     route={activeHash}
@@ -369,7 +374,8 @@ function App() {
             </div>
           ) : (
             <p role="alert">
-              Administrator access is required to manage storage and accounts.
+              Administrator access is required to manage storage, Tailscale and
+              accounts.
             </p>
           ))}
         {activePage === "account" && (
@@ -407,6 +413,7 @@ function App() {
           <DashboardView
             dashboard={dashboardState.dashboard}
             csrfToken={sessionState.session.csrf_token ?? ""}
+            isAdmin={sessionState.session.role === "admin"}
             onDashboardRefresh={refresh}
           />
         )}
@@ -427,10 +434,12 @@ function App() {
 function DashboardView({
   dashboard,
   csrfToken,
+  isAdmin,
   onDashboardRefresh,
 }: {
   dashboard: Dashboard;
   csrfToken: string;
+  isAdmin: boolean;
   onDashboardRefresh: () => void;
 }) {
   const system = dashboard.system;
@@ -562,7 +571,7 @@ function DashboardView({
         </div>
       </section>
 
-      <TailscalePanel tailscale={dashboard.tailscale} />
+      <TailscalePanel tailscale={dashboard.tailscale} isAdmin={isAdmin} />
       <LocalStorageSummary />
       <GoogleDrivePanel
         drive={dashboard.google_drive}
@@ -818,7 +827,13 @@ function ServiceRow({
   );
 }
 
-function TailscalePanel({ tailscale }: { tailscale: Dashboard["tailscale"] }) {
+function TailscalePanel({
+  tailscale,
+  isAdmin,
+}: {
+  tailscale: Dashboard["tailscale"];
+  isAdmin: boolean;
+}) {
   return (
     <section className="devices-panel panel" aria-labelledby="devices-heading">
       <PanelHeading
@@ -856,6 +871,13 @@ function TailscalePanel({ tailscale }: { tailscale: Dashboard["tailscale"] }) {
           {tailscale.devices.map((device) => (
             <DeviceRow key={device.id} device={device} />
           ))}
+        </div>
+      )}
+      {isAdmin && (
+        <div className="drive-actions">
+          <a className="drive-link" href="#administration/tailscale">
+            Configure Tailscale
+          </a>
         </div>
       )}
     </section>

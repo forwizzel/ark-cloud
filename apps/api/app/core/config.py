@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     system_storage_path: str = "/"
     tailscale_api_key: SecretStr | None = None
     tailscale_tailnet: str = "-"
+    tailscale_secret_directory: str = "/run/ark-secrets"
+    tailscale_controller_directory: str = "/run/ark-tailscale"
     session_secret: SecretStr | None = None
     cookie_secure: bool = False
     session_max_age_seconds: int = 86_400

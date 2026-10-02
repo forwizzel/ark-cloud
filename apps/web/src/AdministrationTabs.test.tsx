@@ -24,6 +24,11 @@ test("deep links select their parent tab, including the legacy Users route", () 
     "tabindex",
     "-1",
   );
+  rerender(<AdministrationTabs route="#administration/tailscale" />);
+  expect(screen.getByRole("tab", { name: "Tailscale" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
 });
 
 test("tabs support arrow wrapping, Home, End, and click navigation", () => {

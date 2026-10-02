@@ -284,8 +284,10 @@ mounts without adding cross-process mutation coordination.
 
 Uvicorn raw access logging is disabled because file URLs contain names. Structured successful
 mutation events include only action/root ID/principal ID; configure Docker log rotation to bound
-retention. Configure any outer proxy to avoid retaining sensitive file paths. Remote access remains
-loopback plus Tailscale Serve HTTPS; use `ARK_COOKIE_SECURE=true` when accessing over HTTPS.
+retention. Configure any outer proxy to avoid retaining sensitive file paths. Local access remains
+on loopback; configure dedicated userspace Tailscale Serve HTTPS in **Administration → Tailscale**
+for private remote file access. See [connection, migration, and recovery](development.md#use-tailscale-for-remote-access).
+Use `ARK_COOKIE_SECURE=true` when accessing over HTTPS.
 
 ## Persistence, removal, and recovery
 

@@ -18,6 +18,10 @@ User device | Tailscale or local host | Web proxy | API | PostgreSQL / Google Dr
 - The API is the only application component allowed to reach PostgreSQL.
 - PostgreSQL and the API have no host port mappings.
 - `./scripts/ark up` forces the web port onto loopback (`127.0.0.1`).
+- Default Compose includes a dedicated userspace Tailscale service for private Serve HTTPS.
+  It requires no host installation, TUN device, host networking privileges, or Docker socket.
+  Its controller authenticates to the API using a token in `tailscale_controller`; joined node
+  identity resides in `tailscale_state`. It cannot reach the database network.
 - Explicit host directory mounts are the local-content boundary. The owner-operated manifest and
   immutable account IDs scope access; Unix permissions and SELinux independently constrain the API.
   Google Drive is optional and metadata-only. PostgreSQL never stores file bodies.
@@ -60,12 +64,25 @@ parameters through explicit route schemas.
 - Do not pass third-party integration secrets to the browser when the API can hold them.
 - Rotate a credential immediately if it appears in Git history or logs.
 
-The optional Tailscale access token is stored as a Pydantic `SecretStr`, sent only to the
-fixed HTTPS Tailscale API origin in a server-side `Authorization` header, and excluded from
-normalized responses and logs. Redirects are refused rather than forwarding the credential.
-Use the shortest practical expiration and revoke unused tokens. OAuth client credentials
-with a narrow `devices:core:read` scope should replace manually rotated access tokens when
-the integration needs continuous operation.
+UI-saved Tailscale API credentials are validated and encrypted before persistence in
+PostgreSQL. Their encryption key is separate, in the persistent `tailscale_secrets` named
+volume; no environment-provided encryption key is needed for UI setup. Credentials are sent
+only to the fixed HTTPS Tailscale API origin server-side and excluded from normalized responses
+and logs. Redirects are refused rather than forwarding the credential. Automatically minted
+one-use auth keys join the managed node and are never returned to the browser.
+
+The API key's user must have device-create rights for managed provisioning; an inventory-only
+read scope is insufficient. Expiry may affect inventory or provisioning without disconnecting
+an already-joined node's Serve endpoint. Replace the key in **Administration → Tailscale**.
+Existing environment key/tailnet values are a legacy read-only inventory fallback only until
+a UI save supersedes them or explicit Disconnect disables the fallback. Explicitly selecting
+**Enable private access** with a legacy key validates it and adopts it into encrypted
+UI-managed configuration before provisioning; startup never enables it automatically.
+
+Back up PostgreSQL together with `tailscale_secrets`, `tailscale_controller`, and
+`tailscale_state` for managed connection recovery. The database alone cannot decrypt saved
+credentials without the separate encryption key. Protect all of these backups as secrets;
+see [recovery details](development.md#back-up-and-recover-the-managed-node).
 
 Environment variables are appropriate for local development, not a complete production
 secret-management strategy. Docker secrets or a dedicated secret manager should be
@@ -73,27 +90,24 @@ evaluated before deployment.
 
 ## Network Exposure
 
-The default port mapping is `127.0.0.1:5173:5173`, so only applications on Ark can connect.
-For private remote development, keep that loopback binding and use Tailscale Serve to proxy the
-port through the tailnet:
+The default port mapping is `127.0.0.1:5173:5173`, so the published host port is local-only.
+**Administration → Tailscale → Connect** validates and saves the API key, then automatically
+provisions a dedicated node and private Serve HTTPS to the web container. Saving requires no
+environment changes or shell commands. If a tailnet requirement needs approval, the UI offers
+only an approved HTTPS Tailscale vendor link and automatically resumes after approval.
+Clients need the Tailscale app, a Tailscale account login authorized by tailnet grants, and
+their Ark Cloud login. Ark does not enable Funnel or public Internet access.
 
-```bash
-sudo tailscale serve --bg http://127.0.0.1:5173
-```
+**Disable remote access** stops the managed HTTPS endpoint while retaining credentials and
+node identity. **Disconnect** removes credentials, logs out the managed node, and explicitly
+disables environment fallback. Local loopback access remains available in both cases.
+An existing manual host Serve endpoint is independent: it is neither adopted nor automatically
+removed, and these UI actions do not stop it. Migration requires separately retiring the old
+host endpoint after verifying the new managed address.
 
-This is the supported approach for the rootless Docker development environment. Direct binding
-to Ark's `100.x.y.z` Tailscale address can fail because the rootless Docker networking namespace
-does not own the host interface. Avoid `0.0.0.0`, which listens on every host interface, and do
-not open router ports.
-
-When configured, Tailscale requests are initiated server-side for an authenticated dashboard
-session. Normalized device inventory is visible to the configured local user. Keep the loopback
-default or use restrictive Tailscale grants so only explicitly trusted devices can reach the web
-port.
-
-HTTPS is deferred until a reverse proxy is introduced. Plain HTTP is acceptable only for
-loopback or a deliberately reviewed private development path. Sensitive features require
-HTTPS even within a private network.
+Keep `ARK_BIND_ADDRESS=127.0.0.1`; direct Tailscale-IP binding is not supported by the rootless
+Docker environment. Serve supplies HTTPS for the private remote path; local access remains
+HTTP on loopback. Inventory requests remain server-side and return normalized device data.
 
 ## Dependency And Runtime Practices
 

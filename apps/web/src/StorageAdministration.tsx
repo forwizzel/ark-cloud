@@ -281,6 +281,17 @@ export default function StorageAdministration({
                 </span>
               </a>
             </li>
+            <li>
+              <a href="#administration/tailscale">
+                <div className="administration-destination-copy">
+                  <h3>Tailscale</h3>
+                  <p>Manage private HTTPS access to Ark Cloud.</p>
+                </div>
+                <span className="administration-destination-action">
+                  Manage Tailscale <DestinationArrow />
+                </span>
+              </a>
+            </li>
           </ul>
           {(data.configuration_error || !data.manager.online) && (
             <p className="administration-attention">

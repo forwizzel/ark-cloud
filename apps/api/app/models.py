@@ -19,6 +19,32 @@ class Base(DeclarativeBase):
     pass
 
 
+class TailscaleControl(Base):
+    __tablename__ = "tailscale_control"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    configured_override: Mapped[bool] = mapped_column(Boolean, default=False)
+    api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tailnet: Mapped[str] = mapped_column(String(320), default="-")
+    desired_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    disconnect: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    principal_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    integration_state: Mapped[str] = mapped_column(String(32), default="not_configured")
+    integration_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    integration_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    auth_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    auth_key_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    auth_key_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class StorageControl(Base):
     __tablename__ = "storage_control"
 

@@ -20,8 +20,11 @@ def get_system_integration(
 
 def get_tailscale_integration(
     settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[Session, Depends(get_db_session)],
 ) -> TailscaleIntegration:
-    return TailscaleIntegration(settings)
+    from app.services.tailscale_control import runtime_integration
+
+    return runtime_integration(db, settings)
 
 
 def get_google_drive_integration(

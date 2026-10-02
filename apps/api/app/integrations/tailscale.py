@@ -36,11 +36,13 @@ class TailscaleIntegration(Integration):
         settings: Settings,
         opener: ResponseOpener = _open_request,
         clock: Callable[[], datetime] | None = None,
+        configuration_error: str | None = None,
     ) -> None:
         self._api_key = settings.tailscale_api_key
         self._tailnet = settings.tailscale_tailnet
         self._opener = opener
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._configuration_error = configuration_error
 
     @property
     def configured(self) -> bool:
@@ -48,6 +50,12 @@ class TailscaleIntegration(Integration):
 
     def summary(self) -> TailscaleSummary:
         collected_at = self._clock()
+        if self._configuration_error:
+            return TailscaleSummary(
+                state="unavailable",
+                message=self._configuration_error,
+                collected_at=collected_at,
+            )
         if not self.configured:
             return TailscaleSummary(
                 state="not_configured",

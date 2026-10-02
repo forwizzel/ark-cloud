@@ -4,6 +4,7 @@ import { administrationRoute } from "./administrationRoutes";
 const sections = [
   { id: "overview", label: "Overview", hash: "#administration" },
   { id: "storage", label: "Storage", hash: "#administration/storage" },
+  { id: "tailscale", label: "Tailscale", hash: "#administration/tailscale" },
   { id: "users", label: "Users", hash: "#administration/users" },
 ] as const;
 
@@ -13,9 +14,11 @@ export default function AdministrationTabs({ route }: { route: string }) {
   const selected =
     route === "#administration/users" || route === "#administration-users"
       ? "users"
-      : page === "overview"
-        ? "overview"
-        : "storage";
+      : page === "tailscale"
+        ? "tailscale"
+        : page === "overview"
+          ? "overview"
+          : "storage";
 
   return (
     <div

@@ -20,10 +20,11 @@ Edit `.env` and replace the development password in both `POSTGRES_PASSWORD` and
 out of source code.
 
 `ARK_SYSTEM_HOSTNAME`, `ARK_SYSTEM_OS_NAME`, and `ARK_SYSTEM_STORAGE_PATH` label the runtime
-metrics shown on the dashboard. Optional `ARK_TAILSCALE_API_KEY` and
-`ARK_TAILSCALE_TAILNET` values enable the Tailscale adapter. Leave the key blank when the
-integration is not needed. `ARK_TAILSCALE_TAILNET=-` uses the tailnet associated with the
-API token. Keep `ARK_BIND_ADDRESS=127.0.0.1`; it is the secure default for the web port.
+metrics shown on the dashboard. Configure Tailscale in **Administration → Tailscale**;
+leave `ARK_TAILSCALE_API_KEY` blank for new installations. Existing environment API key and
+tailnet values provide legacy read-only inventory only; `ARK_TAILSCALE_TAILNET=-` uses the
+tailnet associated with the API key. UI saves supersede that fallback, and explicit Disconnect
+disables it. Keep `ARK_BIND_ADDRESS=127.0.0.1` for the web port.
 
 ```bash
 ./scripts/ark up
@@ -34,6 +35,8 @@ Compose performs these steps in dependency order:
 1. PostgreSQL starts and `pg_isready` reports that it accepts connections.
 2. The API applies Alembic migrations, starts Uvicorn, and passes `/health`.
 3. Vite starts and publishes the web page on the configured host address.
+4. The dedicated Tailscale service runs in userspace and reconciles UI-managed node and Serve
+   state. It needs no host Tailscale installation, TUN device, or host networking privileges.
 
 Source directories are mounted into their containers. Vite provides frontend hot module
 replacement, and Uvicorn's `--reload` restarts the development API when Python files
@@ -102,19 +105,72 @@ the same web-to-API proxy path used by the React application.
 
 ## Use Tailscale For Remote Access
 
-The Tailscale device integration and remote browser access are separate features. The API
-integration uses `ARK_TAILSCALE_API_KEY` and `ARK_TAILSCALE_TAILNET` to query device status.
-Remote browser access does not require exposing the Compose port on the Tailscale interface.
+Default Compose supplies Ark's own dedicated userspace Tailscale node. Keep the published web
+port on `127.0.0.1`; the managed node proxies the web service over Docker's private network
+with Tailscale Serve HTTPS. No host Tailscale installation or host networking privileges are
+needed, including with rootless Docker.
 
-With the default loopback binding, publish Ark Cloud through Tailscale Serve on the Ark host:
+### Connect From The UI
 
-```bash
-sudo tailscale serve --bg http://127.0.0.1:5173
-```
+Create a Tailscale API key as a tailnet user with device-create rights. Sign in as an Ark
+administrator, open **Administration → Tailscale**, enter the key, and press **Connect**.
+Ark validates the credentials and saves them encrypted, then automatically mints a one-use
+auth key, joins the dedicated node, and configures Serve HTTPS. Saving does not require
+environment changes, terminal commands, or a restart.
 
-Open the HTTPS hostname reported by `tailscale serve status` from a trusted tailnet device.
-Rootless Docker cannot reliably bind the published port directly to a `100.x.y.z` Tailscale
-address, and binding to `0.0.0.0` would expose the port on every host interface.
+If an unmet tailnet requirement requires vendor approval, the UI shows an HTTPS Tailscale
+approval link. Complete approval there; Ark automatically resumes the pending connection.
+Only approved HTTPS vendor links are exposed, not raw command output or upstream responses.
+
+Use the resulting HTTPS URL from a client with the Tailscale app installed and signed in to
+an account authorized by the tailnet's access policy. Ark account authentication is still
+required. This is private Serve access; Funnel and public Internet access are not enabled.
+
+### Disable Remote Access Or Disconnect
+
+- **Disable remote access** stops the managed Serve endpoint but retains saved credentials
+  and the joined node identity, allowing remote access to be enabled again.
+- **Disconnect** removes saved credentials and logs out the managed node. It records an
+  explicit disabled state so environment credentials do not silently reconnect the integration.
+- Both preserve local access at <http://127.0.0.1:5173>. Neither controls an independent host
+  Tailscale installation or its Serve endpoint.
+
+API key expiration can stop inventory queries and new provisioning operations without
+disconnecting an already-joined node or its existing Serve endpoint. Replace an expired key
+through **Administration → Tailscale** rather than editing `.env`.
+
+### Migrate Existing Configuration
+
+Existing `ARK_TAILSCALE_API_KEY` and `ARK_TAILSCALE_TAILNET` values remain a read-only device
+inventory fallback. They never automatically provision the managed node. Saving credentials
+in the UI supersedes this fallback; explicit Disconnect disables it even if those variables
+remain set. After a successful UI connection, the owner can remove the legacy environment
+values during routine deployment maintenance. Alternatively, **Enable private access**
+validates and adopts an existing legacy key into encrypted UI-managed settings; it is never
+enabled automatically at startup.
+
+A manually configured host Serve endpoint is not adopted or automatically removed. Connect
+the dedicated node in the UI, verify its new HTTPS address from a tailnet client, and update
+bookmarks or shared links. Retire the old endpoint separately using the host's Tailscale
+administration once it is no longer needed. If it remains configured, it can still expose Ark
+privately even after **Disable remote access** or **Disconnect** in Ark's UI.
+
+### Back Up And Recover The Managed Node
+
+Recovering the managed connection requires a consistent PostgreSQL backup together with
+these persistent Compose named volumes:
+
+| Volume | Recovery material |
+| --- | --- |
+| PostgreSQL database volume | Encrypted credentials and desired connection state, plus Ark accounts and control-plane data |
+| `tailscale_secrets` | Credential encryption key, separate from PostgreSQL |
+| `tailscale_controller` | Token authenticating the dedicated controller to the API |
+| `tailscale_state` | Joined node identity and Tailscale state |
+
+Restrict and encrypt backups of all four. Restore them together for recovery on a replacement
+host; a database-only backup cannot decrypt the saved API key without `tailscale_secrets`,
+and missing identity state cannot preserve the original joined node. Normal `up`, `restart`,
+and `down` preserve these volumes. `reset-data --confirm` removes them along with PostgreSQL.
 
 ## Stop Or Reset
 
@@ -122,8 +178,9 @@ address, and binding to `0.0.0.0` would expose the port on every host interface.
 ./scripts/ark down
 ```
 
-This removes containers and networks but preserves the named PostgreSQL volume. To delete
-all local database data and start from an empty database, use the destructive command:
+This removes containers and networks but preserves PostgreSQL and the Tailscale named volumes.
+To delete local database data, managed Tailscale identity, and secrets and start fresh, use
+the destructive command:
 
 ```bash
 ./scripts/ark reset-data --confirm

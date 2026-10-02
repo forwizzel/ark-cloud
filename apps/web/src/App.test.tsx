@@ -118,6 +118,118 @@ test("offers appearance controls before signing in", async () => {
   ).toBeInTheDocument();
 });
 
+test("administrator sign-in preserves the Tailscale destination and sends session CSRF", async () => {
+  window.history.replaceState({}, "", "/#administration/tailscale");
+  const fetch = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === "/api/auth/session")
+        return jsonResponse({ authenticated: false });
+      if (url === "/api/auth/login")
+        return jsonResponse({
+          authenticated: true,
+          username: "owner",
+          role: "admin",
+          csrf_token: "admin-csrf",
+        });
+      if (url === "/api/dashboard") return jsonResponse(dashboard);
+      if (url === "/api/admin/tailscale")
+        return jsonResponse({
+          configured: false,
+          source: "none",
+          integration_state: "not_configured",
+          integration_message: null,
+          desired_enabled: false,
+          revision: 0,
+          state: "disconnected",
+          message: "Not connected.",
+          serve_url: null,
+          approval_url: null,
+          dns_name: null,
+          node_id: null,
+          controller_online: true,
+        });
+      return new Response(null, { status: 404 });
+    });
+  render(<App />);
+  await screen.findByRole("heading", { name: "Sign in" });
+  fireEvent.change(screen.getByLabelText("Username"), {
+    target: { value: "owner" },
+  });
+  fireEvent.change(screen.getByLabelText("Password"), {
+    target: { value: "password" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+  await screen.findByLabelText("Tailscale API key");
+  expect(window.location.hash).toBe("#administration/tailscale");
+  expect(screen.getByRole("tab", { name: "Tailscale" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  expect(screen.getByRole("tabpanel")).toHaveAttribute(
+    "aria-labelledby",
+    "administration-tab-tailscale",
+  );
+  expect(fetch).toHaveBeenCalledWith(
+    "/api/admin/tailscale",
+    expect.objectContaining({ headers: { "X-CSRF-Token": "admin-csrf" } }),
+  );
+});
+
+test("members cannot open the Tailscale administrator page or issue management requests", async () => {
+  window.history.replaceState({}, "", "/#administration/tailscale");
+  const fetch = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (input) => {
+      if (String(input) === "/api/auth/session")
+        return jsonResponse({
+          authenticated: true,
+          username: "member",
+          role: "member",
+          csrf_token: "csrf",
+        });
+      if (String(input) === "/api/dashboard") return jsonResponse(dashboard);
+      return new Response(null, { status: 404 });
+    });
+  render(<App />);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Administrator access is required",
+  );
+  expect(screen.queryByLabelText("Tailscale API key")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("link", { name: "Administration" }),
+  ).not.toBeInTheDocument();
+  expect(
+    fetch.mock.calls.some(([url]) =>
+      String(url).startsWith("/api/admin/tailscale"),
+    ),
+  ).toBe(false);
+});
+
+test.each(["admin", "member"])(
+  "dashboard Tailscale configure link is admin-only (%s)",
+  async (role) => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input) === "/api/auth/session")
+        return jsonResponse({
+          authenticated: true,
+          username: "ark",
+          role,
+          csrf_token: "csrf",
+        });
+      if (String(input) === "/api/dashboard") return jsonResponse(dashboard);
+      return new Response(null, { status: 404 });
+    });
+    render(<App />);
+    await screen.findByRole("heading", { name: "Devices" });
+    const link = screen.queryByRole("link", { name: "Configure Tailscale" });
+    if (role === "admin")
+      expect(link).toHaveAttribute("href", "#administration/tailscale");
+    else expect(link).not.toBeInTheDocument();
+  },
+);
+
 test("signing in starts on Dashboard instead of the previous page", async () => {
   window.history.replaceState({}, "", "/#drive-workspace");
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {

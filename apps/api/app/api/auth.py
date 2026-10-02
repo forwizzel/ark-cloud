@@ -28,7 +28,13 @@ from app.auth.service import (
 from app.core.config import Settings, get_settings
 from app.core.database import get_db_session
 from app.dependencies import get_optional_principal, require_admin, require_csrf, require_principal
-from app.models import AuthSession, BootstrapCode, GoogleDriveConnection, LocalUser
+from app.models import (
+    AuthSession,
+    BootstrapCode,
+    GoogleDriveConnection,
+    LocalUser,
+    TailscaleControl,
+)
 from app.schemas.auth import (
     InviteRequest,
     LoginRequest,
@@ -72,12 +78,12 @@ def _signed_out_request(request: Request) -> None:
 
 
 def _session_response(
-    user: LocalUser, response: Response, db: Session, settings: Settings
+    user: LocalUser, response: Response, db: Session, settings: Settings, request: Request
 ) -> SessionResponse:
     _, token, csrf_token = create_session(db, settings, user)
     cookie_options = {
         "max_age": settings.session_max_age_seconds,
-        "secure": settings.cookie_secure,
+        "secure": settings.cookie_secure or _managed_https_request(request, db),
         "samesite": "lax",
         "path": "/",
     }
@@ -85,6 +91,18 @@ def _session_response(
     response.set_cookie(CSRF_COOKIE, csrf_token, httponly=False, **cookie_options)
     return SessionResponse(
         authenticated=True, username=user.username, role=user.role, csrf_token=csrf_token
+    )
+
+
+def _managed_https_request(request: Request, db: Session) -> bool:
+    # The private Serve gateway overwrites this header. Plain forwarded headers
+    # supplied by clients must never determine authentication cookie policy.
+    proof = request.headers.get("X-Ark-Remote-Access", "")
+    if not proof:
+        return False
+    value = db.get(TailscaleControl, 1)
+    return bool(
+        value and value.token_hash and secrets.compare_digest(token_hash(proof), value.token_hash)
     )
 
 
@@ -149,7 +167,7 @@ def setup(
     db.delete(code)
     db.commit()
     clear_failure(db, key)
-    return _session_response(user, response, db, settings)
+    return _session_response(user, response, db, settings, request)
 
 
 @router.post("/login", response_model=SessionResponse)
@@ -176,7 +194,7 @@ def login(
         record_failure(db, key)
         raise HTTPException(status_code=401, detail="Invalid username or password.")
     clear_failure(db, key)
-    return _session_response(user, response, db, settings)
+    return _session_response(user, response, db, settings, request)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -314,7 +332,7 @@ def redeem_invite(
     user.updated_at = now()
     db.commit()
     clear_failure(db, key)
-    return _session_response(user, response, db, settings)
+    return _session_response(user, response, db, settings, request)
 
 
 @router.post("/users/{user_id}/invite")
