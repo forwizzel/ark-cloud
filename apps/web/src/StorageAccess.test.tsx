@@ -84,14 +84,7 @@ test("access editor shows member's existing private access and saves explicit re
           }
         : access,
   );
-  render(
-    <StorageAccess
-      root={root}
-      csrfToken="csrf"
-      onClose={vi.fn()}
-      onChanged={onChanged}
-    />,
-  );
+  render(<StorageAccess root={root} csrfToken="csrf" onChanged={onChanged} />);
   expect(await screen.findByLabelText("Access for member")).toHaveValue(
     "write",
   );
@@ -163,7 +156,6 @@ test("shared access editor explains shared files and respects the host read-only
     <StorageAccess
       root={{ ...root, kind: "shared" }}
       csrfToken="csrf"
-      onClose={vi.fn()}
       onChanged={vi.fn()}
     />,
   );

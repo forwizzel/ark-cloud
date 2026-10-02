@@ -312,8 +312,12 @@ export default function StorageAdministration({
                   </p>
                 </div>
                 <div className="local-actions">
-                  <a href={locationHref(root.id)}>Open location</a>
-                  <a href={locationHref(root.id, "access")}>Manage access</a>
+                  <a
+                    className="storage-manage-link"
+                    href={locationHref(root.id)}
+                  >
+                    Manage
+                  </a>
                 </div>
               </li>
             ))}
@@ -451,9 +455,6 @@ export default function StorageAdministration({
                 key={selected.id}
                 root={selected}
                 csrfToken={csrfToken}
-                onClose={() => {
-                  window.location.hash = locationHref(selected.id).slice(1);
-                }}
                 onChanged={refresh}
               />
             )}

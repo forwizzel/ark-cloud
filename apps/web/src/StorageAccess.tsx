@@ -16,12 +16,10 @@ const levels: Record<AccessLevel, string> = {
 export default function StorageAccess({
   root,
   csrfToken,
-  onClose,
   onChanged,
 }: {
   root: ManagedLocation;
   csrfToken: string;
-  onClose: () => void;
   onChanged: () => Promise<void>;
 }) {
   const [view, setView] = useState<LocationAccess | null>(null);
@@ -31,7 +29,7 @@ export default function StorageAccess({
   const [error, setError] = useState("");
   const heading = useRef<HTMLHeadingElement>(null);
   const route = `admin/storage/roots/${encodeURIComponent(root.id)}/access`;
-  const discardChanges = useUnsavedChanges(
+  useUnsavedChanges(
     Boolean(
       view?.accounts.some(
         (account) =>
@@ -118,15 +116,6 @@ export default function StorageAccess({
         <h3 id="storage-access-heading" ref={heading} tabIndex={-1}>
           Manage access — {root.label}
         </h3>
-        <button
-          type="button"
-          onClick={() => {
-            if (discardChanges()) onClose();
-          }}
-          disabled={Boolean(busy)}
-        >
-          Close access editor
-        </button>
       </div>
       <p className="storage-path">{root.source}</p>
       <p>

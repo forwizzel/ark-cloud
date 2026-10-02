@@ -104,9 +104,9 @@ test("locations page only shows the ledger and task links", async () => {
     await screen.findByRole("heading", { name: "Storage locations" }),
   ).toBeInTheDocument();
   expect(screen.getByText("Needs repair")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Manage access" })).toHaveAttribute(
+  expect(screen.getByRole("link", { name: "Manage" })).toHaveAttribute(
     "href",
-    "#administration/storage/locations/second/access",
+    "#administration/storage/locations/second/overview",
   );
   expect(screen.queryByText("Maximum file size")).not.toBeInTheDocument();
   expect(

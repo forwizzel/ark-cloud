@@ -198,6 +198,23 @@
   flex-shrink: 0;
   max-width: 360px;
 }
+.storage-locations .storage-manage-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 220px;
+  min-height: 44px;
+  padding: 10px 24px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  font-weight: 500;
+  text-decoration: none;
+}
+.storage-locations .storage-manage-link:hover {
+  background: var(--panel-raised);
+  border-color: var(--signal);
+}
 .storage-locations p {
   margin-bottom: 8px;
 }
