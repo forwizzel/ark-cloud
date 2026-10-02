@@ -20,6 +20,7 @@ from app.dependencies import require_admin, require_csrf, require_principal
 from app.models import LocalUser, StorageGrant, StorageJob, StoragePreference
 from app.services.local_storage import (
     MUTATIONS,
+    HostHealth,
     LocalStorage,
     RootConfig,
     StorageError,
@@ -30,7 +31,12 @@ from app.services.local_storage import (
     rename_exclusive,
 )
 from app.services.storage_access import ensure_location, retire_missing
-from app.services.storage_control import control, upload_limit
+from app.services.storage_control import (
+    control,
+    host_health_error,
+    upload_limit,
+    wait_for_host_refresh,
+)
 
 router = APIRouter(tags=["storage-administration"], route_class=StorageRoute)
 DB = Annotated[Session, Depends(get_db_session)]
@@ -138,6 +144,7 @@ class Report(BaseModel):
     repository_path: str = Field(default="", max_length=4096)
     default_path: str = Field(default="", max_length=4096)
     managed_area: str = Field(default="", max_length=4096)
+    root_health: dict[str, HostHealth] | None = Field(default=None, max_length=32)
 
 
 def job_view(job):
@@ -511,7 +518,9 @@ def change_access(root_id: str, body: AccessChange, principal: Admin, db: DB, se
 
 
 @router.get("/admin/storage")
-def inventory(principal: Admin, db: DB, settings: Config):
+def inventory(principal: Admin, db: DB, settings: Config, refresh: bool = False):
+    if refresh:
+        wait_for_host_refresh()
     value = control(db)
     db.commit()
     snapshot = value.snapshot
@@ -541,6 +550,9 @@ def inventory(principal: Admin, db: DB, settings: Config):
         )
         if config and config.model_dump() == {k: source.get(k) for k in config.model_dump()}:
             try:
+                failure = host_health_error(config, manifest.host_health.get(config.id), db=db)
+                if failure:
+                    raise StorageError(failure, 503)
                 service = LocalStorage(manifest, verification=True)
                 with service.root(config.id, config.owner or principal.id, base=True) as fd:
                     os.fstatvfs(fd)
@@ -985,6 +997,10 @@ def report(body: Report, manager: Manager, db: DB, settings: Config):
         "default_path": body.default_path,
         "managed_area": body.managed_area,
     }
+    if body.root_health is not None:
+        value.snapshot["root_health"] = {
+            key: health.model_dump() for key, health in body.root_health.items()
+        }
     value.last_seen_at = now()
     if body.job_id:
         job = db.get(StorageJob, body.job_id)

@@ -86,10 +86,17 @@ class RootConfig(BaseModel):
         return self
 
 
+class HostHealth(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    state: Literal["ready", "missing", "unavailable"]
+    message: str = Field(max_length=2000)
+
+
 class Manifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: Literal[1] = 1
     roots: list[RootConfig] = Field(max_length=32)
+    host_health: dict[str, HostHealth] = Field(default_factory=dict, max_length=32)
 
     @model_validator(mode="after")
     def unique_roots(self):
@@ -215,6 +222,17 @@ class LocalStorage:
         if platform.machine() not in {"x86_64", "aarch64"}:
             raise StorageError("Local storage requires Linux x86_64 or aarch64.", 503)
         config = self.config(root_id, owner)
+        from app.services.storage_control import host_health_error
+
+        deployed = self.manifest.host_health.get(root_id)
+        # Verification runs inside control-plane write transactions; do not open
+        # a second database session while checking the applied host manifest.
+        if self.verification:
+            failure = deployed.message if deployed and deployed.state != "ready" else None
+        else:
+            failure = host_health_error(config, deployed)
+        if failure:
+            raise StorageError(failure, 503)
         level = "write" if self.verification else self.access(config, owner)[0]
         if level == "none":
             raise StorageError("Storage location not found.", 404)
@@ -240,6 +258,12 @@ class LocalStorage:
             os.close(anchor)
         try:
             info = os.fstat(fd)
+            if info.st_nlink == 0:
+                raise StorageError(
+                    "Host storage directory was deleted. "
+                    "Reconnect this location after host owner review.",
+                    503,
+                )
             if (info.st_dev, info.st_ino) != (config.device, config.inode):
                 raise StorageError("Storage identity changed. Host owner review is required.", 503)
             if config.kind == "managed" and not base:

@@ -26,7 +26,7 @@ from app.services.local_storage import (
     load_manifest,
     rename_exclusive,
 )
-from app.services.storage_control import upload_limit
+from app.services.storage_control import upload_limit, wait_for_host_refresh
 
 
 class StorageRoute(APIRoute):
@@ -70,7 +70,9 @@ class MoveItem(CreateFolder):
 
 
 @router.get("/roots")
-def roots(principal: Reader, storage: Storage):
+def roots(principal: Reader, storage: Storage, refresh: bool = False):
+    if refresh:
+        wait_for_host_refresh()
     return storage.locations(principal.id)
 
 

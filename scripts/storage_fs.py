@@ -28,7 +28,7 @@ def beneath(parent, name, flags=DIRECTORY, *, root=False):
 def opened(path):
     anchor = os.open("/", DIRECTORY)
     try:
-        fd = beneath(anchor, str(path).lstrip("/"), DIRECTORY, root=True)
+        fd = beneath(anchor, str(path).lstrip("/") or ".", DIRECTORY, root=True)
     finally:
         os.close(anchor)
     try:

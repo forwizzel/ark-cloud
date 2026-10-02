@@ -83,9 +83,19 @@ storage_manager_service() {
 up() {
     prepare
     storage_manager_service stop
-    compose up --build --force-recreate --remove-orphans --detach --wait
+    trap 'storage_manager_service start' EXIT
+    python3 "$ROOT/scripts/storage_health.py"
+    local attempts=0
+    until compose up --build --force-recreate --remove-orphans --detach --wait; do
+        # At most 32 registered roots can disappear between validation and bind
+        # creation. Retry only while the verified mount set actually changes.
+        attempts=$((attempts + 1))
+        [[ "$attempts" -le 32 ]] || return 1
+        python3 "$ROOT/scripts/storage_health.py" --require-change || return 1
+    done
     health
     python3 "$ROOT/scripts/storage_bootstrap.py"
+    trap - EXIT
 }
 
 down() {
@@ -95,6 +105,10 @@ down() {
 }
 
 restart() {
+    prepare
+    storage_manager_service stop
+    trap 'storage_manager_service start' EXIT
+    python3 "$ROOT/scripts/storage_health.py"
     down
     up
 }

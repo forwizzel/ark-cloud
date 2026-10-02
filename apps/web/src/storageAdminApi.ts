@@ -160,9 +160,10 @@ export async function storageRequest<T>(
 export const fetchStorageAdministration = (
   csrf: string,
   signal?: AbortSignal,
+  refresh = false,
 ) =>
   storageRequest<StorageAdministration>(
-    "admin/storage",
+    `admin/storage${refresh ? "?refresh=true" : ""}`,
     csrf,
     "GET",
     undefined,

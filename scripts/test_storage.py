@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import storage
+import storage_health
 
 
 class ProvisioningTests(unittest.TestCase):
@@ -103,6 +104,41 @@ class ProvisioningTests(unittest.TestCase):
         for path in ["/", "/etc", "/proc", str(Path.home()), str(storage.REPO)]:
             with self.subTest(path=path), self.assertRaises(ValueError):
                 storage.source_path(path)
+
+    def test_missing_and_replaced_sources_are_omitted_without_retiring_registration(self):
+        first = self.base / "first"
+        second = self.base / "second"
+        first.mkdir()
+        second.mkdir()
+        storage.add(self.args(first, id="first"))
+        storage.add(self.args(second, id="second"))
+        original = storage.state()
+        first.rmdir()
+        self.assertTrue(storage_health.reconcile())
+        self.assertEqual(storage.state(), original)
+        manifest = json.loads((storage.CONFIG / "manifest.json").read_text())
+        self.assertEqual(len(manifest["roots"]), 2)
+        self.assertEqual(manifest["host_health"]["first"]["state"], "missing")
+        mounts = json.loads(storage.OVERRIDE.read_text())["services"]["api"]["volumes"]
+        self.assertEqual([m["source"] for m in mounts[1:]], [str(second)])
+        self.assertFalse(first.exists())
+        # Keep the old inode allocated so replacement cannot coincidentally reuse it.
+        second.rename(self.base / "original-second")
+        second.mkdir()
+        storage_health.reconcile()
+        mounts = json.loads(storage.OVERRIDE.read_text())["services"]["api"]["volumes"]
+        self.assertEqual(len(mounts), 1)
+        self.assertEqual(storage.state(), original)
+
+    def test_symlink_replacement_is_not_mounted_or_followed(self):
+        source = self.base / "photos"
+        source.mkdir()
+        storage.add(self.args(source))
+        source.rename(self.base / "original")
+        source.symlink_to(self.base / "original")
+        storage_health.reconcile()
+        mounts = json.loads(storage.OVERRIDE.read_text())["services"]["api"]["volumes"]
+        self.assertEqual(len(mounts), 1)
 
 
 if __name__ == "__main__":

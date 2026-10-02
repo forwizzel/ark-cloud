@@ -113,7 +113,12 @@ export default function StorageAdministration({
     }
   }
   async function refresh() {
-    setData(await fetchStorageAdministration(csrfToken));
+    try {
+      setData(await fetchStorageAdministration(csrfToken, undefined, true));
+      setError("");
+    } catch (problem) {
+      setError(failure(problem));
+    }
   }
   if (!data)
     return (

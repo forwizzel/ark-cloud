@@ -44,6 +44,27 @@ unsupported. Retry re-evaluates automatic access rather than replaying an obsole
 The durable manager and ACL journals preserve recovery state; dismissing history does not release
 access blocks. Missing or replaced disk identities require explicit owner review.
 
+### Missing host folders and disconnected disks
+
+Deleting or moving a registered folder directly on the host does not disconnect its registration.
+The host helper checks each source directory and its pinned identity. **Refresh locations** waits
+for a new host scan; a missing source is shown as unavailable and is not counted as connected.
+An old container bind mount cannot override missing, changed, or stale host-source status.
+
+`./scripts/ark up`, `restart`, and host-helper mount updates omit unavailable content sources
+before asking Docker to recreate the API. Healthy locations and core services, including sign-in,
+remain available even when every content location is missing. Ark never recreates a missing
+registered source, adopts a replacement directory, or discards its registration/account grants.
+Startup uses bounded retries if sources disappear during bind creation, retrying only when the
+verified mount configuration changes. The managed parent area may
+also be missing; its ownership metadata and identity are retained rather than replaced.
+
+Restore the original directory/disk and run `./scripts/ark up` to apply its mount again, or
+disconnect the unavailable registration in Administration. A replacement identity requires host
+owner review and explicit reconnection. If the helper stops reporting, locations become
+unavailable once its status is stale; an explicit refresh reports a timeout rather than claiming
+that old status was just verified. This recovery does not restore deleted file contents.
+
 ### Control account access
 
 Every location has **Manage access**. Choose **No access**, **Read-only**, or **Read & write** for

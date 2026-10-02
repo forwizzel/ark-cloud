@@ -135,6 +135,98 @@ def test_status_reads_never_create_private_directories(private_storage):
     assert client.get("/storage/roots").json()["roots"][0]["state"] == "healthy"
 
 
+def test_missing_host_source_overrides_healthy_retained_mount(private_storage, manager, db_session):
+    path, manifest = private_storage
+    (path / "ark").mkdir()
+    root = manifest.roots[0]
+    value = db_session.get(StorageControl, 1)
+    value.snapshot = {
+        "roots": [{**root.model_dump(), "source": "/host/deleted-folder", "selinux": "preserve"}],
+        "root_health": {
+            root.id: {"state": "missing", "message": "Host storage directory is missing."}
+        },
+    }
+    db_session.commit()
+    client = TestClient(app)
+    csrf = sign_in(client)
+    locations = client.get("/storage/roots").json()["roots"]
+    assert locations[0]["state"] == "unavailable"
+    assert "missing" in locations[0]["message"]
+    inventory = client.get("/admin/storage", headers=csrf).json()
+    assert inventory["roots"][0]["state"] == "unavailable"
+    assert inventory["roots"][0]["connection_state"] == "needs_repair"
+    assert client.get("/storage/personal/items").status_code == 503
+    assert (
+        client.post("/storage/personal/folders", headers=csrf, json={"path": "denied"}).status_code
+        == 503
+    )
+    assert not (path / "ark" / "denied").exists()
+    assert client.get("/health").status_code == 200
+    # Temporary unavailability preserves the location and its grants, and recovers
+    # when the host manager verifies the same original identity again.
+    value = db_session.get(StorageControl, 1)
+    value.snapshot = {
+        **value.snapshot,
+        "root_health": {root.id: {"state": "ready", "message": "Verified"}},
+    }
+    db_session.commit()
+    assert client.get("/storage/roots").json()["roots"][0]["state"] == "healthy"
+    assert client.get("/storage/personal/items").status_code == 200
+
+
+def test_stale_host_health_cannot_claim_connected(private_storage, manager, db_session):
+    path, manifest = private_storage
+    (path / "ark").mkdir()
+    root = manifest.roots[0]
+    value = db_session.get(StorageControl, 1)
+    value.snapshot = {
+        "roots": [{**root.model_dump(), "source": "/host/folder", "selinux": "preserve"}],
+        "root_health": {root.id: {"state": "ready", "message": "Verified"}},
+    }
+    value.last_seen_at = datetime.now(UTC) - timedelta(seconds=31)
+    db_session.commit()
+    client = TestClient(app)
+    csrf = sign_in(client)
+    assert "stale" in client.get("/storage/roots").json()["roots"][0]["message"]
+    assert client.get("/admin/storage", headers=csrf).json()["roots"][0]["state"] == "unavailable"
+
+
+def test_manager_report_carries_root_health(manager):
+    client = TestClient(app)
+    root = {
+        "id": "photos",
+        "label": "Photos",
+        "source": "/host/photos",
+        "path": "/srv/ark-storage/photos",
+        "kind": "shared",
+        "device": 1,
+        "inode": 2,
+        "selinux": "preserve",
+    }
+    response = client.post(
+        "/storage-manager/report",
+        headers=manager,
+        json={
+            "roots": [root],
+            "approved_paths": ["/host"],
+            "generation": "a" * 64,
+            "root_health": {"photos": {"state": "missing", "message": "Host directory missing."}},
+        },
+    )
+    assert response.status_code == 200
+    from app.core.database import SessionLocal
+
+    with SessionLocal() as db:
+        assert db.get(StorageControl, 1).snapshot["root_health"]["photos"]["state"] == "missing"
+
+
+def test_explicit_refresh_waits_for_host_scan_or_reports_timeout(manager):
+    from app.services.storage_control import wait_for_host_refresh
+
+    with pytest.raises(StorageError, match="refresh timed out"):
+        wait_for_host_refresh(timeout=0)
+
+
 def test_preferences_are_validated_and_isolated(private_storage, db_session):
     path, manifest = private_storage
     client = TestClient(app)

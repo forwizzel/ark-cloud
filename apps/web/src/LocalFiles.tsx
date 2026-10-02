@@ -87,7 +87,7 @@ export default function LocalFiles({
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
-      fetchStorageRoots(controller.signal),
+      fetchStorageRoots(controller.signal, refresh > 0),
       fetchStoragePreference(controller.signal),
     ])
       .then(([data, saved]) => {
@@ -114,6 +114,14 @@ export default function LocalFiles({
       .catch((failure: unknown) => {
         if (!controller.signal.aborted) {
           setError(message(failure));
+          setRoots((current) =>
+            current.map((item) => ({
+              ...item,
+              state: "unavailable",
+              message:
+                "Location status could not be verified. Refresh and retry.",
+            })),
+          );
           setLoading(false);
         }
       });
@@ -177,8 +185,11 @@ export default function LocalFiles({
         </label>
         <button
           type="button"
-          disabled={busy}
-          onClick={() => setRefresh((value) => value + 1)}
+          disabled={busy || loading}
+          onClick={() => {
+            setLoading(true);
+            setRefresh((value) => value + 1);
+          }}
         >
           Refresh locations
         </button>

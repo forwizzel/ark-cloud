@@ -127,6 +127,52 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(snapshot["approved_areas"][0]["state"], "missing")
         self.assertFalse(self.area.exists())
 
+    def test_deleted_child_is_missing_even_with_healthy_approved_parent(self):
+        folder = self.area / "photos"
+        folder.mkdir()
+        manager.execute(self.config, self.job("add"))
+        folder.rmdir()
+        snapshot = manager.snapshot(self.config)
+        self.assertEqual(snapshot["approved_areas"][0]["state"], "ready")
+        self.assertEqual(snapshot["root_health"]["photos"]["state"], "missing")
+        self.assertEqual(len(snapshot["roots"]), 1)
+        self.assertFalse(folder.exists())
+
+    def test_manager_apply_recovers_successive_source_deletions(self):
+        folders = [self.area / "photos", self.area / "second"]
+        for folder in folders:
+            folder.mkdir()
+            manager.execute(self.config, self.job("add", root_id=folder.name, path=str(folder)))
+        storage.atomic_write(manager.CONFIG, json.dumps(self.config))
+
+        def apply(*args, **kwargs):
+            mounts = json.loads(storage.OVERRIDE.read_text())["services"]["api"]["volumes"]
+            for folder in folders:
+                if folder.exists():
+                    folder.rmdir()
+                    self.assertIn(str(folder), [m["source"] for m in mounts])
+                    return SimpleNamespace(
+                        returncode=1, stderr="bind source path does not exist", stdout=""
+                    )
+            self.assertEqual(len(mounts), 1)
+            return SimpleNamespace(returncode=0, stderr="", stdout="started")
+
+        with patch.object(manager.subprocess, "run", side_effect=apply) as run:
+            self.assertEqual(manager.compose("up", "--wait", "api"), "started")
+        self.assertEqual(run.call_count, 3)
+        self.assertEqual(len(storage.state()["roots"]), 2)
+
+    def test_host_health_rejects_actual_nested_mount(self):
+        # /proc supplies a real mount boundary; approved identity alone is insufficient.
+        import storage_health
+
+        info = Path("/").stat()
+        config = {"approved_paths": ["/"], "identities": {"/": [info.st_dev, info.st_ino]}}
+        proc = Path("/proc").stat()
+        root = {"source": "/proc", "device": proc.st_dev, "inode": proc.st_ino}
+        with patch.object(storage, "source_path", return_value=Path("/proc")):
+            self.assertEqual(storage_health.inspect(root, config)["state"], "unavailable")
+
     def test_acl_changes_require_explicit_selection_and_folder_ownership(self):
         folder = self.area / "photos"
         folder.mkdir()

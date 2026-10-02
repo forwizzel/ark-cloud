@@ -130,8 +130,11 @@ def source_path(value):
 
 
 def save(data, *, announce=True):
+    import storage_health
+
     CONFIG.mkdir(mode=0o755, exist_ok=True)
-    manifest = {"version": 1, "roots": []}
+    health = storage_health.health(data, storage_health.configuration()) if data["roots"] else {}
+    manifest = {"version": 1, "roots": [], "host_health": health}
     mounts = [
         {
             "type": "bind",
@@ -144,6 +147,8 @@ def save(data, *, announce=True):
     for item in data["roots"]:
         root = {key: value for key, value in item.items() if key not in {"source", "selinux"}}
         manifest["roots"].append(root)
+        if health[item["id"]]["state"] != "ready":
+            continue
         options = {"create_host_path": False, "propagation": "rprivate"}
         if item["selinux"] != "preserve":
             options["selinux"] = "Z" if item["selinux"] == "private" else "z"

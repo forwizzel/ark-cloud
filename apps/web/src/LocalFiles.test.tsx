@@ -147,6 +147,46 @@ test("read-only roots expose downloads without write controls", async () => {
   ).not.toBeInTheDocument();
 });
 
+test("refresh detects a deleted host location and removes file controls", async () => {
+  render(<LocalFiles csrfToken="csrf" />);
+  await screen.findByRole("link", { name: "Download notes.txt" });
+  vi.mocked(api.fetchStorageRoots).mockResolvedValue({
+    roots: [
+      {
+        ...root,
+        state: "unavailable",
+        message: "Host storage directory is missing.",
+      },
+    ],
+    message: "",
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Refresh locations" }));
+  await screen.findByText("Host storage directory is missing.");
+  expect(api.fetchStorageRoots).toHaveBeenLastCalledWith(
+    expect.any(AbortSignal),
+    true,
+  );
+  expect(
+    screen.queryByRole("link", { name: "Download notes.txt" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Upload file" }),
+  ).not.toBeInTheDocument();
+});
+
+test("failed host refresh does not leave old connected file controls usable", async () => {
+  render(<LocalFiles csrfToken="csrf" />);
+  await screen.findByRole("link", { name: "Download notes.txt" });
+  vi.mocked(api.fetchStorageRoots).mockRejectedValue(
+    new Error("Host storage refresh timed out."),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Refresh locations" }));
+  await screen.findByText("Host storage refresh timed out.");
+  expect(
+    screen.queryByRole("button", { name: "Upload file" }),
+  ).not.toBeInTheDocument();
+});
+
 test("unconfigured storage guides members to their administrator", async () => {
   vi.mocked(api.fetchStorageRoots).mockResolvedValue({
     roots: [],

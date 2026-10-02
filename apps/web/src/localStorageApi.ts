@@ -49,9 +49,11 @@ export function storageUrl(
   return `/api/storage/${encodeURIComponent(root)}/${action}?${new URLSearchParams(parameters)}`;
 }
 
-export async function fetchStorageRoots(signal?: AbortSignal) {
+export async function fetchStorageRoots(signal?: AbortSignal, refresh = false) {
   return response<{ roots: StorageRoot[]; message: string }>(
-    await fetch("/api/storage/roots", { signal }),
+    await fetch(`/api/storage/roots${refresh ? "?refresh=true" : ""}`, {
+      signal,
+    }),
   );
 }
 

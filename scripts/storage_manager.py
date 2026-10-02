@@ -19,6 +19,7 @@ from types import SimpleNamespace
 
 import storage
 import storage_fs
+import storage_health
 import storage_permissions
 
 CONFIG = storage.CONFIG / "manager.json"
@@ -35,6 +36,8 @@ HTTP = urllib.request.build_opener(NoRedirect())
 
 def compose(*args, input=None):
     storage.local_daemon()
+    if args and args[0] == "up":
+        storage.save(storage.state(), announce=False)
     command = ["docker", "compose", "-f", str(storage.REPO / "compose.yaml")]
     if storage.OVERRIDE.exists():
         command.extend(["-f", str(storage.OVERRIDE)])
@@ -48,6 +51,24 @@ def compose(*args, input=None):
         timeout=180,
         env={**os.environ, "ARK_BIND_ADDRESS": "127.0.0.1"},
     )
+    if args and args[0] == "up":
+        for _ in range(32):
+            if not result.returncode:
+                break
+            previous = storage.OVERRIDE.read_bytes()
+            storage.save(storage.state(), announce=False)
+            if previous == storage.OVERRIDE.read_bytes():
+                break
+            # Retry only with a changed mount set, bounded by the root limit.
+            result = subprocess.run(
+                command + list(args),
+                cwd=storage.REPO,
+                input=input,
+                text=True,
+                capture_output=True,
+                timeout=180,
+                env={**os.environ, "ARK_BIND_ADDRESS": "127.0.0.1"},
+            )
     if result.returncode:
         causes = {
             "permission denied": "Docker or mount access was denied. "
@@ -173,6 +194,7 @@ def snapshot(config):
         areas.append({"path": value, "state": state, "message": message})
     return {
         "roots": data["roots"],
+        "root_health": storage_health.health(data, config),
         "approved_paths": config["approved_paths"],
         "approved_areas": areas,
         "repository_path": str(storage.REPO),
