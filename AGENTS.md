@@ -9,6 +9,7 @@
 - Keep Tailscale credentials server-side and normalized. The adapter must not return raw upstream payloads or expose the API key to the browser.
 - Local host storage is the content provider; the host-owned manifest assigns mounted roots and immutable user IDs isolate private folders. PostgreSQL holds control-plane state, never file bodies. Local operations must use descriptor-relative Linux confinement and never follow symlinks or cross nested mounts.
 - UI storage administration uses the owner-enrolled `scripts/storage_manager.py`, typed API jobs and host-approved directory areas; provisioning reuses `scripts/storage.py`. Keep the API unprivileged. Status reads must not create account folders, and per-user starting-folder preferences are distinct from the managed host base.
+- System connection and configuration live in Administration → System. The deployment-prepared host manager runs typed System lifecycle jobs through `scripts/system_provision.py`; its separate agent handles telemetry, PTYs and host operations. Routine enrollment is a UI action, not an instruction to run scripts. Shell/service choices must come from host-reported installed/permitted inventory; the browser cannot choose another account or arbitrary executable.
 
 ## Run and verify
 

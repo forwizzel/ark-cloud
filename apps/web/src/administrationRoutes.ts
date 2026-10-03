@@ -3,6 +3,7 @@ export type AdministrationRoute = {
     | "overview"
     | "storage"
     | "tailscale"
+    | "system"
     | "new"
     | "settings"
     | "diagnostics"
@@ -13,6 +14,8 @@ export type AdministrationRoute = {
 
 export function administrationRoute(hash: string): AdministrationRoute {
   const parts = hash.replace(/^#/, "").split("/");
+  if (parts[0] === "administration" && parts[1] === "system")
+    return { page: "system" };
   if (parts[0] === "administration" && parts[1] === "tailscale")
     return { page: "tailscale" };
   if (parts[0] !== "administration" || parts[1] !== "storage")

@@ -244,6 +244,20 @@ export default function StorageAdministration({
           </header>
           <ul className="administration-destinations">
             <li>
+              <a href="#administration/system">
+                <div className="administration-destination-copy">
+                  <h3>System</h3>
+                  <p>
+                    Connect the host agent and configure terminal, process,
+                    service and power access.
+                  </p>
+                </div>
+                <span className="administration-destination-action">
+                  Manage System <DestinationArrow />
+                </span>
+              </a>
+            </li>
+            <li>
               <a href="#administration/storage">
                 <div className="administration-destination-copy">
                   <h3>Storage</h3>

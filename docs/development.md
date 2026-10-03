@@ -206,12 +206,19 @@ tests, and the Tailscale HTTP opener is replaced with local response doubles. Te
 contact a real tailnet. The running Compose health check provides PostgreSQL integration
 verification.
 
-System Information is available after signing in at `#system-information`. The API
+System is available after signing in at `#system`, with resource details at `#system/vitals`.
+`#system-information` remains a compatibility alias. See [System host setup](system-host.md) for
+the UI-managed host agent, WebSocket transport, typed host jobs, and terminal checks.
+Administration → System handles connection and capability settings through the deployment-owned
+host manager already prepared for Local Files. Routine agent enrollment needs no separate script.
+Run host checks with `python3 -m unittest discover -s scripts -p 'test_system*.py'`.
+The API
 exposes authenticated `GET /api/system/information` through the web proxy. Its detailed runtime
 view shows CPU/memory/storage, optional GPU names from kernel-visible DRM/driver metadata, and
 temperature readings with readable labels and original sensor identifiers. Missing GPU or sensors
 are normal unavailable states; a kernel-visible GPU is not necessarily accessible to the API.
-The page can load independently of dashboard integrations. The container-only process endpoint
+The page can load independently of dashboard integrations. These container readings remain a
+separate runtime disclosure when no host snapshot exists. The container-only process endpoint
 and listing were removed. Backend tests cover sensor naming, GPU model and PCI-ID fallback,
 missing devices, authentication, and partial collection failures.
 

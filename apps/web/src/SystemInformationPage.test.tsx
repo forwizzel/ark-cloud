@@ -5,229 +5,325 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
-
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import App from "./App";
 import SystemInformationPage from "./SystemInformationPage";
-import type { SystemInformation } from "./api";
+import type { HostSnapshot } from "./systemApi";
 
-const section = (source: SystemInformation["compute"]["source"]) => ({
-  availability: "available" as const,
-  source,
-  warning: null,
-});
-
-const information: SystemInformation = {
-  scope: "api-runtime-view",
-  collected_at: "2026-09-13T12:00:00Z",
+const usage = {
+  total_bytes: 1000,
+  used_bytes: 400,
+  available_bytes: 600,
+  percent: 40,
+};
+const snapshot: HostSnapshot = {
+  scope: "host",
+  boot_id: "boot",
+  collected_at: "2026-10-02T12:00:00Z",
   identity: {
-    ...section("configured"),
-    hostname: "Ark",
+    hostname: "ark-host",
     os: "Fedora Linux",
     kernel: "6-test",
     architecture: "x86_64",
-    python_version: "3.14.7",
-    api_version: "0.4.0",
-    host_uptime_seconds: 7200,
+    boot_time: "2026-10-01T12:00:00Z",
+    uptime_seconds: 86400,
   },
   compute: {
-    ...section("kernel_view"),
-    model: null,
-    gpus: ["NVIDIA GeForce RTX 3070"],
+    model: "Test CPU",
+    physical_cores: 2,
     logical_cores: 4,
+    sockets: 1,
     percent: 12,
+    per_core: [10, 20],
+    frequency_mhz: 2400,
     load_average: [0.1, 0.2, 0.3],
-    frequency_mhz: null,
+    gpus: ["Test GPU"],
   },
-  memory: { ...section("kernel_view"), usage: null, swap: null },
-  storage: {
-    ...section("filesystem"),
-    path: "/",
-    usage: null,
-    filesystem_type: null,
+  memory: {
+    usage,
+    swap: usage,
+    cached_bytes: 10,
+    buffers_bytes: 5,
+    swap_in_bytes: 0,
+    swap_out_bytes: 0,
   },
-  sensors: {
-    availability: "available",
-    source: "kernel_view",
-    temperatures: [
-      {
-        label: "CPU package 0",
-        source_name: "coretemp / Package id 0",
-        celsius: 53,
-      },
-      { label: "Memory module 1", source_name: "jc42", celsius: 47 },
-      {
-        label: "Motherboard CPU sensor",
-        source_name: "asusec / CPU",
-        celsius: 42,
-      },
-      {
-        label: "ACPI thermal zone 1",
-        source_name: "acpitz / temp1",
-        celsius: 38.5,
-      },
-    ],
-    warning: "Sensor placement may not be known.",
-  },
+  temperatures: [
+    {
+      id: "cpu-0",
+      group: "cpu",
+      label: "CPU package",
+      source_name: "coretemp",
+      celsius: 53,
+      high: 90,
+      critical: 100,
+    },
+  ],
+  mounts: [
+    {
+      id: "/",
+      path: "/",
+      device: "/dev/test",
+      filesystem: "ext4",
+      options: "rw",
+      usage,
+    },
+  ],
+  omitted_mounts: ["/proc"],
+  disk_io: [],
+  warnings: [],
 };
-
-function json(value: unknown, status = 200): Response {
+const policy = {
+  terminal: true,
+  power: false,
+  processes: true,
+  shell: "/bin/bash",
+  account: "host-owner",
+  services: [],
+};
+function json(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), {
     status,
     headers: { "Content-Type": "application/json" },
   });
 }
-
+function mockHost() {
+  return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const path = String(input);
+    if (path === "/api/auth/session")
+      return json({
+        authenticated: true,
+        username: "ark",
+        role: "admin",
+        csrf_token: "csrf",
+      });
+    if (path === "/api/dashboard")
+      return json({ detail: "Dashboard unavailable" }, 503);
+    if (path === "/api/system/overview" || path === "/api/system/vitals")
+      return json({
+        state: "connected",
+        scope: "host",
+        collected_at: snapshot.collected_at,
+        snapshot,
+        history: [],
+      });
+    if (path === "/api/admin/system/status")
+      return json({ state: "connected", policy });
+    if (path === "/api/admin/system/services")
+      return json({
+        items: [
+          {
+            unit: "backup.service",
+            scope: "user",
+            state: "active",
+            actions: ["restart"],
+          },
+        ],
+      });
+    if (path.startsWith("/api/admin/system/processes"))
+      return json({
+        items: [
+          {
+            pid: 12,
+            started_at: 1,
+            owner: "host-owner",
+            name: "test-process",
+            percent: 5,
+            memory_bytes: 100,
+            state: "sleeping",
+          },
+        ],
+      });
+    return json({}, 404);
+  });
+}
+beforeEach(() => {
+  Object.defineProperties(HTMLDialogElement.prototype, {
+    showModal: {
+      configurable: true,
+      value: vi.fn(function (this: HTMLDialogElement) {
+        this.setAttribute("open", "");
+      }),
+    },
+    close: {
+      configurable: true,
+      value: vi.fn(function (this: HTMLDialogElement) {
+        this.removeAttribute("open");
+      }),
+    },
+  });
+});
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   window.history.replaceState({}, "", "/");
 });
 
-test("system page survives dashboard failure and shows GPU and understandable sensors", async () => {
+test("legacy route opens System, identity leads, Vitals moves resource panels, and terminal stays last", async () => {
   window.history.replaceState({}, "", "/#system-information");
-  const fetchMock = vi
-    .spyOn(globalThis, "fetch")
-    .mockImplementation(async (input) => {
-      const path = String(input);
-      if (path === "/api/auth/session")
-        return json({
-          authenticated: true,
-          username: "ark",
-          csrf_token: "csrf",
-        });
-      if (path === "/api/dashboard")
-        return json({ detail: "Dashboard unavailable" }, 503);
-      if (path === "/api/system/information") return json(information);
-      return json({}, 404);
-    });
-
+  mockHost();
   render(<App />);
-
   expect(
-    await screen.findByRole("heading", {
-      name: "System Information",
-      level: 1,
-    }),
+    await screen.findByRole("heading", { name: "System", level: 1 }),
   ).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("link", { name: "System Information" }));
-
+  expect(await screen.findByText("ark-host")).toBeInTheDocument();
+  expect(
+    screen
+      .getByRole("heading", { name: "Identity" })
+      .compareDocumentPosition(
+        screen.getByRole("heading", { name: "Compute" }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole("heading", { name: "Temperatures" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen
+      .getByRole("heading", { name: "Host controls" })
+      .compareDocumentPosition(
+        screen.getByRole("heading", { name: "Terminal" }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole("tab", { name: "Vitals" }));
   expect(
     await screen.findByRole("heading", { name: "Temperatures" }),
   ).toBeInTheDocument();
+  expect(screen.getByText("53 °C")).toBeInTheDocument();
   expect(
-    screen.getByText(/Readings come from the API container/),
-  ).toBeInTheDocument();
-  expect(
-    await screen.findByText("NVIDIA GeForce RTX 3070"),
-  ).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "CPU" })).toBeInTheDocument();
-  expect(
-    screen.getByRole("heading", { name: "Memory", level: 3 }),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByRole("heading", { name: "Motherboard" }),
-  ).toBeInTheDocument();
-  expect(screen.getByText("53.0 °C")).toBeInTheDocument();
-  expect(
-    screen.queryByRole("heading", { name: "About these readings" }),
+    screen.queryByRole("heading", { name: "Terminal" }),
   ).not.toBeInTheDocument();
-  expect(screen.queryByText("Load · 1 / 5 / 15 min")).not.toBeInTheDocument();
-  expect(screen.queryByText("API version")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByText("Sensor IDs"));
-  expect(screen.getByText("acpitz / temp1")).toBeVisible();
-  expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain(
-    "/api/system/processes",
+  expect(screen.getByRole("tab", { name: "Vitals" })).toHaveAttribute(
+    "aria-selected",
+    "true",
   );
-  expect(
-    screen.queryByRole("heading", { name: "Visible processes" }),
-  ).not.toBeInTheDocument();
-  expect(screen.queryByText("Dashboard unavailable")).not.toBeInTheDocument();
-});
-
-test("information retries independently and absent GPU is clearly unavailable", async () => {
-  let informationCalls = 0;
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-    const path = String(input);
-    if (path === "/api/system/information") {
-      informationCalls += 1;
-      return informationCalls === 1
-        ? json({ detail: "System unavailable" }, 503)
-        : json({
-            ...information,
-            compute: { ...information.compute, gpus: [] },
-            sensors: {
-              ...information.sensors,
-              availability: "unavailable",
-              temperatures: [],
-              warning:
-                "Temperature sensors are not available to the API runtime.",
-            },
-          });
-    }
-    return json({}, 404);
+  fireEvent.keyDown(screen.getByRole("tab", { name: "Vitals" }), {
+    key: "Home",
   });
-
-  render(<SystemInformationPage />);
-
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "System unavailable",
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Refresh readings" }));
   expect(
     await screen.findByRole("heading", { name: "Identity" }),
   ).toBeInTheDocument();
-  expect(screen.getByText("Detected GPU")).toBeInTheDocument();
-  expect(
-    screen.getByText(
-      "Temperature sensors are not available to the API runtime.",
-    ),
-  ).toBeInTheDocument();
-  expect(screen.getAllByText("—").length).toBeGreaterThan(0);
 });
 
-test("refresh keeps temperatures visible and recovers from a failed request", async () => {
-  let requests = 0;
-  let resolveRefresh: ((response: Response) => void) | undefined;
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-    if (String(input) !== "/api/system/information") return json({}, 404);
-    requests += 1;
-    if (requests === 1) return json(information);
-    if (requests === 2) {
-      return new Promise<Response>((resolve) => {
-        resolveRefresh = resolve;
-      });
-    }
-    return json({
-      ...information,
-      collected_at: "2026-09-14T13:30:00Z",
-      sensors: {
-        ...information.sensors,
-        temperatures: information.sensors.temperatures.map((reading, index) =>
-          index === 0 ? { ...reading, celsius: 55 } : reading,
-        ),
-      },
-    });
-  });
-
+test("read-only view never requests administrator data or creates a shell", async () => {
+  const fetch = mockHost();
   render(<SystemInformationPage />);
-  expect(await screen.findByText("53.0 °C")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Refresh readings" }));
+  expect(await screen.findByText("ark-host")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Terminal" }),
+  ).not.toBeInTheDocument();
+  expect(
+    fetch.mock.calls
+      .map(([url]) => String(url))
+      .some((url) => url.includes("/admin/")),
+  ).toBe(false);
+});
 
-  expect(screen.getByText("53.0 °C")).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Compute" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Updating…" })).toBeDisabled();
+test("unconfigured System directs administrators to Administration without enrollment scripts", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    if (String(input) === "/api/system/overview")
+      return json({
+        state: "not_enrolled",
+        scope: "host",
+        collected_at: null,
+        snapshot: null,
+        history: [],
+      });
+    if (String(input) === "/api/admin/system/status")
+      return json({ state: "not_enrolled", policy: null });
+    return json({ detail: "Runtime readings unavailable" }, 503);
+  });
+  render(<SystemInformationPage isAdmin csrfToken="csrf" />);
+  expect(
+    await screen.findByRole("link", {
+      name: "Configure System in Administration",
+    }),
+  ).toHaveAttribute("href", "#administration/system");
+  expect(
+    screen.queryByRole("heading", { name: "Connect this host" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(/scripts\/ark system enroll/),
+  ).not.toBeInTheDocument();
+});
 
-  resolveRefresh?.(json({ detail: "Unavailable" }, 503));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Showing values from",
-  );
-  expect(screen.getByText("53.0 °C")).toBeInTheDocument();
+test.each(["#system", "#system/vitals", "#system-information"])(
+  "sign-in preserves the requested System route %s",
+  async (route) => {
+    window.history.replaceState({}, "", `/${route}`);
+    const fetchMock = mockHost();
+    const implementation = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input, init) => {
+      if (String(input) === "/api/auth/session")
+        return json({ authenticated: false });
+      if (String(input) === "/api/auth/login")
+        return json({
+          authenticated: true,
+          username: "ark",
+          role: "member",
+          csrf_token: "csrf",
+        });
+      return implementation(input, init);
+    });
+    render(<App />);
+    await screen.findByRole("heading", { name: "Sign in" });
+    fireEvent.change(screen.getByLabelText("Username"), {
+      target: { value: "ark" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "test-password" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(
+      await screen.findByRole("heading", { name: "System", level: 1 }),
+    ).toBeInTheDocument();
+    expect(window.location.hash).toBe(route);
+    expect(
+      await screen.findByRole("heading", {
+        name: route === "#system/vitals" ? "Temperatures" : "Identity",
+      }),
+    ).toBeInTheDocument();
+  },
+);
 
-  fireEvent.click(screen.getByRole("button", { name: "Refresh readings" }));
-  expect(await screen.findByText("55.0 °C")).toBeInTheDocument();
+test("failed refresh retains readable host data and retry recovers", async () => {
+  let calls = 0;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+    calls++;
+    return calls === 2
+      ? json({ detail: "Connection failed" }, 503)
+      : json({
+          state: "connected",
+          scope: "host",
+          collected_at: snapshot.collected_at,
+          snapshot,
+          history: [],
+        });
+  });
+  render(<SystemInformationPage />);
+  expect(await screen.findByText("ark-host")).toBeInTheDocument();
   await waitFor(() =>
-    expect(screen.getByText(/Updated Sep 14/)).toBeInTheDocument(),
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled(),
   );
-  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Showing values collected",
+  );
+  expect(screen.getByText("ark-host")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  await waitFor(() =>
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
+  );
+});
+
+test("administrator controls require confirmation and honor missing power capability", async () => {
+  mockHost();
+  const showModal = vi.mocked(HTMLDialogElement.prototype.showModal);
+  render(<SystemInformationPage isAdmin csrfToken="csrf" />);
+  expect(await screen.findByText("backup.service")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Restart host" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "restart" }));
+  expect(showModal).toHaveBeenCalled();
+  expect(
+    screen.getByRole("heading", { name: "Restart backup.service?" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Connect" })).toBeEnabled();
 });

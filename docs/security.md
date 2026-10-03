@@ -49,6 +49,18 @@ User device | Tailscale or local host | Web proxy | API | PostgreSQL / authorize
   duplicate connections resolve to that registration, and retries recompute access preparation.
 - Appearance choices live only in browser localStorage; they contain no credentials and are not
   sent to the API.
+- The optional System agent is separately enrolled under a non-root host account. Administrators
+  connect/configure it in Administration → System through the deployment-owned host manager;
+  routine setup requires no user script. The manager accepts only typed lifecycle jobs, rechecks
+  requester authorization before applying, and limits shell/service choices to host-reported
+  installed/permitted options. Account identity and the terminal home remain deployment-owned.
+  Administrators receive that account's terminal access only when it is explicitly enabled. Dedicated
+  service/power controls require owner-selected capabilities and narrow host authorization.
+  The API remains unprivileged. WebSocket attachment validates session ownership, same-origin
+  Origin (or the managed gateway proof), and a short-lived single-use grant. Agent credentials
+  are separate from browser grants and hashed server-side. See [System host setup](system-host.md).
+  Authorization guards revoke terminals within two seconds; terminal streams are not persisted.
+  Job dispatch rechecks requester authorization, and a host-side journal prevents action replay.
 
 The API validates response shapes with Pydantic and validates request bodies, paths, and query
 parameters through explicit route schemas.

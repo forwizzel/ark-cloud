@@ -28,6 +28,7 @@ Thumbs.db
 # Runtime data
 *.log
 .ark-storage/
+.ark-system/
 compose.storage.yaml
 
 # impeccable docs

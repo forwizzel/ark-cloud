@@ -29,6 +29,9 @@ Commands:
   storage remove ID --confirm Unregister a root without deleting its files
   storage refresh-identity ID --confirm Accept a reviewed disk/root replacement
   storage manager enroll --approve DIR --install Install the UI storage manager once
+  system enroll [--terminal] [--power] [--service user:NAME.service] [--install]
+                             Enroll the host System agent as the current account
+  system run|status|check|revoke Manage the enrolled System agent
   reset-data --confirm       Remove the stack and all named volumes
 EOF
 }
@@ -178,6 +181,7 @@ main() {
         reset-password) account_command reset-password "$@" ;;
         recover-admin) account_command recover-admin "$@" ;;
         storage) storage "$@" ;;
+        system) python3 "$ROOT/scripts/system_agent.py" "$@" ;;
         reset-data) reset_data "$@" ;;
         help|-h|--help) usage ;;
         *) usage >&2; exit 2 ;;

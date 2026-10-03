@@ -17,6 +17,64 @@ class Base(DeclarativeBase):
     pass
 
 
+class SystemControl(Base):
+    __tablename__ = "system_control"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    policy: Mapped[dict] = mapped_column(JSON, default=dict)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SystemJob(Base):
+    __tablename__ = "system_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    principal_id: Mapped[str] = mapped_column(String(128))
+    auth_id: Mapped[str] = mapped_column(String(36))
+    idempotency_key: Mapped[str] = mapped_column(String(128), unique=True)
+    payload: Mapped[dict] = mapped_column(JSON)
+    state: Mapped[str] = mapped_column(String(32))
+    message: Mapped[str] = mapped_column(String(500))
+    boot_id: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SystemAudit(Base):
+    __tablename__ = "system_audit"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    principal_id: Mapped[str] = mapped_column(String(128))
+    event: Mapped[str] = mapped_column(String(64))
+    target: Mapped[str] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SystemProvisionControl(Base):
+    __tablename__ = "system_provision_control"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    inventory: Mapped[dict] = mapped_column(JSON, default=dict)
+    configuration: Mapped[dict] = mapped_column(JSON, default=dict)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SystemProvisionJob(Base):
+    __tablename__ = "system_provision_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    principal_id: Mapped[str] = mapped_column(String(128))
+    auth_id: Mapped[str] = mapped_column(String(36))
+    idempotency_key: Mapped[str] = mapped_column(String(128), unique=True)
+    payload: Mapped[dict] = mapped_column(JSON)
+    state: Mapped[str] = mapped_column(String(32), index=True)
+    message: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class TailscaleControl(Base):
     __tablename__ = "tailscale_control"
 

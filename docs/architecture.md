@@ -32,7 +32,7 @@ IP addresses. PostgreSQL needs no published host port because only the API consu
 ### Web
 
 The React application owns presentation and browser interaction. It requests `/api/*` from
-its own origin: session state, the dashboard, Local Files, Administration, and System Information. Vite
+its own origin: session state, the dashboard, Local Files, Administration, and System. Vite
 removes the `/api` prefix and forwards requests to `http://api:8000` inside Docker. The
 browser-facing `/api/health` uses the same proxy path. Browser code therefore knows nothing
 about container addresses, and same-origin requests need no permissive CORS policy.
@@ -108,12 +108,19 @@ API process. Metrics are explicitly marked `api-runtime-view`. CPU, memory, and 
 come from host-global kernel views, while storage can describe the container overlay or
 backing filesystem. They are useful operational signals, not exact host or cgroup metrics.
 
-The API deliberately does not mount `/`, `/proc`, the Docker socket, or privileged host
-namespaces into the API. A future dedicated Ark agent can expose a narrow authenticated
-socket containing normalized host metrics. The API's System adapter can then change data
-sources without changing routes or React components.
+System configuration lives in Administration → System. Its Connect action queues a separately
+persisted lifecycle job for the existing deployment host manager, which discovers approved
+shells/services, prepares dependencies, enrolls and starts the agent, and waits for authenticated
+readings. Settings/disconnect follow the same typed channel; no routine manual enrollment command
+or API privilege elevation is required.
 
-Phase 5 adds an authenticated System Information page backed by `GET /system/information` (browser
+The API deliberately does not mount `/`, `/proc`, the Docker socket, or privileged host
+namespaces into the API. The optional owner-enrolled System agent collects actual host metrics
+and connects outward through the loopback web proxy. `/system/overview` and `/system/vitals`
+provide host snapshots separately from the existing runtime adapter. See
+[System host setup](system-host.md) for enrollment and transport limits.
+
+The legacy runtime information contract is backed by `GET /system/information` (browser
 path `/api/system/information`). The existing `/system` and dashboard summaries remain compact.
 Detailed information is collected on demand and divided into identity, compute, memory, storage,
 and optional sensor sections. Each section reports availability and source; configured hostname/OS
@@ -127,8 +134,14 @@ otherwise the adapter reports vendor and PCI ID. GPU visibility does not imply d
 utilization telemetry. Temperature readings from psutil have normalized labels (CPU package,
 memory module, ACPI thermal zone, and recognized motherboard sensor locations) and retain their
 source identifiers; unknown sensors use a generic label, not a guessed physical location. Unavailable
-GPU and sensor data do not fail the page. The page loads independently of the dashboard, and there
-is no container-only process view or process endpoint. Phase 5 introduced no host content mounts;
+GPU and sensor data do not fail the page. System loads independently of the dashboard. Its new
+administrator process view comes from the enrolled host agent, not container process inspection.
+The API brokers real host PTYs using authenticated same-origin WebSockets, single-use attachment
+grants and bounded in-memory queues. Typed service/process/power jobs are persisted in PostgreSQL;
+the agent journals execution before acting to prevent replay. Host information remains readable
+without administrator privileges; detailed processes, services and terminal access are restricted.
+The broker supports one API worker; active sessions and rolling history do not survive API restart.
+Phase 5 introduced no host content mounts;
 Phase 8's explicit content mounts do not expand telemetry collection or provide Docker socket access.
 
 ### Tailscale Integration

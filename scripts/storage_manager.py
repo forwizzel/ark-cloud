@@ -803,6 +803,16 @@ def main():
                 file=sys.stderr,
                 flush=True,
             )
+        try:
+            import system_provision
+
+            system_provision.cycle(config)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            print(
+                "System provisioning could not complete a cycle; retrying in five seconds.",
+                file=sys.stderr,
+                flush=True,
+            )
         time.sleep(5)
 
 

@@ -393,9 +393,10 @@ test("renders normalized system and integration health", async () => {
     "href",
     "#overview",
   );
-  expect(
-    screen.getByRole("link", { name: "System Information" }),
-  ).toHaveAttribute("href", "#system-information");
+  expect(screen.getByRole("link", { name: "System" })).toHaveAttribute(
+    "href",
+    "#system",
+  );
   expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
   expect(
     screen.queryByRole("link", { name: /Open System Information/ }),

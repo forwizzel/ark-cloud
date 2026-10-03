@@ -18,6 +18,7 @@ import AppearanceControls from "./AppearanceControls";
 import AccountPage from "./AccountPage";
 import LocalFiles, { LocalStorageSummary } from "./LocalFiles";
 import SystemInformationPage from "./SystemInformationPage";
+import SystemAdministration from "./SystemAdministration";
 import StorageAdministration from "./StorageAdministration";
 import AdministrationTabs from "./AdministrationTabs";
 import TailscaleAdministration from "./TailscaleAdministration";
@@ -120,7 +121,11 @@ function App() {
   };
 
   const onLogin = (session: AuthSession, firstSetup = false) => {
-    if (window.location.hash.startsWith("#administration") && !firstSetup) {
+    if (
+      (window.location.hash.startsWith("#administration") ||
+        pageFromHash() === "system") &&
+      !firstSetup
+    ) {
       setActivePage(pageFromHash());
       setActiveHash(window.location.hash);
     } else showDashboard();
@@ -214,13 +219,13 @@ function App() {
           </a>
           <a
             className={`nav-item ${activePage === "system" ? "nav-item--active" : ""}`}
-            href="#system-information"
-            aria-label="System Information"
+            href="#system"
+            aria-label="System"
             aria-current={activePage === "system" ? "page" : undefined}
             onClick={() => setActivePage("system")}
           >
             <span className="nav-symbol" aria-hidden="true" />
-            System Information
+            System
           </a>
           <a
             className={`nav-item ${activePage === "account" ? "nav-item--active" : ""}`}
@@ -257,7 +262,7 @@ function App() {
                 : activePage === "files"
                   ? "Local Files"
                   : activePage === "system"
-                    ? "System Information"
+                    ? "System"
                     : activePage === "administration" || activePage === "users"
                       ? "Administration"
                       : "Account"}
@@ -293,7 +298,13 @@ function App() {
           </div>
         </header>
 
-        {activePage === "system" && <SystemInformationPage />}
+        {activePage === "system" && (
+          <SystemInformationPage
+            route={activeHash}
+            csrfToken={sessionState.session.csrf_token ?? ""}
+            isAdmin={sessionState.session.role === "admin"}
+          />
+        )}
         {activePage === "files" && (
           <LocalFiles
             csrfToken={sessionState.session.csrf_token ?? ""}
@@ -307,10 +318,14 @@ function App() {
               <div
                 id="administration-panel"
                 role="tabpanel"
-                aria-labelledby={`administration-tab-${activePage === "users" ? "users" : administrationRoute(activeHash).page === "tailscale" ? "tailscale" : administrationRoute(activeHash).page === "overview" ? "overview" : "storage"}`}
+                aria-labelledby={`administration-tab-${activePage === "users" ? "users" : administrationRoute(activeHash).page === "system" ? "system" : administrationRoute(activeHash).page === "tailscale" ? "tailscale" : administrationRoute(activeHash).page === "overview" ? "overview" : "storage"}`}
                 tabIndex={0}
               >
-                {administrationRoute(activeHash).page === "tailscale" ? (
+                {administrationRoute(activeHash).page === "system" ? (
+                  <SystemAdministration
+                    csrfToken={sessionState.session.csrf_token ?? ""}
+                  />
+                ) : administrationRoute(activeHash).page === "tailscale" ? (
                   <TailscaleAdministration
                     csrfToken={sessionState.session.csrf_token ?? ""}
                   />
@@ -335,8 +350,8 @@ function App() {
             </div>
           ) : (
             <p role="alert">
-              Administrator access is required to manage storage, Tailscale and
-              accounts.
+              Administrator access is required to manage storage, System,
+              Tailscale and accounts.
             </p>
           ))}
         {activePage === "account" && (
@@ -969,7 +984,12 @@ function pageFromHash():
     window.location.hash.startsWith("#local-files/")
   )
     return "files";
-  if (window.location.hash === "#system-information") return "system";
+  if (
+    window.location.hash === "#system-information" ||
+    window.location.hash === "#system" ||
+    window.location.hash.startsWith("#system/")
+  )
+    return "system";
   if (window.location.hash === "#account") return "account";
   return "overview";
 }

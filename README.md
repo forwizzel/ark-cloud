@@ -30,6 +30,9 @@ Tailscale access, and a dashboard for service health and runtime system informat
   if an administrator cannot sign in.
 - **Service health and system information.** Check database and integration status, view
   Tailscale devices, and inspect CPU, memory, storage, uptime, and available sensor metadata.
+- **System host workspace.** Connect the host agent in Administration to view actual host Identity/Compute and
+  Vitals, manage selected services and processes, and use an administrator-only embedded shell.
+  Restart/shutdown controls are available when explicitly authorized by the host owner.
 - **An adaptable interface.** Responsive layouts, keyboard access, light and dark themes,
   high-contrast options, and reduced-motion support.
 
@@ -134,10 +137,16 @@ Storage access is enforced by the application within owner-provisioned mounts. A
 do not automatically bypass file grants or another account's private-folder boundary. Revoking
 access, deleting an account, or disconnecting a location preserves the files on the host.
 
-System metrics describe the **unprivileged API runtime view**, not exact host or cgroup
+Dashboard system metrics describe the **unprivileged API runtime view**, not exact host or cgroup
 telemetry. Some kernel readings can reflect host-wide information; storage readings can reflect
 the container filesystem. GPU and sensor details appear only when available. Telemetry does
 not require host-root mounts, Docker socket access, or privileged containers.
+
+The **System** page separately uses a managed host agent for real host readings and operations.
+Open **Administration → System** and press **Connect System**; ArkCloud prepares and enrolls
+the agent through its existing deployment host manager. See [System host setup](docs/system-host.md) for privileges, selected services,
+terminal lifecycle, and recovery. The API remains unprivileged; terminal access uses the enrolled
+host account's permissions.
 
 Read [Security](docs/security.md) for trust boundaries and production-hardening considerations,
 and [Roadmap](docs/roadmap.md) for validation work, planned improvements, and feature boundaries.
