@@ -39,6 +39,25 @@
   color: var(--muted);
   font-size: 0.9rem;
 }
+.system-admin-heading > *,
+.system-admin-toggle > span,
+.system-admin-footer > *,
+.system-admin-service > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.system-admin button {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.system-admin .system-admin-reconnect-warning {
+  margin: 12px 0 0;
+  color: var(--warning);
+  font-size: 0.875rem;
+}
+.system-admin-footer p {
+  flex: 1 1 320px;
+}
 .system-admin-state {
   padding: 6px 12px;
   border: 1px solid var(--line);
@@ -71,7 +90,7 @@
 .system-admin button {
   min-height: 44px;
   padding: 10px 16px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 7px;
   background: var(--panel);
   color: var(--ink);
@@ -155,7 +174,7 @@
   width: 100%;
   min-width: 0;
   padding: 9px 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 7px;
   background: var(--panel-raised);
   color: var(--ink);
@@ -213,6 +232,19 @@
 .system-admin-footer p {
   margin: 0;
 }
+@media (max-width: 980px) {
+  .system-admin-options {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .system-admin-facts {
+    gap: 16px;
+  }
+  .system-admin-service-actions {
+    flex-basis: 100%;
+    padding-inline-start: 30px;
+  }
+}
 @media (max-width: 680px) {
   .system-admin-panel {
     padding: 20px;
@@ -232,6 +264,14 @@
     flex-basis: 100%;
   }
   .system-admin-service-actions {
-    padding-left: 30px;
+    padding-inline-start: 30px;
+  }
+  .system-admin-shell select,
+  .system-admin-search input {
+    font-size: 1rem;
+  }
+  .system-admin-actions button,
+  .system-admin-footer button {
+    width: 100%;
   }
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import useUnsavedChanges from "./useUnsavedChanges";
 import {
   storageRequest,
+  StorageRequestError,
   type AccessLevel,
   type LocationAccess,
   type ManagedLocation,
@@ -20,13 +21,17 @@ export default function StorageAccess({
 }: {
   root: ManagedLocation;
   csrfToken: string;
-  onChanged: () => Promise<void>;
+  onChanged: () => Promise<unknown>;
 }) {
   const [view, setView] = useState<LocationAccess | null>(null);
   const [draft, setDraft] = useState<Record<string, AccessLevel>>({});
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [refresh, setRefresh] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [conflict, setConflict] = useState(false);
+  const preservedDraft = useRef<Record<string, AccessLevel>>({});
   const heading = useRef<HTMLHeadingElement>(null);
   const route = `admin/storage/roots/${encodeURIComponent(root.id)}/access`;
   useUnsavedChanges(
@@ -52,23 +57,49 @@ export default function StorageAccess({
         setView(next);
         setDraft(
           Object.fromEntries(
-            next.accounts.map((account) => [account.id, account.level]),
+            next.accounts.map((account) => [
+              account.id,
+              preservedDraft.current[account.id] ?? account.level,
+            ]),
           ),
         );
+        setLoading(false);
+        setConflict(false);
+        if (refresh > 0)
+          setNotice(
+            "Access reloaded. Your unsaved choices have been preserved; review them before saving.",
+          );
         heading.current?.focus();
       })
       .catch((failure: unknown) => {
-        if (!controller.signal.aborted)
+        if (!controller.signal.aborted) {
+          setLoading(false);
           setError(
             failure instanceof Error
               ? failure.message
               : "Access could not be loaded.",
           );
+        }
       });
     return () => controller.abort();
-  }, [route, csrfToken]);
+  }, [route, csrfToken, refresh]);
+  function reload() {
+    preservedDraft.current = Object.fromEntries(
+      (view?.accounts ?? [])
+        .filter(
+          (account) =>
+            draft[account.id] !== undefined &&
+            draft[account.id] !== account.level,
+        )
+        .map((account) => [account.id, draft[account.id]]),
+    );
+    setLoading(true);
+    setError("");
+    setNotice("");
+    setRefresh((current) => current + 1);
+  }
   async function save(userId: string, username: string) {
-    if (!view) return;
+    if (!view || loading || conflict) return;
     setBusy(userId);
     setError("");
     setNotice("");
@@ -98,6 +129,8 @@ export default function StorageAccess({
       setNotice(`Access saved for ${username}. No restart needed.`);
       await onChanged();
     } catch (failure) {
+      if (failure instanceof StorageRequestError && failure.status === 409)
+        setConflict(true);
       setError(
         failure instanceof Error
           ? failure.message
@@ -134,16 +167,27 @@ export default function StorageAccess({
         </p>
       )}
       {error && (
-        <p className="local-error" role="alert">
-          {error}
-        </p>
+        <div>
+          <p className="local-error" role="alert">
+            {error}
+          </p>
+          {(!view || conflict) && (
+            <button
+              type="button"
+              disabled={loading || Boolean(busy)}
+              onClick={reload}
+            >
+              {view ? "Reload access, keep my changes" : "Retry loading access"}
+            </button>
+          )}
+        </div>
       )}
       {notice && (
         <p className="storage-notice" role="status">
           {notice}
         </p>
       )}
-      {!view && !error && <p role="status">Loading account permissions…</p>}
+      {loading && <p role="status">Loading account permissions…</p>}
       {view && (
         <ul className="storage-access-list">
           {view.accounts.map((account) => (
@@ -174,7 +218,7 @@ export default function StorageAccess({
                     name={`access-${account.id}`}
                     autoComplete="off"
                     value={draft[account.id] ?? account.level}
-                    disabled={Boolean(busy)}
+                    disabled={Boolean(busy) || loading}
                     onChange={(event) =>
                       setDraft((current) => ({
                         ...current,
@@ -199,6 +243,8 @@ export default function StorageAccess({
                   aria-busy={busy === account.id}
                   disabled={
                     Boolean(busy) ||
+                    loading ||
+                    conflict ||
                     (draft[account.id] === account.level &&
                       (account.ready || account.level === "none"))
                   }

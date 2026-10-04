@@ -25,6 +25,13 @@ test("network failures are retryable but aborted requests are preserved", async 
   await expect(storageRequest("admin/storage", "csrf")).rejects.toBeInstanceOf(
     StorageRequestError,
   );
+  fetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+  await expect(
+    storageRequest("admin/storage", "csrf", "PUT", {}),
+  ).rejects.toMatchObject({
+    message: "Storage is temporarily unavailable.",
+    status: null,
+  });
   const aborted = new DOMException("Aborted", "AbortError");
   fetch.mockRejectedValueOnce(aborted);
   await expect(storageRequest("admin/storage", "csrf")).rejects.toBe(aborted);

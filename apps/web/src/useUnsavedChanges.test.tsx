@@ -1,10 +1,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import useUnsavedChanges from "./useUnsavedChanges";
+import useUnsavedChanges, { useNavigationGuard } from "./useUnsavedChanges";
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  window.history.replaceState({}, "", "/");
 });
 
 function Editor({
@@ -14,6 +15,7 @@ function Editor({
   dirty: boolean;
   onNavigate: () => void;
 }) {
+  useNavigationGuard();
   useUnsavedChanges(dirty);
   return (
     <>
@@ -53,6 +55,38 @@ test("canceled navigation preserves drafts across links, tabs, and location chan
   });
   expect(navigate).not.toHaveBeenCalled();
   expect(screen.getByRole("combobox")).toHaveValue("first");
+});
+
+test("history traversal is stopped before route listeners can discard a draft", () => {
+  window.history.replaceState({ arkNavigationIndex: 2 }, "", "/#account");
+  vi.spyOn(window, "confirm").mockReturnValue(false);
+  const go = vi.spyOn(window.history, "go").mockImplementation(() => {});
+  render(<Editor dirty onNavigate={() => {}} />);
+  const route = vi.fn();
+  window.addEventListener("hashchange", route);
+  window.history.replaceState({ arkNavigationIndex: 1 }, "", "/#overview");
+  fireEvent(
+    window,
+    new PopStateEvent("popstate", { state: { arkNavigationIndex: 1 } }),
+  );
+  fireEvent(
+    window,
+    new HashChangeEvent("hashchange", {
+      oldURL: "http://localhost/#account",
+      newURL: window.location.href,
+    }),
+  );
+  expect(go).toHaveBeenCalledWith(1);
+  expect(route).not.toHaveBeenCalled();
+  // Simulate the browser restoring the rejected history traversal.
+  window.history.replaceState({ arkNavigationIndex: 2 }, "", "/#account");
+  fireEvent(
+    window,
+    new PopStateEvent("popstate", { state: { arkNavigationIndex: 2 } }),
+  );
+  fireEvent(window, new HashChangeEvent("hashchange"));
+  expect(route).not.toHaveBeenCalled();
+  window.removeEventListener("hashchange", route);
 });
 
 test("only dirty drafts prevent unloading and clean forms do not prompt", () => {

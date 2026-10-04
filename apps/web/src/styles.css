@@ -5,106 +5,10 @@
   font-family: "IBM Plex Sans", system-ui, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --canvas: #0b1420;
-  --rail: #101d2a;
-  --panel: #132333;
-  --panel-raised: #1b3041;
-  --line: #344c5a;
-  --line-soft: #2a4050;
-  --ink: #e8f0f2;
-  --muted: #b0c3ce;
-  --faint: #9bb0bc;
-  --signal: #89a8ff;
-  --signal-dark: #405b9a;
-  --warning: #f0bd76;
-  --danger: #ff9b92;
-  --accent-tint: #253450;
-  --warning-tint: #382d23;
-  --danger-tint: #3d292e;
-  --warning-border: #806039;
-  --danger-border: #965b57;
-  --meter-track: #263b4b;
-  --login-glow: #1b394d;
-  --login-shadow: #050c15a6;
-  --hover-surface: #344668;
-  --display-font: "Barlow Condensed", "Arial Narrow", sans-serif;
-  --data-font: "IBM Plex Mono", ui-monospace, monospace;
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --canvas: #f3f7f9;
-  --rail: #e7eff4;
-  --panel: #ffffff;
-  --panel-raised: #e9f2f7;
-  --line: #a9bbc6;
-  --line-soft: #cedae0;
-  --ink: #172b3a;
-  --muted: #435969;
-  --faint: #526574;
-  --signal: #174ea6;
-  --signal-dark: #819bc9;
-  --warning: #825014;
-  --danger: #a12b35;
-  --accent-tint: #e2eafe;
-  --warning-tint: #f8ebd9;
-  --danger-tint: #fae6e7;
-  --warning-border: #ad8250;
-  --danger-border: #bc747a;
-  --meter-track: #d0dce2;
-  --login-glow: #daebf3;
-  --login-shadow: #25455a2e;
-  --hover-surface: #d4e0f9;
-}
-
-:root[data-theme="dark"][data-contrast="more"] {
-  --canvas: #000000;
-  --rail: #000000;
-  --panel: #08131b;
-  --panel-raised: #132b38;
-  --line: #a9c1cf;
-  --line-soft: #7895a5;
-  --ink: #ffffff;
-  --muted: #f0f4f7;
-  --faint: #d8e2e8;
-  --signal: #b7caff;
-  --signal-dark: #85a6f4;
-  --warning: #ffd080;
-  --danger: #ffb1ae;
-  --accent-tint: #273d6c;
-  --warning-tint: #3a2913;
-  --danger-tint: #441e23;
-  --warning-border: #ffd080;
-  --danger-border: #ffb1ae;
-  --meter-track: #627888;
-  --login-glow: transparent;
-  --login-shadow: transparent;
-  --hover-surface: #344e80;
-}
-
-:root[data-theme="light"][data-contrast="more"] {
-  --canvas: #ffffff;
-  --rail: #ffffff;
-  --panel: #ffffff;
-  --panel-raised: #e7eff4;
-  --line: #354e5f;
-  --line-soft: #657a88;
-  --ink: #071925;
-  --muted: #213847;
-  --faint: #324a59;
-  --signal: #153d88;
-  --signal-dark: #274b90;
-  --warning: #713b00;
-  --danger: #921922;
-  --accent-tint: #dce6fd;
-  --warning-tint: #f6e9d1;
-  --danger-tint: #f9e1e2;
-  --warning-border: #713b00;
-  --danger-border: #921922;
-  --meter-track: #738996;
-  --login-glow: transparent;
-  --login-shadow: transparent;
-  --hover-surface: #cedcf7;
 }
 
 * {
@@ -169,7 +73,7 @@ summary:focus-visible {
   width: min(100%, 440px);
   gap: 18px;
   padding: clamp(24px, 5vw, 48px);
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   background: var(--panel);
   box-shadow: 0 24px 80px var(--login-shadow);
 }
@@ -228,7 +132,7 @@ summary:focus-visible {
 
 .login-panel input {
   padding: 9px 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 0;
   color: var(--ink);
   background: var(--canvas);
@@ -303,7 +207,7 @@ summary:focus-visible {
   width: 100%;
   min-width: 0;
   padding: 10px 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 0;
   color: var(--ink);
   background: var(--canvas);
@@ -314,7 +218,7 @@ summary:focus-visible {
 }
 
 .account-card .invite-form {
-  grid-template-columns: minmax(0, 1fr) minmax(140px, 180px) auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   align-items: end;
 }
 
@@ -350,7 +254,7 @@ summary:focus-visible {
   gap: 10px;
   padding: 18px;
   margin-top: 24px;
-  border-inline-start: 4px solid var(--signal);
+  border: 1px solid var(--signal);
   background: var(--accent-tint);
 }
 
@@ -373,7 +277,7 @@ summary:focus-visible {
 
 .logout-button,
 .quiet-button {
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   color: var(--muted);
   background: transparent;
 }
@@ -509,7 +413,7 @@ summary:focus-visible {
   height: 24px;
   padding: 2px;
   flex: none;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 20px;
   background: var(--panel-raised);
 }
@@ -619,7 +523,7 @@ h1 {
 
 .workspace-actions button,
 .workspace-link {
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 12px;
   display: inline-flex;
   align-items: center;
@@ -627,7 +531,7 @@ h1 {
 }
 
 .workspace-link {
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   color: var(--ink);
 }
 
@@ -639,17 +543,16 @@ h1 {
 
 .refresh-button,
 .error-dashboard button {
-  min-height: 38px;
+  min-height: 44px;
   padding: 0 16px;
   border: 1px solid var(--signal-dark);
   color: var(--signal);
   background: var(--panel-raised);
   cursor: pointer;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 0.68rem;
+  font-family: var(--display-font);
+  font-size: 0.875rem;
   font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  letter-spacing: 0;
 }
 
 .refresh-button:hover,
@@ -732,7 +635,7 @@ h1 {
 
 .system-title-row h2 {
   margin: 0;
-  font-family: "Arial Narrow", "Roboto Condensed", Arial, sans-serif;
+  font-family: var(--display-font);
   font-size: clamp(2.5rem, 5vw, 4.7rem);
   letter-spacing: -0.055em;
   line-height: 0.9;
@@ -762,7 +665,7 @@ h1 {
 
 .system-uptime strong {
   margin: 6px 0;
-  font-family: "Arial Narrow", "Roboto Condensed", Arial, sans-serif;
+  font-family: var(--display-font);
   font-size: 2rem;
   letter-spacing: -0.04em;
 }
@@ -786,23 +689,6 @@ h1 {
   padding: 24px 26px;
 }
 
-.metric-card::after {
-  position: absolute;
-  inset: auto 0 0;
-  height: 4px;
-  background: var(--signal);
-  content: "";
-  opacity: 0.8;
-}
-
-.metric-card--warning::after {
-  background: var(--warning);
-}
-
-.metric-card--critical::after {
-  background: var(--danger);
-}
-
 .metric-head {
   display: flex;
   align-items: baseline;
@@ -816,7 +702,7 @@ h1 {
 }
 
 .metric-head strong {
-  font-family: "Arial Narrow", "Roboto Condensed", Arial, sans-serif;
+  font-family: var(--display-font);
   font-size: 2.1rem;
   letter-spacing: -0.045em;
 }
@@ -845,7 +731,7 @@ h1 {
 .metric-card small {
   color: var(--faint);
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 0.61rem;
+  font-size: 0.875rem;
 }
 
 .services-panel,
@@ -864,7 +750,7 @@ h1 {
 
 .panel-heading h2 {
   margin: 0;
-  font-family: "Arial Narrow", "Roboto Condensed", Arial, sans-serif;
+  font-family: var(--display-font);
   font-size: 1.55rem;
   letter-spacing: -0.03em;
 }
@@ -872,7 +758,7 @@ h1 {
 .panel-heading > span {
   color: var(--muted);
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 0.6rem;
+  font-size: 0.875rem;
   text-transform: uppercase;
 }
 
@@ -1071,7 +957,7 @@ select:disabled {
 .loading-dashboard strong,
 .error-dashboard h2 {
   margin: 22px 0 8px;
-  font-family: "Arial Narrow", "Roboto Condensed", Arial, sans-serif;
+  font-family: var(--display-font);
   font-size: 1.6rem;
   letter-spacing: -0.025em;
 }
@@ -1132,7 +1018,7 @@ select:disabled {
 
 .system-temperatures {
   padding: 26px 30px;
-  border-left: 3px solid var(--signal);
+  border: 1px solid var(--line-soft);
   background: var(--panel);
 }
 
@@ -1156,7 +1042,7 @@ select:disabled {
 
 .system-temperatures-head h2 {
   margin: 0;
-  font-family: "Arial Narrow", "Roboto Condensed", Arial, sans-serif;
+  font-family: var(--display-font);
   font-size: clamp(1.7rem, 3vw, 2.25rem);
   letter-spacing: -0.04em;
 }
@@ -1279,7 +1165,7 @@ select:disabled {
 
 .system-section h2 {
   margin-bottom: 0;
-  font-family: "Arial Narrow", "Roboto Condensed", Arial, sans-serif;
+  font-family: var(--display-font);
   font-size: 1.55rem;
   letter-spacing: -0.035em;
 }
@@ -1548,7 +1434,7 @@ select:disabled {
 }
 
 .login-panel input {
-  border-color: var(--line);
+  border-color: var(--control-line);
   background: var(--canvas);
 }
 
@@ -1800,12 +1686,22 @@ select:disabled {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  html {
     scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+  }
+  .appearance-switch::after {
+    transition: none;
+  }
+  .loading-line::after {
+    animation: none;
+    transform: none;
+    width: 100%;
+  }
+  .system-beacon::after {
+    animation: none;
+  }
+  button[aria-busy="true"]::before {
+    animation: none;
+    border-style: dotted;
   }
 }

@@ -109,6 +109,14 @@ export default function SystemAdministration({
       )
     )
       return;
+    if (
+      action === "connect" &&
+      status.host.state === "connected" &&
+      !window.confirm(
+        "Apply settings and reconnect System? This ends all active terminal sessions and briefly interrupts host readings and controls.",
+      )
+    )
+      return;
     submitting.current = true;
     setSending(true);
     setActionError("");
@@ -211,6 +219,15 @@ export default function SystemAdministration({
         ),
     ),
   ];
+  const applyLabel = busy
+    ? "Applying…"
+    : connected
+      ? "Apply settings and reconnect"
+      : last?.state === "failed"
+        ? "Retry connection"
+        : "Connect System";
+  const reconnectWarning =
+    "Applying settings reconnects the agent, ends active terminal sessions and briefly interrupts host readings and controls.";
 
   return (
     <div className="system-admin">
@@ -300,15 +317,12 @@ export default function SystemAdministration({
             </button>
           )}
           <button disabled={busy || !ready} onClick={() => void act("connect")}>
-            {busy
-              ? "Applying…"
-              : last?.state === "failed"
-                ? "Retry connection"
-                : connected
-                  ? "Apply settings and reconnect"
-                  : "Connect System"}
+            {applyLabel}
           </button>
         </div>
+        {configured && (
+          <p className="system-admin-reconnect-warning">{reconnectWarning}</p>
+        )}
       </section>
       <section
         className="panel system-admin-panel"
@@ -468,6 +482,7 @@ export default function SystemAdministration({
                         <label key={action}>
                           <input
                             type="checkbox"
+                            aria-label={`${action[0].toUpperCase() + action.slice(1)} ${service.unit} (${service.scope} service)`}
                             checked={selected.actions.includes(action)}
                             disabled={
                               !permitted?.actions.includes(action) &&
@@ -492,7 +507,9 @@ export default function SystemAdministration({
         </fieldset>
         {available.length === 0 && (
           <p className="system-admin-caption">
-            No controllable services are available under this host account.
+            {inventory
+              ? "No controllable services are available under this host account."
+              : "Waiting for host management to report available services."}
           </p>
         )}
         {available.length > 0 &&
@@ -509,16 +526,16 @@ export default function SystemAdministration({
       <footer className="system-admin-footer">
         <p>
           {dirty
-            ? "Unsaved changes. Applying settings reconnects the agent and ends active terminal sessions."
+            ? `Unsaved changes. ${reconnectWarning}`
             : configured
-              ? "Settings are saved. Applying changes reconnects the agent and ends active terminal sessions."
+              ? `Settings are saved. ${reconnectWarning}`
               : "Choose access options, then connect System. ArkCloud handles setup."}
         </p>
         <button
           disabled={busy || !ready || (!dirty && connected)}
           onClick={() => void act("connect")}
         >
-          {busy ? "Applying…" : connected ? "Save changes" : "Connect System"}
+          {applyLabel}
         </button>
       </footer>
     </div>

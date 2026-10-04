@@ -2,10 +2,27 @@ import { useEffect, useRef, useState } from "react";
 import type { Terminal } from "@xterm/xterm";
 import {
   systemRequest,
+  SystemRequestError,
   type HostPolicy,
   type TerminalGrant,
 } from "./systemApi";
 import "@xterm/xterm/css/xterm.css";
+
+type TerminalState =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "interrupted"
+  | "ending"
+  | "ended";
+const stateLabels: Record<TerminalState, string> = {
+  disconnected: "Disconnected",
+  connecting: "Connecting…",
+  connected: "Connected",
+  interrupted: "Connection interrupted",
+  ending: "Ending…",
+  ended: "Ended",
+};
 
 export default function SystemTerminal({
   csrf,
@@ -24,12 +41,72 @@ export default function SystemTerminal({
   const session = useRef<string | null>(null);
   const connectButton = useRef<HTMLButtonElement>(null);
   const endButton = useRef<HTMLButtonElement>(null);
+  const expandButton = useRef<HTMLButtonElement>(null);
+  const overlay = useRef<HTMLDialogElement>(null);
+  const operation = useRef(false);
+  const reconnectDeadline = useRef<number | null>(null);
   const [grant, setGrant] = useState<TerminalGrant | null>(null);
-  const [state, setState] = useState("Disconnected");
+  const [state, setState] = useState<TerminalState>("disconnected");
+  const [remaining, setRemaining] = useState<number | null>(null);
   const [hasSession, setHasSession] = useState(false);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState(false);
+  const [previousHidden, setPreviousHidden] = useState(hidden);
   const mounted = useRef(true);
+
+  if (previousHidden !== hidden) {
+    setPreviousHidden(hidden);
+    if (hidden) setExpanded(false);
+  }
+
+  useEffect(() => {
+    const element = overlay.current;
+    if (!element) return;
+    if (expanded && !hidden) {
+      element.removeAttribute("open");
+      element.showModal();
+    } else {
+      element.close();
+      if (!hidden) element.setAttribute("open", "");
+    }
+  }, [expanded, hidden]);
+
+  useEffect(() => {
+    if (state !== "interrupted" || reconnectDeadline.current === null) return;
+    const update = () =>
+      setRemaining(
+        Math.max(
+          0,
+          Math.ceil((reconnectDeadline.current! - Date.now()) / 1000),
+        ),
+      );
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }, [state]);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const resize = () => {
+      overlay.current?.style.setProperty(
+        "--terminal-viewport-height",
+        `${viewport?.height ?? window.innerHeight}px`,
+      );
+      overlay.current?.style.setProperty(
+        "--terminal-viewport-top",
+        `${viewport?.offsetTop ?? 0}px`,
+      );
+    };
+    resize();
+    viewport?.addEventListener("resize", resize);
+    viewport?.addEventListener("scroll", resize);
+    window.addEventListener("resize", resize);
+    return () => {
+      viewport?.removeEventListener("resize", resize);
+      viewport?.removeEventListener("scroll", resize);
+      window.removeEventListener("resize", resize);
+    };
+  }, []);
 
   useEffect(() => {
     mounted.current = true;
@@ -81,7 +158,11 @@ export default function SystemTerminal({
             event.shiftKey &&
             event.type === "keydown"
           ) {
-            endButton.current?.focus();
+            event.preventDefault();
+            (endButton.current?.disabled
+              ? expandButton.current
+              : endButton.current
+            )?.focus();
             return false;
           }
           return true;
@@ -122,11 +203,15 @@ export default function SystemTerminal({
       observer = new ResizeObserver(resize);
       observer.observe(target);
       ws.onopen = () => {
+        if (stopped) return;
         ws.send(JSON.stringify({ grant: grant!.grant }));
         resize();
-        setState("Connected");
+        reconnectDeadline.current = null;
+        setRemaining(null);
+        setState("connected");
       };
       ws.onmessage = (event) => {
+        if (stopped) return;
         const frame = JSON.parse(event.data);
         if (frame.type === "output")
           emulator.write(
@@ -137,18 +222,31 @@ export default function SystemTerminal({
         else if (frame.type === "ended") {
           session.current = null;
           setHasSession(false);
-          setState("Ended");
+          setState((current) => (current === "ending" ? current : "ended"));
           ws.close();
         }
       };
       ws.onclose = () => {
-        if (!stopped && mounted.current)
-          setState(session.current ? "Connection interrupted" : "Ended");
+        if (!stopped && mounted.current) {
+          if (session.current && reconnectDeadline.current === null)
+            reconnectDeadline.current =
+              Date.now() + grant!.reconnect_seconds * 1000;
+          setState((current) =>
+            current === "ending"
+              ? current
+              : session.current
+                ? "interrupted"
+                : "ended",
+          );
+        }
       };
-      ws.onerror = () =>
+      ws.onerror = () => {
+        if (stopped) return;
         setError(
           "Terminal connection failed. Try reconnecting while the host is online.",
         );
+        ws.close();
+      };
       disposeData = emulator.onData((data) => {
         if (ws.readyState !== WebSocket.OPEN) return;
         const encoded = new TextEncoder().encode(data);
@@ -166,11 +264,23 @@ export default function SystemTerminal({
       disposeResize = { dispose: () => fit.dispose() };
       resize();
     }
-    void attach().catch(() =>
+    void attach().catch(() => {
+      if (stopped || !mounted.current) return;
+      stopped = true;
+      observer?.disconnect();
+      themeObserver?.disconnect();
+      disposeData?.dispose();
+      disposeResize?.dispose();
+      socket.current?.close();
+      terminal.current?.dispose();
+      terminal.current = null;
+      if (reconnectDeadline.current === null)
+        reconnectDeadline.current = Date.now() + grant.reconnect_seconds * 1000;
+      setState("interrupted");
       setError(
-        "Terminal could not initialize. Refresh the page and try again.",
-      ),
-    );
+        "Terminal could not initialize. Try reconnecting or end this session.",
+      );
+    });
     return () => {
       stopped = true;
       observer?.disconnect();
@@ -182,8 +292,10 @@ export default function SystemTerminal({
   }, [grant]);
 
   async function connect() {
+    if (operation.current) return;
+    operation.current = true;
     setError("");
-    setState("Connecting…");
+    setState("connecting");
     try {
       const result = await systemRequest<TerminalGrant>(
         session.current
@@ -197,22 +309,38 @@ export default function SystemTerminal({
           `/admin/system/terminal/sessions/${result.id}/end`,
           csrf,
           {},
-        );
+        ).catch(() => {});
         return;
       }
       session.current = result.id;
       setHasSession(true);
       setGrant(result);
     } catch (cause) {
+      if (!mounted.current) return;
       setError(
         cause instanceof Error ? cause.message : "Terminal is unavailable.",
       );
-      setState("Disconnected");
-      session.current = null;
-      setHasSession(false);
+      if (
+        cause instanceof SystemRequestError &&
+        [404, 410].includes(cause.status)
+      ) {
+        session.current = null;
+        setHasSession(false);
+        setGrant(null);
+        reconnectDeadline.current = null;
+        setRemaining(null);
+        setState("ended");
+      } else setState(session.current ? "interrupted" : "disconnected");
+    } finally {
+      operation.current = false;
     }
   }
   async function end() {
+    if (operation.current || !session.current) return;
+    operation.current = true;
+    const previous = state;
+    setState("ending");
+    setError("");
     try {
       if (session.current)
         await systemRequest(
@@ -220,23 +348,45 @@ export default function SystemTerminal({
           csrf,
           {},
         );
+      if (!mounted.current) return;
       session.current = null;
       setHasSession(false);
       socket.current?.close();
       setGrant(null);
-      setState("Ended");
+      reconnectDeadline.current = null;
+      setRemaining(null);
+      setState("ended");
     } catch (cause) {
+      if (!mounted.current) return;
       setError(
         cause instanceof Error ? cause.message : "Could not end the session.",
       );
+      setState(
+        socket.current?.readyState === WebSocket.OPEN
+          ? "connected"
+          : previous === "connected"
+            ? "interrupted"
+            : previous,
+      );
+    } finally {
+      operation.current = false;
     }
   }
 
   return (
-    <section
+    <dialog
+      ref={overlay}
       className={`panel host-terminal ${expanded ? "host-terminal--expanded" : ""}`}
-      hidden={hidden}
-      aria-label="Terminal"
+      aria-label={expanded ? "Expanded terminal" : "Terminal"}
+      aria-modal={expanded ? true : undefined}
+      aria-describedby="host-terminal-help"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!surface.current?.contains(document.activeElement)) {
+          setExpanded(false);
+          expandButton.current?.focus();
+        }
+      }}
     >
       <header className="host-panel-heading">
         <div>
@@ -244,31 +394,39 @@ export default function SystemTerminal({
           <p>{policy ? `${policy.account} · ${policy.shell}` : "Host shell"}</p>
         </div>
         <div className="host-actions">
-          <span role="status">{state}</span>
+          <span role="status">{stateLabels[state]}</span>
           <button
             ref={connectButton}
             onClick={() => void connect()}
             disabled={
               !live ||
               !policy?.terminal ||
-              state === "Connected" ||
-              state === "Connecting…"
+              state === "connected" ||
+              state === "connecting" ||
+              state === "ending" ||
+              (hasSession && remaining === 0)
             }
           >
             {hasSession ? "Reconnect" : "Connect"}
           </button>
           <button
-            onClick={() => setExpanded(!expanded)}
+            ref={expandButton}
+            onClick={() => {
+              setExpanded(!expanded);
+              expandButton.current?.focus();
+            }}
             aria-pressed={expanded}
           >
             {expanded ? "Restore" : "Expand"}
           </button>
           <button
             ref={endButton}
-            disabled={!hasSession}
+            disabled={
+              !hasSession || state === "ending" || state === "connecting"
+            }
             onClick={() => void end()}
           >
-            End session
+            {state === "ending" ? "Ending session…" : "End session"}
           </button>
         </div>
       </header>
@@ -290,11 +448,27 @@ export default function SystemTerminal({
         className="host-terminal-surface"
         aria-label="Interactive host terminal"
       />
-      <p className="host-caption">
+      <button
+        onClick={() => {
+          terminal.current?.blur();
+          (endButton.current?.disabled
+            ? expandButton.current
+            : endButton.current
+          )?.focus();
+        }}
+      >
+        Exit terminal input
+      </button>
+      <p className="host-caption" id="host-terminal-help">
         Runs as the enrolled host account. Select the terminal to type; press
-        Ctrl+Shift+Escape to return to page controls. Reconnect within 30
-        seconds after an interruption.
+        Ctrl+Shift+Escape to return to page controls. Escape is sent to the
+        shell while typing.
+        {state === "interrupted" &&
+          remaining !== null &&
+          (remaining > 0
+            ? ` Reconnect within ${remaining} seconds.`
+            : " Reconnect window expired. End this session before starting another.")}
       </p>
-    </section>
+    </dialog>
   );
 }

@@ -18,6 +18,7 @@ vi.mock("./storageAdminApi", async (original) => ({
 }));
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.useRealTimers();
   window.history.replaceState({}, "", "/");
 });
@@ -352,7 +353,15 @@ test("disconnect requires confirmation and preserves files", async () => {
       route="#administration/storage/locations/second/configuration"
     />,
   );
-  fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
+  const trigger = await screen.findByRole("button", { name: "Disconnect" });
+  trigger.focus();
+  fireEvent.click(trigger);
+  expect(
+    screen.getByRole("heading", { name: "Review disconnection" }),
+  ).toHaveFocus();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(trigger).toHaveFocus();
+  fireEvent.click(trigger);
   expect(api.submitStorageOperation).not.toHaveBeenCalled();
   expect(screen.getByText(/files stay on the server/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Confirm disconnect" }));
@@ -366,4 +375,145 @@ test("disconnect requires confirmation and preserves files", async () => {
       "csrf",
     ),
   );
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Confirm disconnect" }),
+    ).not.toBeInTheDocument(),
+  );
+  expect(
+    screen.getByRole("heading", { name: "Location configuration" }),
+  ).toHaveFocus();
+  expect(
+    screen.getByText(
+      "Storage request accepted. Follow its progress in Activity.",
+    ),
+  ).toHaveAttribute("role", "status");
+});
+
+test("failed confirmation stays available for retry", async () => {
+  vi.mocked(api.fetchStorageAdministration).mockResolvedValue({
+    ...inventory,
+    roots: [root],
+  });
+  vi.mocked(api.submitStorageOperation).mockRejectedValueOnce(
+    new Error("Connection unavailable"),
+  );
+  render(
+    <StorageAdministration
+      csrfToken="csrf"
+      route="#administration/storage/locations/second/configuration"
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "Accept reviewed disk identity",
+    }),
+  );
+  expect(
+    screen.getByRole("heading", { name: "Review disk identity" }),
+  ).toHaveFocus();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Confirm reviewed identity" }),
+  );
+  await screen.findByText("Connection unavailable");
+  expect(
+    screen.getByRole("button", { name: "Confirm reviewed identity" }),
+  ).toBeEnabled();
+});
+
+test("deployment reset replaces the settings draft and clears its dirty baseline", async () => {
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  render(
+    <StorageAdministration
+      csrfToken="csrf"
+      route="#administration/storage/settings"
+    />,
+  );
+  const limit = await screen.findByLabelText("File size (MiB)");
+  fireEvent.change(limit, { target: { value: "20" } });
+  vi.mocked(api.fetchStorageAdministration).mockResolvedValue({
+    ...inventory,
+    upload_max_bytes: 128 * 1024 ** 2,
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Use deployment default" }),
+  );
+  await screen.findByText("Upload policy saved. No restart needed.");
+  expect(limit).toHaveValue(128);
+  expect(fireEvent.click(screen.getByRole("link", { name: "Locations" }))).toBe(
+    true,
+  );
+  expect(confirm).not.toHaveBeenCalled();
+});
+
+test("settings polling updates clean fields but preserves active drafts", async () => {
+  vi.useFakeTimers();
+  await act(async () => {
+    render(
+      <StorageAdministration
+        csrfToken="csrf"
+        route="#administration/storage/settings"
+      />,
+    );
+  });
+  vi.mocked(api.fetchStorageAdministration).mockResolvedValue({
+    ...inventory,
+    upload_max_bytes: 128 * 1024 ** 2,
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(3000);
+  });
+  expect(screen.getByLabelText("File size (MiB)")).toHaveValue(128);
+  const cleanLeave = new Event("beforeunload", { cancelable: true });
+  fireEvent(window, cleanLeave);
+  expect(cleanLeave.defaultPrevented).toBe(false);
+  fireEvent.change(screen.getByLabelText("File size (MiB)"), {
+    target: { value: "20" },
+  });
+  vi.mocked(api.fetchStorageAdministration).mockResolvedValue({
+    ...inventory,
+    upload_max_bytes: 256 * 1024 ** 2,
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(3000);
+  });
+  expect(screen.getByLabelText("File size (MiB)")).toHaveValue(20);
+  expect(screen.getByText(/Effective limit:/)).toHaveTextContent("268,435,456");
+  const dirtyLeave = new Event("beforeunload", { cancelable: true });
+  fireEvent(window, dirtyLeave);
+  expect(dirtyLeave.defaultPrevented).toBe(true);
+  fireEvent.change(screen.getByLabelText("File size (MiB)"), {
+    target: { value: "256" },
+  });
+  const reconciledLeave = new Event("beforeunload", { cancelable: true });
+  fireEvent(window, reconciledLeave);
+  expect(reconciledLeave.defaultPrevented).toBe(false);
+  vi.mocked(api.fetchStorageAdministration).mockResolvedValue({
+    ...inventory,
+    upload_max_bytes: 512 * 1024 ** 2,
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(3000);
+  });
+  expect(screen.getByLabelText("File size (MiB)")).toHaveValue(512);
+});
+
+test("Open my files clears stale folder query parameters", async () => {
+  window.history.replaceState(
+    {},
+    "",
+    "/?files-root=other&files-path=Private&keep=value#administration/storage/locations/second/overview",
+  );
+  vi.mocked(api.fetchStorageAdministration).mockResolvedValue({
+    ...inventory,
+    roots: [{ ...root, state: "healthy" }],
+  });
+  render(
+    <StorageAdministration
+      csrfToken="csrf"
+      route="#administration/storage/locations/second/overview"
+    />,
+  );
+  fireEvent.click(await screen.findByRole("link", { name: "Open my files" }));
+  expect(window.location.search).toBe("?keep=value");
 });

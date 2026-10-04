@@ -196,7 +196,7 @@ test.each(["admin", "member"])(
   },
 );
 
-test("signing in starts on Dashboard instead of the previous page", async () => {
+test("signing in preserves the requested account destination", async () => {
   window.history.replaceState({}, "", "/#account");
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
@@ -229,13 +229,49 @@ test("signing in starts on Dashboard instead of the previous page", async () => 
   fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
   expect(
-    await screen.findByRole("heading", { name: "Dashboard", level: 1 }),
+    await screen.findByRole("heading", { name: "Account", level: 1 }),
   ).toBeInTheDocument();
-  expect(window.location.hash).toBe("");
-  expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
+  expect(window.location.hash).toBe("#account");
+  expect(screen.getByRole("link", { name: "Account" })).toHaveAttribute(
     "aria-current",
     "page",
   );
+});
+
+test("session lookup failure offers recovery instead of asking for credentials", async () => {
+  const fetch = vi
+    .spyOn(globalThis, "fetch")
+    .mockRejectedValueOnce(new Error("offline"));
+  render(<App />);
+  await screen.findByRole("heading", {
+    name: "Ark could not check your session",
+  });
+  expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+  fetch.mockResolvedValueOnce(jsonResponse({ authenticated: false }));
+  fireEvent.click(screen.getByRole("button", { name: "Retry connection" }));
+  await screen.findByRole("heading", { name: "Sign in" });
+});
+
+test("a failed logout leaves the session active and offers another attempt", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    if (String(input) === "/api/auth/session")
+      return jsonResponse({
+        authenticated: true,
+        username: "ark",
+        csrf_token: "csrf",
+      });
+    if (String(input) === "/api/dashboard") return jsonResponse(dashboard);
+    return new Response(null, { status: 503 });
+  });
+  render(<App />);
+  await screen.findByRole("heading", { name: "Dashboard", level: 1 });
+  fireEvent.click(screen.getByText("Options"));
+  fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+  await screen.findByText(/Could not log out/);
+  expect(
+    screen.getByRole("heading", { name: "Dashboard", level: 1 }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Log out" })).toBeEnabled();
 });
 
 test("restoring a session preserves the requested page", async () => {

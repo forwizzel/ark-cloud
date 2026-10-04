@@ -24,6 +24,8 @@ import AdministrationTabs from "./AdministrationTabs";
 import TailscaleAdministration from "./TailscaleAdministration";
 import { administrationRoute } from "./administrationRoutes";
 import arkCloudLogo from "../../../graphics/arkcloud-logo.svg?raw";
+import { useNavigationGuard } from "./useUnsavedChanges";
+import { revealDestination } from "./navigation";
 
 type DashboardState =
   | { phase: "loading" }
@@ -32,6 +34,7 @@ type DashboardState =
 
 type SessionState =
   | { phase: "loading" }
+  | { phase: "error" }
   | { phase: "unauthenticated"; setupRequired?: boolean }
   | { phase: "authenticated"; session: AuthSession };
 
@@ -43,6 +46,12 @@ const stateLabels: Record<IntegrationState, string> = {
 };
 
 function App() {
+  useNavigationGuard();
+  const primaryNavigation = useRef<HTMLElement>(null);
+  const utilities = useRef<HTMLDetailsElement>(null);
+  const [sessionRequest, setSessionRequest] = useState(0);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [sessionError, setSessionError] = useState("");
   const [sessionState, setSessionState] = useState<SessionState>({
     phase: "loading",
   });
@@ -55,6 +64,13 @@ function App() {
   >("overview");
   const [activeHash, setActiveHash] = useState(window.location.hash);
   const [signInNotice, setSignInNotice] = useState("");
+
+  useEffect(() => {
+    const nav = primaryNavigation.current;
+    const active = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (nav && active) revealDestination(nav, active);
+    if (utilities.current) utilities.current.open = false;
+  }, [activePage]);
 
   useEffect(() => {
     const onHashChange = () => {
@@ -78,8 +94,10 @@ function App() {
   };
 
   useEffect(() => {
+    let cancelled = false;
     fetchSession()
       .then((session) => {
+        if (cancelled) return;
         if (session.authenticated) {
           setActivePage(pageFromHash());
           setActiveHash(window.location.hash);
@@ -93,8 +111,13 @@ function App() {
               },
         );
       })
-      .catch(() => setSessionState({ phase: "unauthenticated" }));
-  }, []);
+      .catch(() => {
+        if (!cancelled) setSessionState({ phase: "error" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionRequest]);
 
   useEffect(() => {
     if (sessionState.phase !== "authenticated") return;
@@ -121,11 +144,7 @@ function App() {
   };
 
   const onLogin = (session: AuthSession, firstSetup = false) => {
-    if (
-      (window.location.hash.startsWith("#administration") ||
-        pageFromHash() === "system") &&
-      !firstSetup
-    ) {
+    if (window.location.hash && !firstSetup) {
       setActivePage(pageFromHash());
       setActiveHash(window.location.hash);
     } else showDashboard();
@@ -146,12 +165,49 @@ function App() {
       !sessionState.session.csrf_token
     )
       return;
-    await logout(sessionState.session.csrf_token);
-    showDashboard();
-    setSignInNotice("");
-    setSessionState({ phase: "unauthenticated" });
-    setDashboardState({ phase: "loading" });
+    if (loggingOut) return;
+    setLoggingOut(true);
+    setSessionError("");
+    try {
+      await logout(sessionState.session.csrf_token);
+      showDashboard();
+      setSignInNotice("");
+      setSessionState({ phase: "unauthenticated" });
+      setDashboardState({ phase: "loading" });
+    } catch {
+      setSessionError(
+        "Could not log out. Your session is still active. Try again from Options.",
+      );
+    } finally {
+      setLoggingOut(false);
+    }
   };
+
+  if (sessionState.phase === "error")
+    return (
+      <main className="auth-frame">
+        <section
+          className="login-panel"
+          aria-labelledby="session-error-heading"
+        >
+          <h1 id="session-error-heading">Ark could not check your session</h1>
+          <p role="alert">
+            The connection is unavailable. Retry to continue with your existing
+            session.
+          </p>
+          <button
+            className="refresh-button"
+            onClick={() => {
+              setSessionState({ phase: "loading" });
+              setSessionRequest((value) => value + 1);
+            }}
+          >
+            Retry connection
+          </button>
+          <AppearanceControls />
+        </section>
+      </main>
+    );
 
   if (sessionState.phase === "loading") {
     return (
@@ -198,7 +254,7 @@ function App() {
           </span>
         </a>
 
-        <nav aria-label="Primary navigation">
+        <nav ref={primaryNavigation} aria-label="Primary navigation">
           <a
             className={`nav-item ${activePage === "overview" ? "nav-item--active" : ""}`}
             href="#overview"
@@ -250,7 +306,22 @@ function App() {
           )}
         </nav>
 
-        <AppearanceControls />
+        <details className="rail-utilities" ref={utilities}>
+          <summary aria-label="Appearance and session options">Options</summary>
+          <div className="rail-utilities-content">
+            <AppearanceControls />
+            <button
+              className="logout-button"
+              data-discard-changes
+              type="button"
+              disabled={loggingOut}
+              aria-busy={loggingOut}
+              onClick={() => void onLogout()}
+            >
+              {loggingOut ? "Logging out…" : "Log out"}
+            </button>
+          </div>
+        </details>
       </aside>
 
       <main className="main-content" id="main-content" tabIndex={-1}>
@@ -287,16 +358,14 @@ function App() {
                 Refresh
               </button>
             )}
-            <button
-              className="logout-button"
-              data-discard-changes
-              type="button"
-              onClick={() => void onLogout()}
-            >
-              Log out
-            </button>
           </div>
         </header>
+
+        {sessionError && (
+          <p className="auth-error" role="alert">
+            {sessionError}
+          </p>
+        )}
 
         {activePage === "system" && (
           <SystemInformationPage
@@ -537,7 +606,7 @@ function DashboardView({
       <p className="scope-note">
         Metrics are the API runtime's view: CPU, memory, and uptime can be
         host-global, while storage can reflect the container filesystem. A
-        dedicated host agent is planned for exact host telemetry.
+        connected host agent supplies separate host readings on the System page.
       </p>
     </div>
   );

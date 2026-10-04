@@ -131,16 +131,21 @@ export default function StorageAdministration({
           csrfToken,
         ),
       );
+      setNotice("Storage request accepted. Follow its progress in Activity.");
+      return true;
     } catch (problem) {
       setNotice(failure(problem));
+      return false;
     } finally {
       setSending(false);
     }
   }
   async function refresh() {
     try {
-      setData(await fetchStorageAdministration(csrfToken, undefined, true));
+      const next = await fetchStorageAdministration(csrfToken, undefined, true);
+      setData(next);
       setError("");
+      return next;
     } catch (problem) {
       setError(failure(problem));
     }
@@ -407,6 +412,11 @@ export default function StorageAdministration({
                 : "Not provisioned by deployment"}
             .
           </p>
+          {error && (
+            <button type="button" onClick={() => void refresh()}>
+              Retry loading storage
+            </button>
+          )}
           <p className="storage-path">
             Managed storage area:{" "}
             {data.manager.managed_area ?? "Not provisioned"}
@@ -500,7 +510,21 @@ export default function StorageAdministration({
                 </a>
                 {selected.state === "healthy" && (
                   <p>
-                    <a href={`#local-files/${selected.id}`}>Open my files</a>
+                    <a
+                      href={`#local-files/${selected.id}`}
+                      onClick={() => {
+                        const url = new URL(window.location.href);
+                        url.searchParams.delete("files-path");
+                        url.searchParams.delete("files-root");
+                        window.history.replaceState(
+                          window.history.state,
+                          "",
+                          `${url.pathname}${url.search}${url.hash}`,
+                        );
+                      }}
+                    >
+                      Open my files
+                    </a>
                   </p>
                 )}
               </section>
@@ -579,11 +603,17 @@ function StorageSettings({
   data: Snapshot;
   csrfToken: string;
   onNotice: (value: string) => void;
-  onRefresh: () => Promise<void>;
+  onRefresh: () => Promise<Snapshot | undefined>;
 }) {
   const [limit, setLimit] = useState(String(data.upload_max_bytes / 1024 ** 2));
+  const [baseline, setBaseline] = useState(limit);
   const [busy, setBusy] = useState(false);
-  useUnsavedChanges(limit !== String(data.upload_max_bytes / 1024 ** 2));
+  const effectiveLimit = String(data.upload_max_bytes / 1024 ** 2);
+  if (baseline !== effectiveLimit) {
+    setBaseline(effectiveLimit);
+    if (limit === baseline) setLimit(effectiveLimit);
+  }
+  useUnsavedChanges(limit !== baseline);
   async function save(value: number | null) {
     setBusy(true);
     try {
@@ -595,7 +625,14 @@ function StorageSettings({
       await storageRequest("admin/storage/settings", csrfToken, "PUT", {
         upload_max_bytes: value,
       });
-      await onRefresh();
+      const next = await onRefresh();
+      if (!next)
+        throw new Error(
+          "The policy was saved, but its effective limit could not be verified. Refresh and retry.",
+        );
+      const authoritative = String(next.upload_max_bytes / 1024 ** 2);
+      setLimit(authoritative);
+      setBaseline(authoritative);
       onNotice("Upload policy saved. No restart needed.");
     } catch (problem) {
       onNotice(failure(problem));
@@ -624,6 +661,7 @@ function StorageSettings({
             min="0.000001"
             step="any"
             value={limit}
+            disabled={busy}
             onChange={(event) => setLimit(event.target.value)}
           />
         </label>
@@ -658,7 +696,7 @@ function LocationConfiguration({
 }: {
   root: ManagedLocation;
   canApply: boolean;
-  onSend: (operation: StorageOperation) => Promise<void>;
+  onSend: (operation: StorageOperation) => Promise<boolean>;
 }) {
   const [label, setLabel] = useState(root.label);
   const [destination, setDestination] = useState("");
@@ -666,9 +704,23 @@ function LocationConfiguration({
   const [confirm, setConfirm] = useState<"remove" | "refresh-identity" | null>(
     null,
   );
+  const confirmation = useRef<HTMLHeadingElement>(null);
+  const configurationHeading = useRef<HTMLHeadingElement>(null);
+  const confirmTrigger = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (confirm) confirmation.current?.focus();
+  }, [confirm]);
+  function closeConfirmation() {
+    setConfirm(null);
+    if (confirmTrigger.current && !confirmTrigger.current.disabled)
+      confirmTrigger.current.focus();
+    else configurationHeading.current?.focus();
+  }
   return (
     <section className="panel storage-section">
-      <h3>Location configuration</h3>
+      <h3 ref={configurationHeading} tabIndex={-1}>
+        Location configuration
+      </h3>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -737,17 +789,40 @@ function LocationConfiguration({
         </button>
         <button
           disabled={!canApply}
-          onClick={() => setConfirm("refresh-identity")}
+          onClick={(event) => {
+            confirmTrigger.current = event.currentTarget;
+            setConfirm("refresh-identity");
+          }}
         >
           Accept reviewed disk identity
         </button>
-        <button disabled={!canApply} onClick={() => setConfirm("remove")}>
+        <button
+          disabled={!canApply}
+          onClick={(event) => {
+            confirmTrigger.current = event.currentTarget;
+            setConfirm("remove");
+          }}
+        >
           Disconnect
         </button>
       </div>
       {confirm && (
-        <div className="storage-notice">
-          <p>
+        <div
+          className="storage-notice"
+          role="region"
+          aria-labelledby="storage-confirm-heading"
+        >
+          <h4
+            id="storage-confirm-heading"
+            ref={confirmation}
+            tabIndex={-1}
+            aria-describedby="storage-confirm-description"
+          >
+            {confirm === "remove"
+              ? "Review disconnection"
+              : "Review disk identity"}
+          </h4>
+          <p id="storage-confirm-description">
             {confirm === "remove"
               ? "Disconnect this location? Account access is removed and files stay on the server."
               : "Accept this disk's current identity only after verifying the intended disk and files are present."}
@@ -755,13 +830,21 @@ function LocationConfiguration({
           <div className="local-actions">
             <button
               disabled={!canApply}
-              onClick={() => void onSend({ action: confirm, root_id: root.id })}
+              onClick={() =>
+                void onSend({ action: confirm, root_id: root.id }).then(
+                  (accepted) => {
+                    if (accepted) closeConfirmation();
+                  },
+                )
+              }
             >
               {confirm === "remove"
                 ? "Confirm disconnect"
                 : "Confirm reviewed identity"}
             </button>
-            <button onClick={() => setConfirm(null)}>Cancel</button>
+            <button disabled={!canApply} onClick={closeConfirmation}>
+              Cancel
+            </button>
           </div>
         </div>
       )}

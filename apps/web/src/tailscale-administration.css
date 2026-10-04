@@ -32,14 +32,6 @@
   color: var(--muted);
 }
 @media (max-width: 680px) {
-  .administration-tabs {
-    width: 100%;
-    overflow-x: auto;
-  }
-  .administration-tabs button {
-    flex: 1 0 auto;
-    padding-inline: 12px;
-  }
   .tailscale-facts {
     grid-template-columns: 1fr;
   }

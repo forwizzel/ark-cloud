@@ -1,5 +1,6 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { administrationRoute } from "./administrationRoutes";
+import { revealDestination } from "./navigation";
 
 const sections = [
   { id: "overview", label: "Overview", hash: "#administration" },
@@ -22,6 +23,13 @@ export default function AdministrationTabs({ route }: { route: string }) {
           : page === "overview"
             ? "overview"
             : "storage";
+
+  useEffect(() => {
+    const button =
+      buttons.current[sections.findIndex((section) => section.id === selected)];
+    const strip = button?.parentElement;
+    if (button && strip) revealDestination(strip, button);
+  }, [selected]);
 
   return (
     <div

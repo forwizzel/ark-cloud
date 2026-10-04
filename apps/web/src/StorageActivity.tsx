@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { storageRequest, type StorageJob } from "./storageAdminApi";
 
 export default function StorageActivity({
@@ -16,11 +16,12 @@ export default function StorageActivity({
   busy: boolean;
   titles: Record<string, string>;
   onNotice: (value: string) => void;
-  onRefresh: () => Promise<void>;
+  onRefresh: () => Promise<unknown>;
   onRetry: (job: StorageJob) => void;
   headingLevel?: 3 | 4;
 }) {
   const [working, setWorking] = useState(false);
+  const progressHeading = useRef<HTMLHeadingElement>(null);
   const Heading = headingLevel === 3 ? "h3" : "h4";
   const [showDismissed, setShowDismissed] = useState(false);
   const visible = jobs.filter(
@@ -51,6 +52,7 @@ export default function StorageActivity({
       );
       onNotice(result.message);
       await onRefresh();
+      progressHeading.current?.focus();
     } catch (error) {
       onNotice(
         error instanceof Error ? error.message : "Activity request failed.",
@@ -125,7 +127,9 @@ export default function StorageActivity({
   }
   return (
     <>
-      <Heading>Current issues &amp; progress</Heading>
+      <Heading ref={progressHeading} tabIndex={-1}>
+        Current issues &amp; progress
+      </Heading>
       {current.length ? (
         <ol className="storage-activity">{current.map(entry)}</ol>
       ) : (

@@ -159,6 +159,7 @@ export default function LocalFiles({
             onChange={(event) => {
               const url = new URL(window.location.href);
               url.searchParams.delete("files-path");
+              url.searchParams.delete("files-root");
               url.hash = event.target.value
                 ? `#local-files/${event.target.value}`
                 : "#local-files";
@@ -183,37 +184,46 @@ export default function LocalFiles({
             ))}
           </select>
         </label>
-        <button
-          type="button"
-          disabled={busy || loading}
-          onClick={() => {
-            setLoading(true);
-            setRefresh((value) => value + 1);
-          }}
+        <details
+          className="local-location-options"
+          open={Boolean(error || root?.state === "unavailable")}
+          aria-label="Location options"
         >
-          Refresh locations
-        </button>
-        {isAdmin && <a href="#administration">Manage storage</a>}
-        {preference?.root_id && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              setBusy(true);
-              void saveStoragePreference(null, "", csrfToken)
-                .then((saved) => {
-                  setPreference(saved);
-                  setPreferenceNotice(
-                    "Default cleared. Choose a starting location next time you open Local Files.",
-                  );
-                })
-                .catch((failure) => setPreferenceNotice(message(failure)))
-                .finally(() => setBusy(false));
-            }}
-          >
-            Clear default
-          </button>
-        )}
+          <summary>Location options</summary>
+          <div className="local-actions">
+            <button
+              type="button"
+              disabled={busy || loading}
+              onClick={() => {
+                setLoading(true);
+                setRefresh((value) => value + 1);
+              }}
+            >
+              Refresh locations
+            </button>
+            {isAdmin && <a href="#administration">Manage storage</a>}
+            {preference?.root_id && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setBusy(true);
+                  void saveStoragePreference(null, "", csrfToken)
+                    .then((saved) => {
+                      setPreference(saved);
+                      setPreferenceNotice(
+                        "Default cleared. Choose a starting location next time you open Local Files.",
+                      );
+                    })
+                    .catch((failure) => setPreferenceNotice(message(failure)))
+                    .finally(() => setBusy(false));
+                }}
+              >
+                Clear default
+              </button>
+            )}
+          </div>
+        </details>
       </div>
       {preferenceNotice && <p role="status">{preferenceNotice}</p>}
       {!loading && roots.length > 0 && !selected && (
@@ -271,7 +281,11 @@ export default function LocalFiles({
             csrfToken={csrfToken}
             onBusy={setBusy}
             initialPath={
-              window.location.hash === `#local-files/${root.id}`
+              window.location.hash === `#local-files/${root.id}` &&
+              (!new URLSearchParams(window.location.search).has("files-root") ||
+                new URLSearchParams(window.location.search).get(
+                  "files-root",
+                ) === root.id)
                 ? (new URLSearchParams(window.location.search).get(
                     "files-path",
                   ) ?? (preference?.root_id === root.id ? preference.path : ""))
@@ -309,6 +323,16 @@ function FileBrowser({
   preference: StoragePreference | null;
   onDefault: (path: string) => void;
 }) {
+  const [compact, setCompact] = useState(
+    () => window.matchMedia?.("(max-width: 680px)").matches ?? false,
+  );
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const media = window.matchMedia("(max-width: 680px)");
+    const update = (event: MediaQueryListEvent) => setCompact(event.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
   const [path, setPath] = useState(initialPath);
   const [listing, setListing] = useState<LocalListing | null>(null);
   const [refresh, setRefresh] = useState(0);
@@ -319,6 +343,12 @@ function FileBrowser({
   const [action, setAction] = useState<Action | null>(null);
   const [value, setValue] = useState("");
   const [progress, setProgress] = useState<number | null>(null);
+  const [deleteReview, setDeleteReview] = useState(false);
+  const [refreshedDelete, setRefreshedDelete] = useState(false);
+  const [revisionPending, setRevisionPending] = useState(false);
+  const reconcileAction = useRef<Action | null>(null);
+  const firstAddedPath = useRef<string | null>(null);
+  const fileList = useRef<HTMLUListElement>(null);
   const cancelUpload = useRef<(() => void) | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -332,6 +362,7 @@ function FileBrowser({
     const url = new URL(window.location.href);
     url.hash = `#local-files/${root.id}`;
     url.searchParams.set("files-path", path);
+    url.searchParams.set("files-root", root.id);
     window.history.replaceState(
       window.history.state,
       "",
@@ -345,8 +376,20 @@ function FileBrowser({
         ? action.item.path
         : "";
   const discardChanges = useUnsavedChanges(
-    Boolean(action && action.kind !== "delete" && value !== initialValue),
+    progress !== null ||
+      Boolean(action && action.kind !== "delete" && value !== initialValue),
+    progress !== null
+      ? "Leaving this page cancels the active upload. Leave and cancel upload?"
+      : undefined,
   );
+  useEffect(() => {
+    if (!firstAddedPath.current) return;
+    const row = Array.from(
+      fileList.current?.querySelectorAll<HTMLElement>("[data-file-path]") ?? [],
+    ).find((element) => element.dataset.filePath === firstAddedPath.current);
+    row?.querySelector<HTMLElement>(".local-name")?.focus();
+    firstAddedPath.current = null;
+  }, [listing]);
   useEffect(() => {
     if (action) editorHeading.current?.focus();
     if (!action && restoreTrigger.current) {
@@ -358,9 +401,10 @@ function FileBrowser({
   useEffect(() => {
     if (!loading && focusAfterLoad.current) {
       focusAfterLoad.current = false;
-      heading.current?.focus();
+      if (action) editorHeading.current?.focus();
+      else heading.current?.focus();
     }
-  }, [loading, listing, error]);
+  }, [loading, listing, error, action]);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -372,8 +416,50 @@ function FileBrowser({
   useEffect(() => {
     const controller = new AbortController();
     fetchLocalItems(root.id, path, controller.signal)
-      .then((data) => {
+      .then(async (data) => {
         if (controller.signal.aborted) return;
+        const pending = reconcileAction.current;
+        if (pending && pending.kind !== "folders") {
+          // The edited item may be on a later page of this folder.
+          while (
+            reconcileAction.current === pending &&
+            !data.items.some((item) => item.path === pending.item.path) &&
+            data.next_offset !== null
+          ) {
+            const page = await fetchLocalItems(
+              root.id,
+              path,
+              controller.signal,
+              data,
+            );
+            if (controller.signal.aborted) return;
+            data = { ...page, items: [...data.items, ...page.items] };
+          }
+          if (reconcileAction.current === pending) {
+            const fresh = data.items.find(
+              (item) =>
+                item.path === pending.item.path &&
+                item.kind === pending.item.kind,
+            );
+            reconcileAction.current = null;
+            setRevisionPending(false);
+            if (fresh) {
+              setAction({ ...pending, item: fresh });
+              setDeleteReview(pending.kind === "delete");
+              setRefreshedDelete(pending.kind === "delete");
+              setNotice(
+                pending.kind === "delete"
+                  ? "Item refreshed. Review it again before deleting."
+                  : "Item refreshed. Your draft has been preserved.",
+              );
+            } else {
+              setAction(null);
+              setNotice(
+                "This item is no longer in this folder. Your action was closed; choose an item from the refreshed list.",
+              );
+            }
+          }
+        }
         setListing(data);
         setLoading(false);
       })
@@ -385,7 +471,11 @@ function FileBrowser({
       });
     return () => controller.abort();
   }, [root.id, path, refresh]);
-  function reload(clearNotice = true) {
+  function reload(clearNotice = true, reconcile = true) {
+    reconcileAction.current = reconcile ? action : null;
+    setRevisionPending(
+      Boolean(reconcile && action && action.kind !== "folders"),
+    );
     if (clearNotice) setNotice("");
     focusAfterLoad.current = true;
     setLoading(true);
@@ -395,6 +485,8 @@ function FileBrowser({
   }
   function navigate(next: string) {
     if (!discardChanges()) return;
+    reconcileAction.current = null;
+    setRevisionPending(false);
     focusAfterLoad.current = true;
     setPath(next);
     setListing(null);
@@ -405,17 +497,29 @@ function FileBrowser({
   }
   function choose(next: Action) {
     if (!discardChanges()) return;
+    reconcileAction.current = null;
     trigger.current =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
     setAction(next);
-    setValue(next.kind === "folders" ? "" : next.item.path);
+    setDeleteReview(false);
+    setRefreshedDelete(false);
+    setRevisionPending(false);
+    setValue(
+      next.kind === "folders"
+        ? ""
+        : next.kind === "rename"
+          ? next.item.name
+          : next.item.path,
+    );
     setError("");
     setNotice("");
   }
   function cancelEditor() {
     if (!discardChanges()) return;
+    reconcileAction.current = null;
+    setRevisionPending(false);
     restoreTrigger.current = true;
     setAction(null);
   }
@@ -425,7 +529,7 @@ function FileBrowser({
   }
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!action) return;
+    if (!action || loading || deleteReview || revisionPending) return;
     lock(true);
     setError("");
     setNotice("");
@@ -451,7 +555,7 @@ function FileBrowser({
           ? "Item permanently deleted."
           : "Changes saved.",
       );
-      reload(false);
+      reload(false, false);
     } catch (failure) {
       setError(message(failure));
       if (action.kind !== "delete") editorInput.current?.focus();
@@ -503,8 +607,15 @@ function FileBrowser({
     setError("");
     try {
       const page = await fetchLocalItems(root.id, path, undefined, listing);
-      if (mounted.current)
+      if (mounted.current) {
+        firstAddedPath.current = page.items[0]?.path ?? null;
         setListing({ ...page, items: [...listing.items, ...page.items] });
+        setNotice(
+          `${page.items.length} more ${page.items.length === 1 ? "item" : "items"} loaded. ${listing.items.length + page.items.length} items shown.${page.next_offset === null ? " All files loaded." : ""}`,
+        );
+        if (!page.items.length && page.next_offset === null)
+          heading.current?.focus();
+      }
     } catch (failure) {
       if (mounted.current) setError(message(failure));
     } finally {
@@ -522,48 +633,57 @@ function FileBrowser({
             {size(root.available_bytes)} available
             {root.read_only ? " · Read only" : ""}
           </p>
-          {!root.read_only && preference && (
-            <p>Maximum file size: {size(preference.upload_max_bytes)}</p>
-          )}
         </div>
         <div className="local-actions">
-          <button
-            type="button"
-            disabled={
-              busy ||
-              loading ||
-              (preference?.root_id === root.id && preference.path === path)
-            }
-            onClick={() => onDefault(path)}
-          >
-            {preference?.root_id === root.id && preference.path === path
-              ? "Default starting folder"
-              : "Set as starting folder"}
-          </button>
-          <button
-            disabled={busy || loading}
-            onClick={() => reload()}
-            type="button"
-          >
-            Refresh files
-          </button>
           {!root.read_only && (
             <>
               <button
-                disabled={busy}
-                onClick={() => choose({ kind: "folders" })}
-                type="button"
-              >
-                New folder
-              </button>
-              <button
                 className="refresh-button"
-                disabled={busy}
+                disabled={busy || loading}
                 onClick={() => input.current?.click()}
                 type="button"
               >
                 Upload file
               </button>
+              <button
+                disabled={busy || loading}
+                onClick={() => choose({ kind: "folders" })}
+                type="button"
+              >
+                New folder
+              </button>
+            </>
+          )}
+          <details className="local-secondary-options">
+            <summary>Folder options</summary>
+            <div className="local-actions">
+              <button
+                type="button"
+                disabled={
+                  busy ||
+                  loading ||
+                  (preference?.root_id === root.id && preference.path === path)
+                }
+                onClick={() => onDefault(path)}
+              >
+                {preference?.root_id === root.id && preference.path === path
+                  ? "Default starting folder"
+                  : "Set as starting folder"}
+              </button>
+              <button
+                disabled={busy || loading}
+                onClick={() => reload()}
+                type="button"
+              >
+                Refresh files
+              </button>
+              {!root.read_only && preference && (
+                <p>Maximum file size: {size(preference.upload_max_bytes)}</p>
+              )}
+            </div>
+          </details>
+          {!root.read_only && (
+            <>
               <input
                 ref={input}
                 name="upload-file"
@@ -580,30 +700,32 @@ function FileBrowser({
           )}
         </div>
       </header>
-      <nav className="local-breadcrumbs" aria-label="File breadcrumbs">
-        <button
-          type="button"
-          disabled={busy || !path}
-          onClick={() => navigate("")}
-        >
-          {root.label}
-        </button>
-        {path
-          .split("/")
-          .filter(Boolean)
-          .map((part, index, all) => (
-            <span key={index}>
-              <span aria-hidden="true"> / </span>
-              <button
-                type="button"
-                disabled={busy || index === all.length - 1}
-                onClick={() => navigate(all.slice(0, index + 1).join("/"))}
-              >
-                {part}
-              </button>
-            </span>
-          ))}
-      </nav>
+      {path && (
+        <nav className="local-breadcrumbs" aria-label="File breadcrumbs">
+          <button
+            type="button"
+            disabled={busy || !path}
+            onClick={() => navigate("")}
+          >
+            {root.label}
+          </button>
+          {path
+            .split("/")
+            .filter(Boolean)
+            .map((part, index, all) => (
+              <span key={index}>
+                <span aria-hidden="true"> / </span>
+                <button
+                  type="button"
+                  disabled={busy || index === all.length - 1}
+                  onClick={() => navigate(all.slice(0, index + 1).join("/"))}
+                >
+                  {part}
+                </button>
+              </span>
+            ))}
+        </nav>
+      )}
       {notice && (
         <p className="local-feedback" role="status">
           {notice}
@@ -646,38 +768,92 @@ function FileBrowser({
                   : "Move within this location"}
           </h3>
           {action.kind !== "folders" && (
-            <p className="local-filename">{action.item.name}</p>
+            <>
+              <p className="local-filename">{action.item.path}</p>
+              <p className="local-feedback">
+                {action.item.kind === "file"
+                  ? `${size(action.item.size_bytes)} · `
+                  : "Folder · "}
+                Modified {new Date(action.item.modified_at).toLocaleString()}
+              </p>
+            </>
           )}
           {error && (
-            <p className="local-error" role="alert" id="file-action-error">
-              {error}
-            </p>
+            <div>
+              <p className="local-error" role="alert" id="file-action-error">
+                {error}
+              </p>
+              <button
+                type="button"
+                disabled={busy || loading}
+                onClick={() => reload()}
+              >
+                Refresh files
+              </button>
+            </div>
           )}
           {action.kind === "delete" ? (
-            <p>This cannot be undone. Folders must be empty.</p>
+            <>
+              <p>This cannot be undone. Folders must be empty.</p>
+              {refreshedDelete && (
+                <label className="local-delete-review">
+                  <input
+                    type="checkbox"
+                    checked={!deleteReview}
+                    onChange={(event) => setDeleteReview(!event.target.checked)}
+                  />
+                  I reviewed the refreshed item and still want to delete it.
+                </label>
+              )}
+            </>
           ) : (
-            <label>
-              {action.kind === "move"
-                ? "Destination path, relative to this storage location"
-                : "Name"}
-              <input
-                ref={editorInput}
-                name={action.kind === "move" ? "destination-path" : "item-name"}
-                aria-invalid={Boolean(error)}
-                aria-describedby={error ? "file-action-error" : undefined}
-                autoComplete="off"
-                spellCheck={false}
-                autoCapitalize="none"
-                required
-                maxLength={action.kind === "move" ? 2048 : 255}
-                value={value}
-                onChange={(event) => setValue(event.target.value)}
-                disabled={busy}
-              />
-            </label>
+            <>
+              <label>
+                {action.kind === "move"
+                  ? "Destination path, relative to this storage location"
+                  : "Name"}
+                <input
+                  ref={editorInput}
+                  name={
+                    action.kind === "move" ? "destination-path" : "item-name"
+                  }
+                  aria-invalid={Boolean(error)}
+                  aria-describedby={
+                    [
+                      error ? "file-action-error" : "",
+                      action.kind === "move" ? "file-move-help" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ") || undefined
+                  }
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoCapitalize="none"
+                  required
+                  maxLength={action.kind === "move" ? 2048 : 255}
+                  value={value}
+                  onChange={(event) => setValue(event.target.value)}
+                  disabled={busy}
+                />
+              </label>
+              {action.kind === "move" && (
+                <p id="file-move-help" className="local-feedback">
+                  Include the destination folder and item name, for example
+                  Reports/notes.txt. Use a path within {root.label}, without a
+                  leading /. The destination folder must already exist.
+                </p>
+              )}
+            </>
           )}
           <div className="local-actions">
-            <button type="submit" disabled={busy} aria-busy={busy}>
+            <button
+              className={
+                action.kind === "delete" ? undefined : "refresh-button"
+              }
+              type="submit"
+              disabled={busy || loading || deleteReview || revisionPending}
+              aria-busy={busy}
+            >
               {busy
                 ? "Saving…"
                 : action.kind === "delete"
@@ -711,13 +887,14 @@ function FileBrowser({
                 </p>
               </div>
             ) : (
-              <ul className="local-file-list" aria-label="Files and folders">
+              <ul
+                ref={fileList}
+                className="local-file-list"
+                aria-label="Files and folders"
+              >
                 {listing.items.map((item) => (
-                  <li key={item.path}>
+                  <li key={item.path} data-file-path={item.path}>
                     <div className="local-file-identity">
-                      <span className="local-file-kind">
-                        {item.kind === "folder" ? "Folder" : "File"}
-                      </span>
                       {item.kind === "folder" ? (
                         <button
                           type="button"
@@ -740,57 +917,65 @@ function FileBrowser({
                         </a>
                       )}
                       <span className="local-file-meta">
+                        <span className="local-file-kind">
+                          {item.kind === "folder" ? "Folder" : "File"}
+                        </span>
+                        {" · "}
                         {item.kind === "file" && `${size(item.size_bytes)} · `}
                         <time dateTime={item.modified_at}>
                           {new Date(item.modified_at).toLocaleString()}
                         </time>
                       </span>
                     </div>
-                    <div className="local-actions">
-                      {item.kind === "file" && (
-                        <a
-                          href={storageUrl(root.id, "download", {
-                            path: item.path,
-                            revision: item.revision,
-                          })}
-                          download
-                          aria-label={`Download ${item.name}`}
-                        >
-                          Download
-                        </a>
-                      )}
-                      {!root.read_only && (
-                        <>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            aria-label={`Rename ${item.name}`}
-                            onClick={() => {
-                              choose({ kind: "rename", item });
-                              setValue(item.name);
-                            }}
-                          >
-                            Rename
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            aria-label={`Move ${item.name}`}
-                            onClick={() => choose({ kind: "move", item })}
-                          >
-                            Move
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            aria-label={`Delete ${item.name}`}
-                            onClick={() => choose({ kind: "delete", item })}
-                          >
-                            Delete
-                          </button>
-                        </>
-                      )}
-                    </div>
+                    {(!root.read_only || item.kind === "file") && (
+                      <details className="local-item-actions" open={!compact}>
+                        <summary aria-label={`Actions for ${item.name}`}>
+                          Actions
+                        </summary>
+                        <div className="local-actions">
+                          {item.kind === "file" && (
+                            <a
+                              href={storageUrl(root.id, "download", {
+                                path: item.path,
+                                revision: item.revision,
+                              })}
+                              download
+                              aria-label={`Download ${item.name}`}
+                            >
+                              Download
+                            </a>
+                          )}
+                          {!root.read_only && (
+                            <>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                aria-label={`Rename ${item.name}`}
+                                onClick={() => choose({ kind: "rename", item })}
+                              >
+                                Rename
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                aria-label={`Move ${item.name}`}
+                                onClick={() => choose({ kind: "move", item })}
+                              >
+                                Move
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                aria-label={`Delete ${item.name}`}
+                                onClick={() => choose({ kind: "delete", item })}
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </details>
+                    )}
                   </li>
                 ))}
               </ul>

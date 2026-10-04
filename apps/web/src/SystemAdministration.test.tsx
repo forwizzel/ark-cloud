@@ -109,7 +109,11 @@ test("Connect submits selected installed shell and service actions with CSRF and
     target: { value: "/bin/zsh" },
   });
   fireEvent.click(screen.getByRole("checkbox", { name: /backup.service/ }));
-  fireEvent.click(screen.getByRole("checkbox", { name: "Stop" }));
+  fireEvent.click(
+    screen.getByRole("checkbox", {
+      name: "Stop backup.service (user service)",
+    }),
+  );
   fireEvent.click(screen.getAllByRole("button", { name: "Connect System" })[0]);
   expect(
     await screen.findByText("Preparing System connection."),
@@ -157,7 +161,7 @@ test("offline host management disables connection and retryable setup errors rem
   render(<SystemAdministration csrfToken="csrf" />);
   expect(await screen.findByRole("alert")).toHaveTextContent("Setup failed");
   expect(
-    screen.getByRole("button", { name: "Retry connection" }),
+    screen.getAllByRole("button", { name: "Retry connection" })[0],
   ).toBeDisabled();
   expect(screen.getByText(/retries automatically/)).toBeInTheDocument();
 });
@@ -209,4 +213,50 @@ test("polling does not replace unsaved access settings", async () => {
   } finally {
     vi.useRealTimers();
   }
+});
+
+test("connected apply has consistent labels, adjacent interruption warnings, and confirmation preserves edits when cancelled", async () => {
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  const fetch = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (_path, options) =>
+      options?.method === "POST"
+        ? json({
+            id: "apply",
+            state: "queued",
+            message: "Applying settings.",
+            payload: { action: "connect" },
+          })
+        : json({ ...status, host: { ...status.host, state: "connected" } }),
+    );
+  render(<SystemAdministration csrfToken="csrf" />);
+  await screen.findByText("owner");
+  fireEvent.click(screen.getByRole("checkbox", { name: /Terminal access/ }));
+  const buttons = screen.getAllByRole("button", {
+    name: "Apply settings and reconnect",
+  });
+  expect(buttons).toHaveLength(2);
+  expect(
+    screen.getAllByText(/briefly interrupts host readings and controls/),
+  ).toHaveLength(2);
+  fireEvent.click(buttons[1]);
+  expect(confirm).toHaveBeenCalledWith(
+    expect.stringContaining("ends all active terminal sessions"),
+  );
+  expect(
+    fetch.mock.calls.some(([, options]) => options?.method === "POST"),
+  ).toBe(false);
+  expect(
+    screen.getByRole("checkbox", { name: /Terminal access/ }),
+  ).not.toBeChecked();
+  confirm.mockReturnValue(true);
+  fireEvent.click(buttons[1]);
+  await screen.findByText("Applying settings.");
+  const submission = fetch.mock.calls.find(
+    ([, options]) => options?.method === "POST",
+  )!;
+  expect(JSON.parse(String(submission[1]?.body))).toMatchObject({
+    action: "connect",
+    configuration: { terminal: false },
+  });
 });

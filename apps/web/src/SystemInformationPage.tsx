@@ -56,11 +56,16 @@ function Overview({ snapshot }: { snapshot: HostSnapshot }) {
           <p>{identity.os}</p>
         </div>
         <dl className="host-details">
-          <Detail label="Kernel" value={identity.kernel} />
-          <Detail label="Architecture" value={identity.architecture} />
           <Detail label="Uptime" value={uptime(identity.uptime_seconds)} />
-          <Detail label="Booted" value={timestamp(identity.boot_time)} />
         </dl>
+        <details className="host-identity-secondary">
+          <summary>Kernel, architecture and boot details</summary>
+          <dl className="host-details">
+            <Detail label="Kernel" value={identity.kernel} />
+            <Detail label="Architecture" value={identity.architecture} />
+            <Detail label="Booted" value={timestamp(identity.boot_time)} />
+          </dl>
+        </details>
       </Panel>
       <Panel title="Compute">
         <p className="host-cpu-model">
@@ -398,6 +403,8 @@ export default function SystemInformationPage({
   const [admin, setAdmin] = useState<HostStatus | null>(null);
   const [runtime, setRuntime] = useState<SystemInformation | null>(null);
   const [error, setError] = useState("");
+  const [policyError, setPolicyError] = useState("");
+  const [runtimeError, setRuntimeError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [request, setRequest] = useState(0);
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -409,38 +416,69 @@ export default function SystemInformationPage({
       if (active || document.hidden) return;
       active = true;
       setRefreshing(true);
-      try {
-        const value = await systemRequest<HostInformation>(
-          `/system/${vitals ? "vitals" : "overview"}`,
-          "",
-          undefined,
-          controller.signal,
-        );
-        if (controller.signal.aborted) return;
-        setInformation(value);
-        setError("");
-        if (isAdmin)
-          setAdmin(
-            await systemRequest<HostStatus>(
-              "/admin/system/status",
-              csrfToken,
-              undefined,
-              controller.signal,
-            ),
+      const telemetry = async () => {
+        let needsRuntime = true;
+        try {
+          const value = await systemRequest<HostInformation>(
+            `/system/${vitals ? "vitals" : "overview"}`,
+            "",
+            undefined,
+            controller.signal,
           );
-        if (!value.snapshot)
-          setRuntime(await fetchSystemInformation(controller.signal));
-      } catch (cause) {
-        if (!controller.signal.aborted)
-          setError(
-            cause instanceof Error
-              ? cause.message
-              : "System information unavailable.",
+          if (controller.signal.aborted) return;
+          setInformation(value);
+          setError("");
+          needsRuntime = !value.snapshot;
+        } catch (cause) {
+          if (!controller.signal.aborted)
+            setError(
+              cause instanceof Error
+                ? cause.message
+                : "System information unavailable.",
+            );
+        }
+        if (needsRuntime && !controller.signal.aborted) {
+          try {
+            const value = await fetchSystemInformation(controller.signal);
+            if (!controller.signal.aborted) {
+              setRuntime(value);
+              setRuntimeError("");
+            }
+          } catch (cause) {
+            if (!controller.signal.aborted)
+              setRuntimeError(
+                cause instanceof Error
+                  ? cause.message
+                  : "API runtime readings unavailable.",
+              );
+          }
+        }
+      };
+      const permissions = async () => {
+        if (!isAdmin) return;
+        try {
+          const value = await systemRequest<HostStatus>(
+            "/admin/system/status",
+            csrfToken,
+            undefined,
+            controller.signal,
           );
-      } finally {
-        active = false;
-        if (!controller.signal.aborted) setRefreshing(false);
-      }
+          if (!controller.signal.aborted) {
+            setAdmin(value);
+            setPolicyError("");
+          }
+        } catch (cause) {
+          if (!controller.signal.aborted)
+            setPolicyError(
+              cause instanceof Error
+                ? cause.message
+                : "Host permissions unavailable.",
+            );
+        }
+      };
+      await Promise.all([telemetry(), permissions()]);
+      active = false;
+      if (!controller.signal.aborted) setRefreshing(false);
     }
     void refresh();
     const timer = setInterval(() => void refresh(), 5000);
@@ -499,30 +537,47 @@ export default function SystemInformationPage({
             </button>
           ))}
         </div>
-        <div className="host-actions">
-          <span className="host-caption">
+        <div className="host-connection" role="status">
+          <strong>
+            {error
+              ? information
+                ? "Host status unavailable · readings are stale"
+                : "Host status unavailable"
+              : information
+                ? stateLabels[information.state]
+                : "Connecting to System…"}
+          </strong>
+          <span>
             {information?.collected_at
               ? `Collected ${timestamp(information.collected_at)}`
-              : "Waiting for host readings"}
+              : error
+                ? "No host readings available"
+                : "Waiting for host readings"}
           </span>
+        </div>
+        <div className="host-actions">
           <button disabled={refreshing} onClick={() => setRequest(request + 1)}>
             {refreshing ? "Updating…" : "Refresh"}
           </button>
         </div>
-      </div>
-      <div className="host-connection" role="status">
-        <strong>
-          {information
-            ? stateLabels[information.state]
-            : "Connecting to System…"}
-        </strong>
-        <span>Host telemetry</span>
       </div>
       {error && (
         <p className="system-warning" role="alert">
           {error}
           {snapshot &&
             ` Showing values collected ${timestamp(snapshot.collected_at)}.`}
+        </p>
+      )}
+      {isAdmin && policyError && (
+        <p className="system-warning" role="alert">
+          Host permissions: {policyError} Controls are paused until permissions
+          refresh.
+        </p>
+      )}
+      {!snapshot && runtimeError && (
+        <p className="system-warning" role="alert">
+          API runtime: {runtimeError}
+          {runtime && " Showing the last available runtime readings."}
         </p>
       )}
       {snapshot && snapshot.warnings.length > 0 && (
@@ -551,6 +606,7 @@ export default function SystemInformationPage({
         id="system-panel-0"
         role="tabpanel"
         aria-labelledby="system-tab-0"
+        tabIndex={0}
         hidden={vitals}
       >
         {snapshot && <Overview snapshot={snapshot} />}
@@ -560,9 +616,17 @@ export default function SystemInformationPage({
         {isAdmin && (
           <SystemControls
             csrf={csrfToken}
-            policy={admin?.policy ?? null}
-            live={live && !vitals}
+            policy={policyError ? null : (admin?.policy ?? null)}
+            live={live && !policyError && !vitals}
             hostname={snapshot?.identity.hostname ?? "this host"}
+          />
+        )}
+        {isAdmin && (
+          <SystemTerminal
+            csrf={csrfToken}
+            policy={policyError ? null : (admin?.policy ?? null)}
+            live={live && !policyError}
+            hidden={vitals}
           />
         )}
       </div>
@@ -570,6 +634,7 @@ export default function SystemInformationPage({
         id="system-panel-1"
         role="tabpanel"
         aria-labelledby="system-tab-1"
+        tabIndex={0}
         hidden={!vitals}
       >
         {snapshot && (
@@ -584,14 +649,6 @@ export default function SystemInformationPage({
           </p>
         )}
       </div>
-      {isAdmin && (
-        <SystemTerminal
-          csrf={csrfToken}
-          policy={admin?.policy ?? null}
-          live={live}
-          hidden={vitals}
-        />
-      )}
       <footer className="host-caption">
         Host readings are collected by the enrolled account. Permissions and
         hardware determine which measurements and operations are available.

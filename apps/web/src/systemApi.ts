@@ -114,6 +114,16 @@ export type TerminalGrant = {
   reconnect_seconds: number;
 };
 
+export class SystemRequestError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+    this.name = "SystemRequestError";
+  }
+}
+
 export async function systemRequest<T>(
   path: string,
   csrf = "",
@@ -126,9 +136,16 @@ export async function systemRequest<T>(
     body: body === undefined ? undefined : JSON.stringify(body),
     signal,
   });
-  const payload = await response.json();
+  const payload = await response.json().catch(() => null);
   if (!response.ok)
-    throw new Error(payload.detail ?? "System request failed. Try again.");
+    throw new SystemRequestError(
+      payload?.detail ?? "System request failed. Try again.",
+      response.status,
+    );
+  if (payload === null)
+    throw new Error(
+      "System returned an unreadable response. Retry to verify the result.",
+    );
   return payload as T;
 }
 

@@ -1,0 +1,48 @@
+.account-page .account-confirmation {
+  flex-basis: 100%;
+  min-width: 0;
+}
+
+.account-page .account-confirmation form {
+  max-width: 65ch;
+  margin-block-start: 0;
+  padding-block: 16px;
+  border-block-start: 1px solid var(--line);
+}
+
+.account-page .account-confirmation h3,
+.account-page .invite-code h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.account-page .account-confirmation p {
+  margin: 0;
+}
+
+.account-page .account-confirmation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.account-page .account-invite-acknowledgment {
+  display: flex;
+  align-items: start;
+  gap: 10px;
+}
+
+.account-page .account-invite-acknowledgment input {
+  width: auto;
+  flex: none;
+  margin-block-start: 5px;
+}
+
+.account-page .invite-code code {
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.account-page .account-ledger-warning {
+  margin-block-start: 20px;
+}

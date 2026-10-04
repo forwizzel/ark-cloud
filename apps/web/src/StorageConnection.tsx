@@ -22,6 +22,7 @@ export default function StorageConnection({
   const [kind, setKind] = useState<"shared" | "managed">("shared");
   const [label, setLabel] = useState("");
   const [path, setPath] = useState("");
+  const [users, setUsers] = useState(data.users);
   const [grants, setGrants] = useState(
     data.users
       .filter((user) => user.active)
@@ -33,10 +34,26 @@ export default function StorageConnection({
       })),
   );
   const [busy, setBusy] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
+  const [browsed, setBrowsed] = useState(false);
+  const [browseError, setBrowseError] = useState("");
   const [error, setError] = useState("");
   const [folders, setFolders] = useState<string[]>(data.manager.approved_paths);
   const accessGroup = useRef<HTMLFieldSetElement>(null);
   const errorNotice = useRef<HTMLParagraphElement>(null);
+  if (users !== data.users) {
+    setUsers(data.users);
+    setGrants(
+      data.users
+        .filter((user) => user.active)
+        .map((user) => ({
+          user_id: user.id,
+          level:
+            grants.find((grant) => grant.user_id === user.id)?.level ??
+            (user.current ? "write" : "none"),
+        })),
+    );
+  }
   useUnsavedChanges(
     Boolean(
       label ||
@@ -70,8 +87,8 @@ export default function StorageConnection({
     ["queued", "applying", "verifying"].includes(job.state),
   );
   async function browse(value: string) {
-    setBusy(true);
-    setError("");
+    setBrowsing(true);
+    setBrowseError("");
     try {
       const job = await submitStorageOperation(
         { action: "browse", path: value },
@@ -92,20 +109,29 @@ export default function StorageConnection({
       }
       if (current.state !== "completed") throw new Error(current.message);
       setFolders(current.result.folders ?? []);
+      setBrowsed(true);
       setPath(current.result.path ?? value);
     } catch (failure) {
-      setError(
+      setBrowseError(
         failure instanceof Error
           ? failure.message
           : "Server folders are unavailable.",
       );
     } finally {
-      setBusy(false);
+      setBrowsing(false);
     }
   }
   async function connect(event: React.FormEvent) {
     event.preventDefault();
-    if (!grants.some((grant) => grant.level !== "none")) {
+    const eligibleGrants = data.users
+      .filter((user) => user.active)
+      .map((user) => ({
+        user_id: user.id,
+        level:
+          grants.find((grant) => grant.user_id === user.id)?.level ??
+          ((user.current ? "write" : "none") as AccessLevel),
+      }));
+    if (!eligibleGrants.some((grant) => grant.level !== "none")) {
       setError("Choose at least one account with access.");
       accessGroup.current?.querySelector("select")?.focus();
       return;
@@ -119,7 +145,7 @@ export default function StorageConnection({
       managed: kind === "managed",
       shared: kind === "shared",
       create_directory: mode === "new" && kind === "shared",
-      grants,
+      grants: eligibleGrants,
       confirmed: true,
       automatic_access: true,
     };
@@ -166,6 +192,7 @@ export default function StorageConnection({
         <fieldset
           disabled={
             busy ||
+            browsing ||
             working ||
             !data.manager.online ||
             Boolean(data.configuration_error)
@@ -242,7 +269,11 @@ export default function StorageConnection({
                 />
               </label>
               <div className="local-actions">
-                <button type="button" onClick={() => void browse("")}>
+                <button
+                  type="button"
+                  aria-busy={browsing}
+                  onClick={() => void browse("")}
+                >
                   Approved areas
                 </button>
                 <button
@@ -253,6 +284,20 @@ export default function StorageConnection({
                   Browse folder
                 </button>
               </div>
+              {browsing && <p role="status">Loading server folders…</p>}
+              {browseError && (
+                <div className="local-error" role="alert">
+                  <p>{browseError}</p>
+                  <p>Try Approved areas or Browse folder again.</p>
+                </div>
+              )}
+              {!browsing && !browseError && !folders.length && (
+                <p role="status">
+                  {browsed
+                    ? "No subfolders in this directory. You can connect the selected folder."
+                    : "No approved folders listed. Browse approved areas to check available directories."}
+                </p>
+              )}
               <ul className="storage-folder-options">
                 {folders.map((folder) => (
                   <li key={folder}>
@@ -311,6 +356,12 @@ export default function StorageConnection({
                   </select>
                 </label>
               ))}
+            {!data.users.some((user) => user.active) && (
+              <p role="status">
+                No active accounts are available. Enable an account before
+                connecting this location.
+              </p>
+            )}
           </fieldset>
           <p className="storage-help">
             Connecting prepares narrow API access for this directory and

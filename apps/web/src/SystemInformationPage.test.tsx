@@ -320,10 +320,80 @@ test("administrator controls require confirmation and honor missing power capabi
   render(<SystemInformationPage isAdmin csrfToken="csrf" />);
   expect(await screen.findByText("backup.service")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Restart host" })).toBeDisabled();
-  fireEvent.click(screen.getByRole("button", { name: "restart" }));
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Restart backup.service (user service)",
+    }),
+  );
   expect(showModal).toHaveBeenCalled();
   expect(
     screen.getByRole("heading", { name: "Restart backup.service?" }),
   ).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Connect" })).toBeEnabled();
+});
+
+test("policy failure leaves host telemetry connected and readable while controls are paused", async () => {
+  const fetch = mockHost();
+  const implementation = fetch.getMockImplementation()!;
+  fetch.mockImplementation(async (path, options) =>
+    String(path) === "/api/admin/system/status"
+      ? json({ detail: "Policy unavailable" }, 503)
+      : implementation(path, options),
+  );
+  render(<SystemInformationPage isAdmin csrfToken="csrf" />);
+  await screen.findByText("ark-host");
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Host permissions: Policy unavailable",
+  );
+  expect(screen.getByText("Host connected")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Connect" })).toBeDisabled();
+  expect(screen.getByRole("tabpanel")).toHaveAttribute("tabindex", "0");
+});
+
+test("runtime fallback errors do not obscure an unenrolled host or successful policy reads", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (path) => {
+    if (String(path) === "/api/system/overview")
+      return json({
+        state: "not_enrolled",
+        scope: "host",
+        collected_at: null,
+        snapshot: null,
+        history: [],
+      });
+    if (String(path) === "/api/admin/system/status")
+      return json({ state: "not_enrolled", policy });
+    return json({ detail: "Runtime unavailable" }, 503);
+  });
+  render(<SystemInformationPage isAdmin csrfToken="csrf" />);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "API runtime: Runtime unavailable",
+  );
+  expect(screen.getByText("Host agent not enrolled")).toBeInTheDocument();
+  expect(screen.queryByText(/Host permissions:/)).not.toBeInTheDocument();
+});
+
+test("telemetry failure reports stale status without preventing independent policy refresh", async () => {
+  let failed = false;
+  let policyCalls = 0;
+  const fetch = mockHost();
+  const implementation = fetch.getMockImplementation()!;
+  fetch.mockImplementation(async (path, options) => {
+    if (String(path) === "/api/admin/system/status") policyCalls++;
+    if (failed && String(path) === "/api/system/overview")
+      return json({ detail: "Telemetry unavailable" }, 503);
+    return implementation(path, options);
+  });
+  render(<SystemInformationPage isAdmin csrfToken="csrf" />);
+  await screen.findByText("ark-host");
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled(),
+  );
+  failed = true;
+  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  expect(
+    await screen.findByText("Host status unavailable · readings are stale"),
+  ).toBeInTheDocument();
+  expect(screen.getByText("ark-host")).toBeInTheDocument();
+  expect(policyCalls).toBe(2);
+  expect(screen.queryByText("Host connected")).not.toBeInTheDocument();
 });

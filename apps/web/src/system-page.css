@@ -19,6 +19,29 @@
   gap: 12px;
   flex-wrap: wrap;
 }
+.host-workspace-bar {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.host-workspace-bar > .host-connection {
+  flex: 1 1 260px;
+  display: grid;
+  justify-content: start;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+}
+.host-workspace-bar > .host-connection strong {
+  font-size: 0.9375rem;
+}
+.host-workspace-bar > *,
+.host-panel-heading > *,
+.host-service > *,
+.host-process > *,
+.host-temperature > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .host-actions {
   justify-content: flex-end;
 }
@@ -26,12 +49,14 @@
 .host-confirmation button {
   min-height: 44px;
   padding: 9px 15px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 7px;
   background: var(--panel);
   color: var(--ink);
   font: inherit;
   cursor: pointer;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 .host-workspace button:hover,
 .host-confirmation button:hover {
@@ -106,7 +131,7 @@
 .host-panel-heading p,
 .host-service p,
 .host-process p {
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   color: var(--muted);
   line-height: 1.55;
 }
@@ -155,6 +180,8 @@
 }
 .host-meter {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 10px;
   margin: 20px 0;
 }
@@ -163,11 +190,17 @@
   justify-content: space-between;
   gap: 12px;
 }
+.host-meter > div > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .host-meter strong {
+  flex-shrink: 0;
   font-family: var(--data-font);
   font-weight: 500;
 }
 .host-meter progress {
+  min-width: 0;
   width: 100%;
   height: 7px;
   border: 0;
@@ -241,7 +274,7 @@
   min-height: 44px;
   background: var(--panel-raised);
   color: var(--ink);
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 7px;
   padding: 9px;
   font: inherit;
@@ -255,7 +288,7 @@
   justify-items: end;
   gap: 5px;
   flex-shrink: 0;
-  font-size: 0.8rem;
+  font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
 }
 .host-process-measurements button {
@@ -283,6 +316,17 @@
   border-radius: 7px;
   margin: 0;
 }
+.host-unknown-review {
+  display: flex;
+  align-items: start;
+  gap: 12px;
+  min-height: 44px;
+  padding-block: 12px;
+}
+.host-unknown-review input {
+  flex: none;
+  margin-block-start: 4px;
+}
 .host-confirmation {
   width: min(520px, calc(100% - 32px));
   padding: 28px;
@@ -304,8 +348,24 @@
   margin-bottom: 24px;
 }
 .host-terminal {
+  position: static;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  box-sizing: border-box;
+  color: var(--ink);
   padding: 24px;
   min-width: 0;
+}
+.host-terminal::backdrop {
+  background: #0009;
+}
+.host-workspace [role="tabpanel"] > .host-terminal {
+  margin-top: 24px;
+}
+.host-workspace [role="tabpanel"] > .host-terminal--expanded {
+  margin-top: 0;
 }
 .host-terminal-surface {
   height: 360px;
@@ -318,8 +378,9 @@
 }
 .host-terminal--expanded {
   position: fixed;
-  inset: 16px;
-  z-index: 80;
+  inset: calc(var(--terminal-viewport-top, 0px) + 16px) 16px auto;
+  width: calc(100% - 32px);
+  height: calc(var(--terminal-viewport-height, 100dvh) - 32px);
   display: flex;
   flex-direction: column;
   background: var(--panel);
@@ -328,7 +389,8 @@
 }
 .host-terminal--expanded .host-terminal-surface {
   flex: 1;
-  min-height: 200px;
+  min-height: 100px;
+  flex-shrink: 0;
 }
 .host-terminal .xterm {
   height: 100%;
@@ -363,7 +425,7 @@
 }
 .host-temperature small {
   display: block;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   color: var(--muted);
   margin-top: 4px;
   white-space: normal;
@@ -429,6 +491,18 @@
   .host-pair {
     grid-template-columns: 1fr;
   }
+  .host-process {
+    flex-wrap: wrap;
+  }
+  .host-process-measurements {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+  }
+  .host-terminal > .host-panel-heading .host-actions {
+    justify-content: flex-start;
+  }
 }
 @media (max-width: 680px) {
   .host-workspace {
@@ -448,7 +522,10 @@
     align-items: flex-start;
   }
   .host-terminal-surface {
-    height: 300px;
+    height: min(
+      300px,
+      max(160px, calc(var(--terminal-viewport-height, 100dvh) - 280px))
+    );
     padding: 8px;
   }
   .host-details > div {
@@ -456,6 +533,19 @@
     gap: 6px;
   }
   .host-terminal--expanded {
-    inset: 8px;
+    inset: calc(var(--terminal-viewport-top, 0px) + 8px) 8px auto;
+    width: calc(100% - 16px);
+    height: calc(var(--terminal-viewport-height, 100dvh) - 16px);
+    padding: 12px;
+  }
+  .host-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .host-filters input,
+  .host-filters select {
+    font-size: 1rem;
+  }
+  .host-actions {
+    justify-content: flex-start;
   }
 }

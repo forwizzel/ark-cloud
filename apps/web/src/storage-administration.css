@@ -13,8 +13,11 @@
   background: var(--rail);
   border: 1px solid var(--line);
   border-radius: 10px;
+  overflow-x: auto;
 }
 .administration-tabs button {
+  flex: 0 0 auto;
+  white-space: nowrap;
   min-height: 44px;
   padding: 10px 24px;
   border: 1px solid transparent;
@@ -76,6 +79,7 @@
 .storage-section {
   padding: 24px;
   min-width: 0;
+  container: storage / inline-size;
 }
 .storage-admin form {
   display: grid;
@@ -91,10 +95,11 @@
 }
 .storage-form-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: 16px;
 }
 .storage-admin label {
+  min-width: 0;
   display: grid;
   gap: 8px;
   font-weight: 500;
@@ -116,17 +121,17 @@
 .storage-admin input,
 .storage-admin select {
   width: 100%;
-  min-height: 42px;
+  min-height: 44px;
   padding: 10px 12px;
   color: var(--ink);
   background: var(--canvas);
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 7px;
   font: inherit;
 }
 .storage-admin button {
-  min-height: 40px;
-  border: 1px solid var(--line);
+  min-height: 44px;
+  border: 1px solid var(--control-line);
   border-radius: 7px;
   padding: 8px 12px;
   background: var(--panel);
@@ -151,6 +156,9 @@
   color: var(--canvas);
 }
 .storage-admin a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   color: var(--signal);
 }
 .storage-admin input::placeholder {
@@ -163,6 +171,7 @@
 .storage-admin summary {
   cursor: pointer;
   padding: 8px 0;
+  min-height: 44px;
 }
 .storage-admin details {
   min-width: 0;
@@ -205,7 +214,7 @@
   min-width: 220px;
   min-height: 44px;
   padding: 10px 24px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 7px;
   background: var(--panel);
   font-weight: 500;
@@ -313,6 +322,7 @@
 }
 .storage-access-list form {
   align-self: start;
+  min-width: 0;
 }
 .administration-subnav {
   display: flex;
@@ -426,9 +436,9 @@
   border-top: 0;
 }
 .administration-workspace .account-user-actions button {
-  min-height: 40px;
+  min-height: 44px;
   padding: 8px 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 7px;
   background: var(--panel);
   color: var(--ink);
@@ -451,6 +461,9 @@
   margin-top: 20px;
 }
 .storage-admin .storage-primary-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: 10px 16px;
   background: var(--signal);
   color: var(--canvas);
@@ -491,6 +504,21 @@
   padding-top: 8px;
   font-weight: 600;
 }
+@container storage (max-width: 640px) {
+  .storage-access-list > li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .storage-admin .storage-policy-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@container storage (max-width: 480px) {
+  .storage-admin input,
+  .storage-admin select {
+    font-size: 16px;
+  }
+}
 @media (max-width: 980px) {
   .storage-locations > li {
     flex-direction: column;
@@ -505,8 +533,11 @@
     width: 100%;
   }
   .administration-tabs button {
-    flex: 1;
     padding-inline: 12px;
+  }
+  .storage-admin input,
+  .storage-admin select {
+    font-size: 16px;
   }
   .administration-overview-heading {
     padding: 20px;

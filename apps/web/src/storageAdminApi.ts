@@ -162,7 +162,7 @@ export async function storageRequest<T>(
   } catch (error) {
     if (error instanceof TypeError)
       throw new StorageRequestError(
-        "Storage is temporarily unavailable. Retrying automatically.",
+        "Storage is temporarily unavailable.",
         null,
       );
     throw error;
@@ -174,7 +174,7 @@ export async function storageRequest<T>(
     throw new StorageRequestError(
       typeof error?.detail === "string"
         ? error.detail
-        : "Storage request failed. Refresh and retry.",
+        : "Storage request failed.",
       response.status,
     );
   }

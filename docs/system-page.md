@@ -29,7 +29,7 @@ The visitor mode is **Operate**: help an operator identify the machine, understa
 
 - **Thesis:** identify the real machine first, diagnose resources in Vitals, and operate from
   clearly bounded host controls and a real shell.
-- **Own-world:** inherit ArkCloud's coffee/parchment semantic tokens, IBM Plex typography,
+- **Own-world:** inherit ArkCloud's green/slate surfaces and spruce semantic signals, IBM Plex typography,
   restrained panel boundaries, and Administration-style segmented navigation.
 - **Story:** identify the host, read its state, inspect details, then deliberately connect or act.
 - **First viewport:** segmented navigation and timestamp, a connection row, Identity/Compute
@@ -320,7 +320,7 @@ Bound audit/job retention and redact credentials, terminal content, environment 
 
 Inherit `DESIGN.md` and semantic tokens in `apps/web/src/redesign.css`:
 
-- Coffee/parchment palette, IBM Plex Sans, and IBM Plex Mono for terminal/code/measurements.
+- Green/slate palette with spruce signals, IBM Plex Sans, and IBM Plex Mono for terminal/code/measurements.
 - Existing panel corners, restrained boundaries, and outlined secondary actions.
 - Operational state expressed with text plus semantic tone, never color alone.
 - Compact, content-sized panels with clear alignment and label/value hierarchy.
