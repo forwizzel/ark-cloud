@@ -45,6 +45,27 @@ const stateLabels: Record<IntegrationState, string> = {
   not_configured: "Not configured",
 };
 
+function positionOptions(menu: HTMLDetailsElement | null) {
+  if (!menu?.open) return;
+  const rect = menu.getBoundingClientRect();
+  const viewport = window.visualViewport;
+  const top = viewport?.offsetTop ?? 0;
+  const bottom = top + (viewport?.height ?? window.innerHeight);
+  const above = Math.max(0, rect.top - top - 12);
+  const below = Math.max(0, bottom - rect.bottom - 12);
+  const preferBelow =
+    window.matchMedia?.("(max-width: 680px)").matches ?? false;
+  const preferredSpace = preferBelow ? below : above;
+  const otherSpace = preferBelow ? above : below;
+  const placeBelow =
+    preferredSpace >= Math.min(200, otherSpace) ? preferBelow : !preferBelow;
+  menu.dataset.placement = placeBelow ? "below" : "above";
+  menu.style.setProperty(
+    "--options-max-height",
+    `${Math.max(44, Math.min(650, (placeBelow ? below : above) - 8))}px`,
+  );
+}
+
 function App() {
   useNavigationGuard();
   const primaryNavigation = useRef<HTMLElement>(null);
@@ -96,9 +117,14 @@ function App() {
     };
     document.addEventListener("pointerdown", dismissOutside);
     document.addEventListener("keydown", dismissOnEscape);
+    const reposition = () => positionOptions(utilities.current);
+    window.addEventListener("resize", reposition);
+    window.visualViewport?.addEventListener("resize", reposition);
     return () => {
       document.removeEventListener("pointerdown", dismissOutside);
       document.removeEventListener("keydown", dismissOnEscape);
+      window.removeEventListener("resize", reposition);
+      window.visualViewport?.removeEventListener("resize", reposition);
     };
   }, []);
 
@@ -289,7 +315,6 @@ function App() {
             className={`nav-item ${activePage === "overview" ? "nav-item--active" : ""}`}
             href="#overview"
             aria-current={activePage === "overview" ? "page" : undefined}
-            onClick={() => setActivePage("overview")}
           >
             <span className="nav-symbol" aria-hidden="true" />
             Dashboard
@@ -298,7 +323,6 @@ function App() {
             className={`nav-item ${activePage === "files" ? "nav-item--active" : ""}`}
             href="#local-files"
             aria-current={activePage === "files" ? "page" : undefined}
-            onClick={() => setActivePage("files")}
           >
             <span className="nav-symbol" aria-hidden="true" />
             Local Files
@@ -308,7 +332,6 @@ function App() {
             href="#system"
             aria-label="System"
             aria-current={activePage === "system" ? "page" : undefined}
-            onClick={() => setActivePage("system")}
           >
             <span className="nav-symbol" aria-hidden="true" />
             System
@@ -317,7 +340,6 @@ function App() {
             className={`nav-item ${activePage === "account" ? "nav-item--active" : ""}`}
             href="#account"
             aria-current={activePage === "account" ? "page" : undefined}
-            onClick={() => setActivePage("account")}
           >
             Account
           </a>
@@ -336,7 +358,11 @@ function App() {
           )}
         </nav>
 
-        <details className="rail-utilities" ref={utilities}>
+        <details
+          className="rail-utilities"
+          ref={utilities}
+          onToggle={(event) => positionOptions(event.currentTarget)}
+        >
           <summary aria-label="Appearance and session options">
             <svg
               className="options-icon"
@@ -533,14 +559,12 @@ function DashboardView({
   const systemHealth = dashboard.integrations.find(
     (integration) => integration.id === "system",
   );
-  const needsAttention =
-    dashboard.integrations.filter(
-      (integration) =>
-        integration.state === "degraded" || integration.state === "unavailable",
-    ).length + (dashboard.platform.database === "connected" ? 0 : 1);
-  const unconfigured = dashboard.integrations.filter(
-    (integration) => integration.state === "not_configured",
-  ).length;
+  const serviceIssues = dashboard.integrations.filter(
+    (integration) =>
+      integration.state === "degraded" || integration.state === "unavailable",
+  );
+  const databaseUnavailable = dashboard.platform.database !== "connected";
+  const needsAttention = serviceIssues.length + (databaseUnavailable ? 1 : 0);
   return (
     <div className="dashboard-grid">
       <section className="system-banner panel" aria-labelledby="system-heading">
@@ -578,28 +602,35 @@ function DashboardView({
             ? "No active service issues"
             : `${needsAttention} ${needsAttention === 1 ? "check needs" : "checks need"} attention`}
         </p>
-        {unconfigured > 0 && (
-          <p className="overview-optional">
-            {unconfigured} optional{" "}
-            {unconfigured === 1 ? "integration" : "integrations"} not configured
-          </p>
+        {needsAttention > 0 && (
+          <ul className="overview-issues" aria-label="Service issues">
+            {databaseUnavailable && (
+              <li>
+                <i
+                  className="status-dot status-dot--unavailable"
+                  aria-hidden="true"
+                />
+                <div>
+                  <strong>Database unavailable</strong>
+                </div>
+              </li>
+            )}
+            {serviceIssues.map((integration) => (
+              <li key={integration.id}>
+                <i
+                  className={`status-dot status-dot--${integration.state}`}
+                  aria-hidden="true"
+                />
+                <div>
+                  <strong>
+                    {integration.name} · {stateLabels[integration.state]}
+                  </strong>
+                  {integration.message && <p>{integration.message}</p>}
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
-        <div className="overview-facts">
-          <span>
-            <i className="status-dot status-dot--healthy" aria-hidden="true" />
-            API online
-          </span>
-          <span>
-            <i
-              className={`status-dot status-dot--${dashboard.platform.database === "connected" ? "healthy" : "unavailable"}`}
-              aria-hidden="true"
-            />
-            Database{" "}
-            {dashboard.platform.database === "connected"
-              ? "connected"
-              : "unavailable"}
-          </span>
-        </div>
       </section>
 
       <section
@@ -739,8 +770,9 @@ function LoginScreen({
         {notice && <p role="status">{notice}</p>}
         {mode === "setup" && (
           <p>
-            Run <code>./scripts/ark bootstrap</code> on the host machine, then
-            enter the one-time code to create the first administrator.
+            Run <code translate="no">./scripts/ark bootstrap</code> on the host
+            machine, then enter the one-time code to create the first
+            administrator.
           </p>
         )}
         {mode === "invite" && (

@@ -25,8 +25,16 @@ export default function SystemControls({
 }) {
   const [services, setServices] = useState<HostService[] | null>(null);
   const [processes, setProcesses] = useState<HostProcess[] | null>(null);
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState("memory");
+  const [query, setQuery] = useState(
+    () =>
+      new URLSearchParams(window.location.search).get("process-query") ?? "",
+  );
+  const [sort, setSort] = useState(() => {
+    const saved = new URLSearchParams(window.location.search).get(
+      "process-sort",
+    );
+    return saved === "cpu" || saved === "pid" ? saved : "memory";
+  });
   const [shown, setShown] = useState(20);
   const [serviceError, setServiceError] = useState("");
   const [processError, setProcessError] = useState("");
@@ -52,6 +60,19 @@ export default function SystemControls({
     (job &&
       (["accepted", "dispatched"].includes(job.state) ||
         (job.state === "unknown" && reviewedUnknown !== job.id)));
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (query) url.searchParams.set("process-query", query);
+    else url.searchParams.delete("process-query");
+    if (sort !== "memory") url.searchParams.set("process-sort", sort);
+    else url.searchParams.delete("process-sort");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }, [query, sort]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -147,8 +168,27 @@ export default function SystemControls({
   }, [csrf, job]);
 
   useEffect(() => {
-    if (confirmation) dialog.current?.showModal();
-    else dialog.current?.close();
+    if (!confirmation) {
+      dialog.current?.close();
+      return;
+    }
+    dialog.current?.showModal();
+    const keepFocusVisible = () => {
+      const target = document.activeElement;
+      if (target instanceof HTMLElement && dialog.current?.contains(target)) {
+        target.scrollIntoView?.({
+          block: "nearest",
+          inline: "nearest",
+          behavior: "instant",
+        });
+      }
+    };
+    window.addEventListener("resize", keepFocusVisible);
+    window.visualViewport?.addEventListener("resize", keepFocusVisible);
+    return () => {
+      window.removeEventListener("resize", keepFocusVisible);
+      window.visualViewport?.removeEventListener("resize", keepFocusVisible);
+    };
   }, [confirmation]);
 
   async function submit(action: HostAction) {
@@ -242,6 +282,7 @@ export default function SystemControls({
         <label className="host-unknown-review">
           <input
             type="checkbox"
+            name="review-unknown-operation"
             checked={reviewedUnknown === job.id}
             onChange={(event) =>
               setReviewedUnknown(event.target.checked ? job.id : "")
@@ -299,7 +340,7 @@ export default function SystemControls({
                 key={`${service.scope}:${service.unit}`}
               >
                 <div>
-                  <strong>{service.unit}</strong>
+                  <strong translate="no">{service.unit}</strong>
                   <p>
                     {service.scope} · {service.state}
                   </p>
@@ -374,17 +415,22 @@ export default function SystemControls({
                   Search processes
                   <input
                     type="search"
+                    name="process-search"
+                    autoComplete="off"
+                    spellCheck={false}
                     value={query}
                     onChange={(event) => {
                       setQuery(event.target.value);
                       setShown(20);
                     }}
-                    placeholder="Name, account or PID"
+                    placeholder="Name, account or PID…"
                   />
                 </label>
                 <label>
                   Sort by
                   <select
+                    name="process-sort"
+                    autoComplete="off"
                     value={sort}
                     onChange={(event) => setSort(event.target.value)}
                   >
@@ -401,7 +447,7 @@ export default function SystemControls({
                     key={`${process.pid}:${process.started_at}`}
                   >
                     <div>
-                      <strong>{process.name}</strong>
+                      <strong translate="no">{process.name}</strong>
                       <p>
                         PID {process.pid} · {process.owner} · {process.state}
                       </p>

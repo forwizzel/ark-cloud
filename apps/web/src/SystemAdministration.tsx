@@ -311,12 +311,17 @@ export default function SystemAdministration({
           {configured && (
             <button
               disabled={busy || Boolean(pollError)}
+              aria-busy={busy}
               onClick={() => void act("disconnect")}
             >
               Disconnect System
             </button>
           )}
-          <button disabled={busy || !ready} onClick={() => void act("connect")}>
+          <button
+            disabled={busy || !ready}
+            aria-busy={busy}
+            onClick={() => void act("connect")}
+          >
             {applyLabel}
           </button>
         </div>
@@ -339,6 +344,7 @@ export default function SystemAdministration({
             <label className="system-admin-toggle">
               <input
                 type="checkbox"
+                name="terminal-access"
                 checked={draft.terminal}
                 onChange={(event) => change({ terminal: event.target.checked })}
               />
@@ -352,6 +358,8 @@ export default function SystemAdministration({
             <label className="system-admin-shell">
               Installed shell
               <select
+                name="installed-shell"
+                autoComplete="off"
                 value={draft.shell}
                 onChange={(event) => change({ shell: event.target.value })}
               >
@@ -378,6 +386,7 @@ export default function SystemAdministration({
             <label className="system-admin-toggle">
               <input
                 type="checkbox"
+                name="process-access"
                 checked={draft.processes}
                 onChange={(event) =>
                   change({ processes: event.target.checked })
@@ -394,6 +403,7 @@ export default function SystemAdministration({
             <label className="system-admin-toggle">
               <input
                 type="checkbox"
+                name="power-access"
                 checked={draft.power}
                 disabled={!inventory?.power && !draft.power}
                 onChange={(event) => change({ power: event.target.checked })}
@@ -426,9 +436,12 @@ export default function SystemAdministration({
             Find a service
             <input
               type="search"
+              name="service-search"
+              autoComplete="off"
+              spellCheck={false}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Service name or scope"
+              placeholder="Service name or scope…"
             />
           </label>
         </div>
@@ -459,6 +472,7 @@ export default function SystemAdministration({
                   <label className="system-admin-toggle">
                     <input
                       type="checkbox"
+                      name={`service-${service.scope}-${service.unit}`}
                       checked={Boolean(selected)}
                       disabled={
                         (!permitted && !selected) ||
@@ -469,7 +483,7 @@ export default function SystemAdministration({
                       }
                     />
                     <span>
-                      <strong>{service.unit}</strong>
+                      <strong translate="no">{service.unit}</strong>
                       <small>
                         {service.scope} service
                         {!permitted ? " · no longer available" : ""}
@@ -482,6 +496,7 @@ export default function SystemAdministration({
                         <label key={action}>
                           <input
                             type="checkbox"
+                            name={`service-${service.scope}-${service.unit}-${action}`}
                             aria-label={`${action[0].toUpperCase() + action.slice(1)} ${service.unit} (${service.scope} service)`}
                             checked={selected.actions.includes(action)}
                             disabled={
@@ -533,6 +548,7 @@ export default function SystemAdministration({
         </p>
         <button
           disabled={busy || !ready || (!dirty && connected)}
+          aria-busy={busy}
           onClick={() => void act("connect")}
         >
           {applyLabel}

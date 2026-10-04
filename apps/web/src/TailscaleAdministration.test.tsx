@@ -48,6 +48,25 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+test("an empty connection form remains actionable and whitespace errors are announced inline", async () => {
+  const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(initial));
+  render(<TailscaleAdministration csrfToken="csrf" />);
+  await screen.findByRole("heading", { name: "Private access" });
+  expect(
+    screen.getByRole("button", { name: "Connect Tailscale" }),
+  ).toBeEnabled();
+  fireEvent.change(screen.getByLabelText("Tailscale API key"), {
+    target: { value: "   " },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Connect Tailscale" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Enter a Tailscale API key, then try again.",
+  );
+  expect(
+    fetch.mock.calls.some(([, options]) => options?.method === "POST"),
+  ).toBe(false);
+});
+
 test("connect sends the transient password with CSRF and clears it after success", async () => {
   const fetch = vi
     .spyOn(globalThis, "fetch")

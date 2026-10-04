@@ -42,6 +42,35 @@ const job = {
     operation: "restart",
   },
 };
+test("process filters restore from shareable URLs and preserve unrelated parameters", async () => {
+  window.history.replaceState(
+    {},
+    "",
+    "/?files-root=personal&process-query=worker&process-sort=cpu#system",
+  );
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (path) =>
+    inventory(path),
+  );
+  renderControls();
+  await screen.findByRole("button", { name: "Terminate worker (PID 12)" });
+  expect(
+    screen.getByRole("searchbox", { name: "Search processes" }),
+  ).toHaveValue("worker");
+  expect(screen.getByRole("combobox", { name: "Sort by" })).toHaveValue("cpu");
+  fireEvent.change(
+    screen.getByRole("searchbox", { name: "Search processes" }),
+    { target: { value: "owner" } },
+  );
+  fireEvent.change(screen.getByRole("combobox", { name: "Sort by" }), {
+    target: { value: "pid" },
+  });
+  const params = new URLSearchParams(window.location.search);
+  expect(params.get("process-query")).toBe("owner");
+  expect(params.get("process-sort")).toBe("pid");
+  expect(params.get("files-root")).toBe("personal");
+  expect(window.location.hash).toBe("#system");
+});
+
 function json(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), { status });
 }
@@ -93,6 +122,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  window.history.replaceState({}, "", "/");
   vi.useRealTimers();
   vi.restoreAllMocks();
 });

@@ -15,7 +15,7 @@
   border-radius: 10px;
   overflow-x: auto;
 }
-.administration-tabs button {
+.administration-tabs [role="tab"] {
   flex: 0 0 auto;
   white-space: nowrap;
   min-height: 44px;
@@ -27,12 +27,13 @@
   font: inherit;
   font-weight: 500;
   cursor: pointer;
+  text-decoration: none;
 }
-.administration-tabs button:hover {
+.administration-tabs [role="tab"]:hover {
   background: var(--panel-raised);
   color: var(--ink);
 }
-.administration-tabs button[aria-selected="true"] {
+.administration-tabs [role="tab"][aria-selected="true"] {
   background: var(--accent-tint);
   border-color: var(--signal);
   color: var(--signal);
@@ -532,7 +533,7 @@
   .administration-tabs {
     width: 100%;
   }
-  .administration-tabs button {
+  .administration-tabs [role="tab"] {
     padding-inline: 12px;
   }
   .storage-admin input,

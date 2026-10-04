@@ -52,7 +52,7 @@ function Overview({ snapshot }: { snapshot: HostSnapshot }) {
     <div className="host-pair host-overview">
       <Panel title="Identity">
         <div className="host-identity">
-          <strong>{identity.hostname}</strong>
+          <strong translate="no">{identity.hostname}</strong>
           <p>{identity.os}</p>
         </div>
         <dl className="host-details">
@@ -407,7 +407,7 @@ export default function SystemInformationPage({
   const [runtimeError, setRuntimeError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [request, setRequest] = useState(0);
-  const tabs = useRef<(HTMLButtonElement | null)[]>([]);
+  const tabs = useRef<(HTMLAnchorElement | null)[]>([]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -504,19 +504,17 @@ export default function SystemInformationPage({
       <div className="host-workspace-bar">
         <div className="host-tabs" role="tablist" aria-label="System sections">
           {["Overview", "Vitals"].map((label, index) => (
-            <button
+            <a
               key={label}
               ref={(element) => {
                 tabs.current[index] = element;
               }}
               id={`system-tab-${index}`}
               role="tab"
+              href={index ? "#system/vitals" : "#system"}
               aria-selected={vitals === (index === 1)}
               aria-controls={`system-panel-${index}`}
               tabIndex={vitals === (index === 1) ? 0 : -1}
-              onClick={() => {
-                window.location.hash = index ? "system/vitals" : "system";
-              }}
               onKeyDown={(event) => {
                 if (
                   ["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)
@@ -534,11 +532,11 @@ export default function SystemInformationPage({
               }}
             >
               {label}
-            </button>
+            </a>
           ))}
         </div>
-        <div className="host-connection" role="status">
-          <strong>
+        <div className="host-connection">
+          <strong role="status">
             {error
               ? information
                 ? "Host status unavailable · readings are stale"
@@ -556,7 +554,11 @@ export default function SystemInformationPage({
           </span>
         </div>
         <div className="host-actions">
-          <button disabled={refreshing} onClick={() => setRequest(request + 1)}>
+          <button
+            disabled={refreshing}
+            aria-busy={refreshing}
+            onClick={() => setRequest(request + 1)}
+          >
             {refreshing ? "Updating…" : "Refresh"}
           </button>
         </div>

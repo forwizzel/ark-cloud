@@ -153,7 +153,7 @@ export function bytes(value: number | null | undefined): string {
   if (value == null) return "—";
   const exponent =
     value > 0 ? Math.min(4, Math.floor(Math.log(value) / Math.log(1024))) : 0;
-  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value / 1024 ** exponent)} ${["B", "KiB", "MiB", "GiB", "TiB"][exponent]}`;
+  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value / 1024 ** exponent)}\u00a0${["B", "KiB", "MiB", "GiB", "TiB"][exponent]}`;
 }
 
 export function number(value: number | null | undefined, suffix = ""): string {

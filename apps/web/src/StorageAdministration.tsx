@@ -608,6 +608,11 @@ function StorageSettings({
   const [limit, setLimit] = useState(String(data.upload_max_bytes / 1024 ** 2));
   const [baseline, setBaseline] = useState(limit);
   const [busy, setBusy] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
+  const settingsErrorNotice = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (settingsError && !busy) settingsErrorNotice.current?.focus();
+  }, [settingsError, busy]);
   const effectiveLimit = String(data.upload_max_bytes / 1024 ** 2);
   if (baseline !== effectiveLimit) {
     setBaseline(effectiveLimit);
@@ -616,6 +621,7 @@ function StorageSettings({
   useUnsavedChanges(limit !== baseline);
   async function save(value: number | null) {
     setBusy(true);
+    setSettingsError("");
     try {
       if (
         value !== null &&
@@ -635,7 +641,7 @@ function StorageSettings({
       setBaseline(authoritative);
       onNotice("Upload policy saved. No restart needed.");
     } catch (problem) {
-      onNotice(failure(problem));
+      setSettingsError(failure(problem));
     } finally {
       setBusy(false);
     }
@@ -662,11 +668,30 @@ function StorageSettings({
             step="any"
             value={limit}
             disabled={busy}
-            onChange={(event) => setLimit(event.target.value)}
+            aria-describedby={
+              settingsError ? "storage-settings-error" : undefined
+            }
+            onChange={(event) => {
+              setLimit(event.target.value);
+              setSettingsError("");
+            }}
           />
         </label>
+        {settingsError && (
+          <p
+            id="storage-settings-error"
+            className="local-error"
+            role="alert"
+            tabIndex={-1}
+            ref={settingsErrorNotice}
+          >
+            {settingsError}
+          </p>
+        )}
         <div className="local-actions">
-          <button disabled={busy}>Save limit</button>
+          <button disabled={busy} aria-busy={busy}>
+            Save limit
+          </button>
           <button type="button" disabled={busy} onClick={() => void save(null)}>
             Use deployment default
           </button>

@@ -725,7 +725,11 @@ function FileBrowser({
         >
           <FileIcon kind="up" />
         </button>
-        <nav className="local-breadcrumbs" aria-label="File breadcrumbs">
+        <nav
+          className="local-breadcrumbs"
+          aria-label="File breadcrumbs"
+          translate="no"
+        >
           <ol>
             <li>
               {path ? (
@@ -763,7 +767,7 @@ function FileBrowser({
       </div>
       <header className="local-browser-header">
         <div className="local-folder-heading">
-          <h2 ref={heading} tabIndex={-1}>
+          <h2 ref={heading} tabIndex={-1} translate="no">
             {parts.at(-1) ?? root.label}
           </h2>
           <p>
@@ -907,7 +911,9 @@ function FileBrowser({
           </h3>
           {action.kind !== "folders" && (
             <>
-              <p className="local-filename">{action.item.path}</p>
+              <p className="local-filename" translate="no">
+                {action.item.path}
+              </p>
               <p className="local-feedback">
                 {action.item.kind === "file"
                   ? `${size(action.item.size_bytes)} · `
@@ -937,6 +943,7 @@ function FileBrowser({
                 <label className="local-delete-review">
                   <input
                     type="checkbox"
+                    name="review-refreshed-item"
                     checked={!deleteReview}
                     onChange={(event) => setDeleteReview(!event.target.checked)}
                   />
@@ -1056,6 +1063,7 @@ function FileBrowser({
                             <button
                               type="button"
                               className="local-name"
+                              translate="no"
                               disabled={busy}
                               onClick={() => navigate(item.path)}
                             >
@@ -1064,6 +1072,7 @@ function FileBrowser({
                           ) : (
                             <a
                               className="local-name"
+                              translate="no"
                               href={storageUrl(root.id, "download", {
                                 path: item.path,
                                 revision: item.revision,

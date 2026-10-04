@@ -297,6 +297,33 @@ test("settings is a separate view and saves without restarting", async () => {
   ).not.toBeInTheDocument();
 });
 
+test("settings failures are inline alerts with focus and retained input", async () => {
+  vi.mocked(api.storageRequest).mockRejectedValueOnce(
+    new Error("Upload policy could not be saved. Retry the request."),
+  );
+  render(
+    <StorageAdministration
+      csrfToken="csrf"
+      route="#administration/storage/settings"
+    />,
+  );
+  await screen.findByRole("heading", { name: "Storage settings" });
+  fireEvent.change(screen.getByLabelText("File size (MiB)"), {
+    target: { value: "20" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save limit" }));
+  const error = await screen.findByRole("alert");
+  expect(error).toHaveTextContent(
+    "Upload policy could not be saved. Retry the request.",
+  );
+  await waitFor(() => expect(error).toHaveFocus());
+  expect(screen.getByLabelText("File size (MiB)")).toHaveValue(20);
+  expect(screen.getByLabelText("File size (MiB)")).toHaveAttribute(
+    "aria-describedby",
+    "storage-settings-error",
+  );
+});
+
 test("diagnostics stays reachable for invalid configuration and retains dismissible history", async () => {
   vi.mocked(api.fetchStorageAdministration).mockResolvedValue({
     ...inventory,

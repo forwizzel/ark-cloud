@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, expect, test } from "vitest";
 import AdministrationTabs from "./AdministrationTabs";
 
@@ -31,7 +37,7 @@ test("deep links select their parent tab, including the legacy Users route", () 
   );
 });
 
-test("tabs support arrow wrapping, Home, End, and click navigation", () => {
+test("tabs support arrow wrapping, Home, End, and click navigation", async () => {
   render(<AdministrationTabs route="#administration" />);
   const overview = screen.getByRole("tab", { name: "Overview" });
   const users = screen.getByRole("tab", { name: "Users" });
@@ -45,5 +51,14 @@ test("tabs support arrow wrapping, Home, End, and click navigation", () => {
   fireEvent.keyDown(users, { key: "Home" });
   expect(overview).toHaveFocus();
   fireEvent.click(screen.getByRole("tab", { name: "Storage" }));
-  expect(window.location.hash).toBe("#administration/storage");
+  await waitFor(() =>
+    expect(window.location.hash).toBe("#administration/storage"),
+  );
+});
+
+test("route tabs retain native links for opening another tab", () => {
+  render(<AdministrationTabs route="#administration" />);
+  const storage = screen.getByRole("tab", { name: "Storage" });
+  expect(storage.tagName).toBe("A");
+  expect(storage).toHaveAttribute("href", "#administration/storage");
 });

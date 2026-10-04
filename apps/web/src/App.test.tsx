@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -316,6 +317,68 @@ test("session lookup failure offers recovery instead of asking for credentials",
   fireEvent.click(screen.getByRole("button", { name: "Retry connection" }));
   await screen.findByRole("heading", { name: "Sign in" });
 });
+
+test.each([false, true])(
+  "operational state shows only service problems (issues: %s)",
+  async (hasIssues) => {
+    const data: Dashboard = hasIssues
+      ? {
+          ...dashboard,
+          platform: {
+            ...dashboard.platform,
+            status: "unhealthy",
+            database: "disconnected",
+          },
+          integrations: [
+            ...dashboard.integrations,
+            {
+              id: "storage",
+              name: "Storage connection",
+              state: "degraded",
+              message: "One storage location needs attention.",
+              checked_at: dashboard.generated_at,
+            },
+          ],
+        }
+      : dashboard;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input) === "/api/auth/session")
+        return jsonResponse({
+          authenticated: true,
+          username: "ark",
+          csrf_token: "csrf",
+        });
+      if (String(input) === "/api/dashboard") return jsonResponse(data);
+      return new Response(null, { status: 503 });
+    });
+    render(<App />);
+    const panel = within(
+      await screen.findByRole("region", { name: "Operational state" }),
+    );
+    expect(panel.queryByText("API online")).not.toBeInTheDocument();
+    expect(panel.queryByText("Database connected")).not.toBeInTheDocument();
+    expect(
+      panel.queryByText(/optional.*not configured/),
+    ).not.toBeInTheDocument();
+    if (hasIssues) {
+      expect(panel.getByText("2 checks need attention")).toBeInTheDocument();
+      const issues = within(
+        panel.getByRole("list", { name: "Service issues" }),
+      );
+      expect(issues.getAllByRole("listitem")).toHaveLength(2);
+      expect(issues.getByText("Database unavailable")).toBeInTheDocument();
+      expect(
+        issues.getByText("Storage connection · Degraded"),
+      ).toBeInTheDocument();
+      expect(
+        issues.getByText("One storage location needs attention."),
+      ).toBeInTheDocument();
+    } else {
+      expect(panel.getByText("No active service issues")).toBeInTheDocument();
+      expect(panel.queryByRole("list")).not.toBeInTheDocument();
+    }
+  },
+);
 
 test("a failed logout leaves the session active and offers another attempt", async () => {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {

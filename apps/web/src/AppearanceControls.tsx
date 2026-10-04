@@ -179,7 +179,6 @@ export default function AppearanceControls({
         <span>High contrast</span>
         <span className="appearance-switch" aria-hidden="true" />
       </button>
-      <p className="appearance-note">Saved in this browser.</p>
     </fieldset>
   );
 }

@@ -11,7 +11,7 @@ const sections = [
 ] as const;
 
 export default function AdministrationTabs({ route }: { route: string }) {
-  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
+  const buttons = useRef<(HTMLAnchorElement | null)[]>([]);
   const page = administrationRoute(route).page;
   const selected =
     route === "#administration/users" || route === "#administration-users"
@@ -38,20 +38,17 @@ export default function AdministrationTabs({ route }: { route: string }) {
       aria-label="Administration sections"
     >
       {sections.map((section, index) => (
-        <button
+        <a
           key={section.id}
           ref={(element) => {
             buttons.current[index] = element;
           }}
-          type="button"
+          href={section.hash}
           role="tab"
           id={`administration-tab-${section.id}`}
           aria-selected={selected === section.id}
           aria-controls="administration-panel"
           tabIndex={selected === section.id ? 0 : -1}
-          onClick={() => {
-            window.location.hash = section.hash;
-          }}
           onKeyDown={(event) => {
             let next: number;
             if (event.key === "ArrowRight")
@@ -67,7 +64,7 @@ export default function AdministrationTabs({ route }: { route: string }) {
           }}
         >
           {section.label}
-        </button>
+        </a>
       ))}
     </div>
   );

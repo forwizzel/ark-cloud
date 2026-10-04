@@ -146,6 +146,7 @@
 .system-admin-toggle input {
   width: 18px;
   height: 18px;
+  min-height: 18px;
   flex-shrink: 0;
   margin: 3px 0 0;
 }
@@ -219,6 +220,7 @@
 .system-admin-service-actions input {
   width: 18px;
   height: 18px;
+  min-height: 18px;
   margin: 0;
 }
 .system-admin-caption,

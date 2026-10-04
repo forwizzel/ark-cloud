@@ -449,11 +449,6 @@
   --login-shadow: #35564a33;
   --shadow: 0 16px 40px -22px #526e6166;
 }
-.appearance-controls .appearance-note {
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
 
 html {
   scrollbar-color: var(--line) var(--canvas);
@@ -518,7 +513,14 @@ button[aria-busy="true"]::before {
 }
 .local-file-list > li,
 .account-users > li,
-.storage-activity > li {
+.storage-activity > li,
+.storage-locations > li,
+.storage-access-list > li,
+.storage-folder-options > li,
+.system-admin-service,
+.host-service,
+.host-process,
+.device-row {
   content-visibility: auto;
   contain-intrinsic-size: auto 88px;
 }
@@ -572,6 +574,10 @@ summary:focus-visible {
   z-index: 30;
   padding: 32px 18px 24px;
   border-right-color: var(--line-soft);
+}
+
+.brand {
+  min-height: 44px;
 }
 
 .brand {
@@ -733,8 +739,7 @@ h1 {
   background: var(--panel-raised);
 }
 
-.overview-panel-head,
-.overview-facts {
+.overview-panel-head {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -756,32 +761,33 @@ h1 {
   line-height: 1.2;
 }
 
-.overview-optional {
-  margin: 7px 0 0;
-  color: var(--muted);
-  font-size: 0.875rem;
-}
-
-.overview-facts {
-  margin-top: 24px;
-  padding-top: 14px;
+.overview-issues {
+  display: grid;
+  gap: 16px;
+  margin: 24px 0 0;
+  padding: 14px 0 0;
   border-top: 1px solid var(--line);
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: 8px 18px;
+  list-style: none;
   color: var(--muted);
   font-size: 0.875rem;
+  overflow-wrap: anywhere;
 }
-
-.overview-facts span {
-  display: inline-flex;
-  align-items: center;
+.overview-issues li {
+  display: flex;
+  align-items: flex-start;
   gap: 8px;
 }
-
-.overview-facts .status-dot {
+.overview-issues .status-dot {
   display: inline-block;
   flex: 0 0 auto;
+  margin-top: 7px;
+}
+.overview-issues strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+.overview-issues p {
+  margin: 4px 0 0;
 }
 
 .telemetry-grid {
@@ -1005,11 +1011,13 @@ textarea {
 .login-panel .brand-logo--login {
   width: 72px;
   height: 72px;
+  justify-self: center;
 }
 
 .login-panel h1 {
   margin: 2px 0 8px;
   font-size: clamp(1.8rem, 2.8vw, 2.5rem);
+  text-align: center;
 }
 
 .login-panel input,
@@ -1213,8 +1221,17 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: var(--shadow);
-  max-height: min(650px, calc(100dvh - 100px));
+  max-height: var(--options-max-height, min(650px, calc(100dvh - 100px)));
   overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.rail-utilities[data-placement="below"] .rail-utilities-content {
+  inset-block-start: calc(100% + 8px);
+  inset-block-end: auto;
+}
+.rail-utilities[data-placement="above"] .rail-utilities-content {
+  inset-block-start: auto;
+  inset-block-end: calc(100% + 8px);
 }
 .rail-utilities-content .appearance-controls {
   padding: 0;
@@ -1240,6 +1257,17 @@ textarea {
 }
 .main-content {
   container-type: inline-size;
+}
+@media (min-width: 681px) and (max-height: 560px) {
+  .side-rail {
+    position: relative;
+    height: auto;
+    min-height: 100dvh;
+    align-self: start;
+  }
+  .rail-utilities {
+    margin-block-start: 24px;
+  }
 }
 @media (pointer: coarse) {
   input:not([type="checkbox"]):not([type="radio"]),

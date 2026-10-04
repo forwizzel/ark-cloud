@@ -616,6 +616,7 @@ export default function AccountPage({
               <label className="account-invite-acknowledgment">
                 <input
                   type="checkbox"
+                  name="invitation-recorded"
                   checked={inviteAcknowledged}
                   onChange={(event) =>
                     setInviteAcknowledged(event.target.checked)
@@ -656,7 +657,7 @@ export default function AccountPage({
             {users.map((user) => (
               <li key={user.id}>
                 <div>
-                  <strong>{user.username}</strong>
+                  <strong translate="no">{user.username}</strong>
                   <small>
                     {user.pending
                       ? "Invitation pending"

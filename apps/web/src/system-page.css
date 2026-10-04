@@ -75,12 +75,23 @@
   border-radius: 10px;
   background: var(--rail);
 }
-.host-tabs button {
+.host-tabs [role="tab"] {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 9px 24px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--muted);
+  text-decoration: none;
   border-color: transparent;
   background: transparent;
-  padding-inline: 24px;
 }
-.host-tabs button[aria-selected="true"] {
+.host-tabs [role="tab"]:hover {
+  color: var(--ink);
+  background: var(--panel-raised);
+}
+.host-tabs [role="tab"][aria-selected="true"] {
   background: var(--accent-tint);
   border-color: var(--signal);
   color: var(--signal);
@@ -325,6 +336,9 @@
 }
 .host-unknown-review input {
   flex: none;
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
   margin-block-start: 4px;
 }
 .host-confirmation {
@@ -335,6 +349,9 @@
   background: var(--panel);
   color: var(--ink);
   box-shadow: var(--shadow);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .host-confirmation::backdrop {
   background: #0009;
@@ -377,15 +394,29 @@
   overflow: hidden;
 }
 .host-terminal--expanded {
+  --terminal-inset: 16px;
   position: fixed;
-  inset: calc(var(--terminal-viewport-top, 0px) + 16px) 16px auto;
-  width: calc(100% - 32px);
-  height: calc(var(--terminal-viewport-height, 100dvh) - 32px);
+  inset: calc(
+      var(--terminal-viewport-top, 0px) +
+        max(var(--terminal-inset), env(safe-area-inset-top))
+    )
+    max(var(--terminal-inset), env(safe-area-inset-right)) auto
+    max(var(--terminal-inset), env(safe-area-inset-left));
+  width: calc(
+    100% - max(var(--terminal-inset), env(safe-area-inset-left)) -
+      max(var(--terminal-inset), env(safe-area-inset-right))
+  );
+  height: calc(
+    var(--terminal-viewport-height, 100dvh) -
+      max(var(--terminal-inset), env(safe-area-inset-top)) -
+      max(var(--terminal-inset), env(safe-area-inset-bottom))
+  );
   display: flex;
   flex-direction: column;
   background: var(--panel);
   box-shadow: var(--shadow);
   overflow: auto;
+  overscroll-behavior: contain;
 }
 .host-terminal--expanded .host-terminal-surface {
   flex: 1;
@@ -533,9 +564,7 @@
     gap: 6px;
   }
   .host-terminal--expanded {
-    inset: calc(var(--terminal-viewport-top, 0px) + 8px) 8px auto;
-    width: calc(100% - 16px);
-    height: calc(var(--terminal-viewport-height, 100dvh) - 16px);
+    --terminal-inset: 8px;
     padding: 12px;
   }
   .host-filters {

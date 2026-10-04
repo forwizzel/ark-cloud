@@ -87,6 +87,10 @@ export default function TailscaleAdministration({
 
   const act = async (action: TailscaleAction) => {
     if (busy.current || authFailed.current) return;
+    if (action === "connect" && !apiKey.trim()) {
+      setActionError("Enter a Tailscale API key, then try again.");
+      return;
+    }
     if (
       (action === "disable" || action === "disconnect") &&
       !window.confirm(
@@ -214,7 +218,7 @@ export default function TailscaleAdministration({
             {status.dns_name && (
               <div>
                 <dt>Managed node</dt>
-                <dd>{status.dns_name}</dd>
+                <dd translate="no">{status.dns_name}</dd>
               </div>
             )}
           </dl>
@@ -246,7 +250,7 @@ export default function TailscaleAdministration({
           {serveUrl && (
             <div className="tailscale-url">
               <h4>Private URL</h4>
-              <p>{serveUrl}</p>
+              <p translate="no">{serveUrl}</p>
               <div className="workspace-actions">
                 <a
                   className="workspace-link"
@@ -388,7 +392,8 @@ export default function TailscaleAdministration({
             <button
               className="refresh-button"
               type="submit"
-              disabled={blocked || !apiKey.trim() || !status}
+              disabled={blocked || !status}
+              aria-busy={acting === "connect"}
             >
               {acting === "connect"
                 ? "Validating and connecting…"

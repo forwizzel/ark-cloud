@@ -33,6 +33,10 @@ export default function StorageAccess({
   const [conflict, setConflict] = useState(false);
   const preservedDraft = useRef<Record<string, AccessLevel>>({});
   const heading = useRef<HTMLHeadingElement>(null);
+  const errorNotice = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (error && !busy) errorNotice.current?.focus();
+  }, [error, busy]);
   const route = `admin/storage/roots/${encodeURIComponent(root.id)}/access`;
   useUnsavedChanges(
     Boolean(
@@ -168,7 +172,13 @@ export default function StorageAccess({
       )}
       {error && (
         <div>
-          <p className="local-error" role="alert">
+          <p
+            className="local-error"
+            role="alert"
+            ref={errorNotice}
+            tabIndex={-1}
+            id="storage-access-error"
+          >
             {error}
           </p>
           {(!view || conflict) && (
@@ -217,6 +227,9 @@ export default function StorageAccess({
                   <select
                     name={`access-${account.id}`}
                     autoComplete="off"
+                    aria-describedby={
+                      error ? "storage-access-error" : undefined
+                    }
                     value={draft[account.id] ?? account.level}
                     disabled={Boolean(busy) || loading}
                     onChange={(event) =>

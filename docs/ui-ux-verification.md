@@ -33,3 +33,37 @@ The review was bounded to one batched inspection, its correction batch and one c
 ## Device-specific verification remaining
 
 Emulated Chromium viewports and synthesized touch are not physical Safari/Android evidence. Real-device virtual-keyboard geometry, iOS focus zoom, native select behavior and assistive-technology announcements remain device checks. This review does not claim a complete WCAG conformance audit or production performance measurement.
+
+## Web Interface Guidelines enforcement
+
+Reviewed the current rules from
+<https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md>
+against the frontend source and rendered application. Prior sign-in, appearance,
+Operational state and Local Files refinements are preserved.
+
+### Corrections
+
+- The terminal surface is a labeled semantic group rather than a generic div with an unsupported accessible name.
+- System configuration, process filters and review checkboxes have meaningful names; non-auth search/select controls have explicit autocomplete behavior. Search placeholders use ellipses.
+- System and Administration route tabs are native links with keyboard tab navigation. Primary links no longer change the current page during modified clicks. Process search/sort restore from URL parameters and preserve unrelated state.
+- Mobile brand navigation and the standalone account-management link have 44px hit areas. Checkbox visuals remain small within their full-size clickable labels.
+- Short landscape rails scroll with the document; Options selects the available side and bounds its scrollable panel to the viewport. Open menus are repositioned on viewport resizing.
+- Host confirmations and expanded terminals have bounded, contained scrolling. Expanded terminal geometry incorporates safe-area insets. Resizing a confirmation keeps its focused control visible.
+- Larger service, process, permission, location and device lists use native content-visibility rendering; recent host-history tables already cap their displayed rows.
+- Storage policy/access failures are associated with their controls, announced inline, and receive focus. The Tailscale connection form remains actionable before entry, rejects whitespace-only keys with inline recovery copy, and exposes pending state.
+- Host connection announcements are separate from frequently refreshed collection timestamps. Machine identifiers and file names are protected from automatic translation; host byte units stay with their numbers.
+- Navigation geometry reads are collected before scrolling; critical fonts remain self-hosted, preloaded and swap-displayed.
+
+### Verification results
+
+- **164 frontend tests** pass, including added navigation, shareable-filter, form-validation and focused-error regressions. ESLint, Prettier and TypeScript/Vite production build pass; the design detector reports no findings.
+- **120 route/device/theme cases** cover 19 surfaces at 320, 390, 768, 1024 and 1440px, short landscape layouts, all 20 palette/mode/contrast combinations, reduced motion and 200% text sizing. Synthetic fixtures include long identifiers and larger inventories.
+- Axe WCAG A/AA and best-practice checks report no verified violations in the audited states. No document-level horizontal overflow or undersized measured standalone targets remains in that matrix.
+- Keyboard verification confirms the actual skip link focuses main content. Ctrl-click opens a route tab in another page without changing the original route. Synthesized touch navigates Administration/System tabs and primary navigation.
+- Short-screen checks confirm Options stays within the viewport, expanded terminal scrolling is contained, and a focused confirmation action remains fully visible after resizing. A focused confirmation recheck passes after its final resize correction.
+- Axe's skip-link heuristic also inspects the Dashboard/Overview hash-route links when horizontal navigation is clipped. Those reviewed false positives are excluded only after checking the real skip link and its focusable main target; other skip-link violations remain reported.
+
+These checks use emulated Chromium and intercepted synthetic API fixtures. No
+live host or account mutations were sent. Reports/screenshots remain temporary
+under `/tmp/opencode/ark-audit-*` and `/tmp/opencode/audit-*`. The physical-device
+and assistive-technology limitations above still apply.

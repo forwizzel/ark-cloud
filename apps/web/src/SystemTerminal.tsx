@@ -397,6 +397,7 @@ export default function SystemTerminal({
           <span role="status">{stateLabels[state]}</span>
           <button
             ref={connectButton}
+            aria-busy={state === "connecting"}
             onClick={() => void connect()}
             disabled={
               !live ||
@@ -421,6 +422,7 @@ export default function SystemTerminal({
           </button>
           <button
             ref={endButton}
+            aria-busy={state === "ending"}
             disabled={
               !hasSession || state === "ending" || state === "connecting"
             }
@@ -446,6 +448,7 @@ export default function SystemTerminal({
       <div
         ref={surface}
         className="host-terminal-surface"
+        role="group"
         aria-label="Interactive host terminal"
       />
       <button
