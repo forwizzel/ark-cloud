@@ -815,7 +815,7 @@ h1 {
 
 .status-dot--healthy,
 .device-state--online {
-  background: var(--signal);
+  background: var(--success);
   box-shadow: none;
 }
 
@@ -843,9 +843,9 @@ h1 {
 }
 
 .status-pill--healthy {
-  border-color: var(--signal-dark);
-  color: var(--signal);
-  background: var(--accent-tint);
+  border-color: var(--success-border);
+  color: var(--success);
+  background: var(--success-tint);
 }
 
 .status-pill--degraded,
@@ -1418,8 +1418,8 @@ select:disabled {
 }
 
 .status-pill--healthy {
-  border-color: var(--signal-dark);
-  background: var(--accent-tint);
+  border-color: var(--success-border);
+  background: var(--success-tint);
 }
 
 .status-pill--degraded,

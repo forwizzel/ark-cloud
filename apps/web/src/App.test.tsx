@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import App from "./App";
@@ -66,9 +72,10 @@ afterEach(() => {
   window.history.replaceState({}, "", "/");
   window.localStorage.removeItem("ark-cloud-theme");
   window.localStorage.removeItem("ark-cloud-contrast");
+  window.localStorage.removeItem("ark-cloud-palette");
 });
 
-test("offers appearance controls before signing in", async () => {
+test("sign-in and invitation screens do not expose appearance controls", async () => {
   vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
     jsonResponse({ authenticated: false, username: null, csrf_token: null }),
   );
@@ -77,11 +84,67 @@ test("offers appearance controls before signing in", async () => {
   expect(
     await screen.findByRole("heading", { name: "Sign in" }),
   ).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("switch", { name: "High contrast" }));
-  expect(document.documentElement).toHaveAttribute("data-contrast", "more");
+  expect(screen.queryByRole("switch")).not.toBeInTheDocument();
   expect(
-    screen.getByRole("switch", { name: "Light mode" }),
-  ).toBeInTheDocument();
+    screen.queryByRole("group", { name: "Appearance" }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+  expect(document.documentElement).toHaveAttribute("data-palette", "graphite");
+  fireEvent.click(screen.getByRole("button", { name: "Redeem invitation" }));
+  expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+});
+
+test.each(["setup", "session-error"])(
+  "%s authentication screen has no appearance controls",
+  async (state) => {
+    const fetch = vi.spyOn(globalThis, "fetch");
+    if (state === "setup") {
+      fetch.mockResolvedValueOnce(
+        jsonResponse({ authenticated: false, setup_required: true }),
+      );
+    } else {
+      fetch.mockRejectedValueOnce(new Error("Offline"));
+    }
+    render(<App />);
+    await screen.findByRole("heading", {
+      name:
+        state === "setup"
+          ? "Set up Ark Cloud"
+          : "Ark could not check your session",
+    });
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+  },
+);
+
+test("signed-in Options keeps appearance controls and dismisses on Escape or outside interaction", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url === "/api/auth/session")
+      return jsonResponse({
+        authenticated: true,
+        username: "owner",
+        role: "admin",
+        csrf_token: "csrf",
+      });
+    if (url === "/api/dashboard") return jsonResponse(dashboard);
+    return new Response(null, { status: 503 });
+  });
+  render(<App />);
+  const summary = await screen.findByLabelText(
+    "Appearance and session options",
+  );
+  const menu = summary.closest("details")!;
+  fireEvent.click(summary);
+  expect(menu).toHaveAttribute("open");
+  expect(screen.getByRole("radio", { name: "Graphite Default" })).toBeChecked();
+  fireEvent.keyDown(summary, { key: "Escape" });
+  expect(menu).not.toHaveAttribute("open");
+  expect(summary).toHaveFocus();
+  fireEvent.click(summary);
+  fireEvent.pointerDown(screen.getByRole("heading", { name: "Dashboard" }));
+  expect(menu).not.toHaveAttribute("open");
 });
 
 test("administrator sign-in preserves the Tailscale destination and sends session CSRF", async () => {
@@ -137,9 +200,11 @@ test("administrator sign-in preserves the Tailscale destination and sends sessio
     "aria-labelledby",
     "administration-tab-tailscale",
   );
-  expect(fetch).toHaveBeenCalledWith(
-    "/api/admin/tailscale",
-    expect.objectContaining({ headers: { "X-CSRF-Token": "admin-csrf" } }),
+  await waitFor(() =>
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/admin/tailscale",
+      expect.objectContaining({ headers: { "X-CSRF-Token": "admin-csrf" } }),
+    ),
   );
 });
 

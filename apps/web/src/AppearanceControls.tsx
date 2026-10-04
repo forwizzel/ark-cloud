@@ -1,9 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 type Theme = "light" | "dark";
 
 const themeKey = "ark-cloud-theme";
 const contrastKey = "ark-cloud-contrast";
+const paletteKey = "ark-cloud-palette";
+const palettes = ["graphite", "spruce", "harbor", "iris", "copper"] as const;
+type Palette = (typeof palettes)[number];
+
+function initialPalette(): Palette {
+  const saved = preference(paletteKey);
+  return palettes.find((palette) => palette === saved) ?? "graphite";
+}
 
 function preference(key: string): string | null {
   try {
@@ -29,22 +37,23 @@ function initialContrast(): boolean {
   return systemPrefers("(prefers-contrast: more)");
 }
 
-function applyAppearance(theme: Theme, highContrast: boolean) {
+function applyAppearance(
+  theme: Theme,
+  highContrast: boolean,
+  palette: Palette,
+) {
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.contrast = highContrast ? "more" : "normal";
+  document.documentElement.dataset.palette = palette;
   document.documentElement.style.colorScheme = theme;
-  document
-    .querySelector('meta[name="theme-color"]')
-    ?.setAttribute(
-      "content",
-      highContrast
-        ? theme === "light"
-          ? "#ffffff"
-          : "#000000"
-        : theme === "light"
-          ? "#f2f5f2"
-          : "#111b22",
-    );
+  const canvas = getComputedStyle(document.documentElement)
+    .getPropertyValue("--canvas")
+    .trim();
+  if (canvas) {
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", canvas);
+  }
 }
 
 function savePreference(key: string, value: string) {
@@ -55,9 +64,15 @@ function savePreference(key: string, value: string) {
   }
 }
 
-export default function AppearanceControls() {
+export default function AppearanceControls({
+  showControls = true,
+}: {
+  showControls?: boolean;
+}) {
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [highContrast, setHighContrast] = useState(initialContrast);
+  const [palette, setPalette] = useState<Palette>(initialPalette);
+  const paletteGroup = useId();
   const manualTheme = useRef(
     ["dark", "light"].includes(preference(themeKey) ?? ""),
   );
@@ -66,8 +81,8 @@ export default function AppearanceControls() {
   );
 
   useEffect(() => {
-    applyAppearance(theme, highContrast);
-  }, [theme, highContrast]);
+    applyAppearance(theme, highContrast, palette);
+  }, [theme, highContrast, palette]);
 
   useEffect(() => {
     if (!window.matchMedia) return;
@@ -94,7 +109,7 @@ export default function AppearanceControls() {
     manualTheme.current = true;
     savePreference(themeKey, next);
     setTheme(next);
-    applyAppearance(next, highContrast);
+    applyAppearance(next, highContrast, palette);
   };
 
   const toggleContrast = () => {
@@ -102,12 +117,50 @@ export default function AppearanceControls() {
     manualContrast.current = true;
     savePreference(contrastKey, next ? "more" : "normal");
     setHighContrast(next);
-    applyAppearance(theme, next);
+    applyAppearance(theme, next, palette);
   };
+
+  const choosePalette = (next: Palette) => {
+    savePreference(paletteKey, next);
+    setPalette(next);
+    applyAppearance(theme, highContrast, next);
+  };
+
+  // Keep saved appearance and OS preferences active on authentication screens.
+  if (!showControls) return null;
 
   return (
     <fieldset className="appearance-controls">
       <legend>Appearance</legend>
+      <fieldset className="theme-picker">
+        <legend>Themes</legend>
+        {palettes.map((option) => (
+          <label className="theme-option" key={option}>
+            <input
+              type="radio"
+              name={paletteGroup}
+              value={option}
+              aria-label={
+                option === "graphite" ? "Graphite Default" : undefined
+              }
+              checked={palette === option}
+              onChange={() => choosePalette(option)}
+            />
+            <span
+              className={`theme-swatches theme-swatches--${option}`}
+              aria-hidden="true"
+            >
+              <span />
+              <span />
+              <span />
+            </span>
+            <span className="theme-name">
+              {option.charAt(0).toUpperCase() + option.slice(1)}
+              {option === "graphite" && <small> Default</small>}
+            </span>
+          </label>
+        ))}
+      </fieldset>
       <button
         type="button"
         role="switch"
@@ -126,6 +179,7 @@ export default function AppearanceControls() {
         <span>High contrast</span>
         <span className="appearance-switch" aria-hidden="true" />
       </button>
+      <p className="appearance-note">Saved in this browser.</p>
     </fieldset>
   );
 }

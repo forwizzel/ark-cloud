@@ -182,7 +182,7 @@ export default function SystemTerminal({
       themeObserver = new MutationObserver(theme);
       themeObserver.observe(document.documentElement, {
         attributes: true,
-        attributeFilter: ["data-theme", "data-contrast"],
+        attributeFilter: ["data-theme", "data-contrast", "data-palette"],
       });
       const ws = new WebSocket(
         `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/api/system/terminal/${grant!.id}`,

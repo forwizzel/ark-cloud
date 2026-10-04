@@ -13,10 +13,11 @@ const emulator = vi.hoisted(() => ({
   open: vi.fn(),
   blur: vi.fn(),
   key: null as ((event: KeyboardEvent) => boolean) | null,
+  options: {} as { theme?: { cursor?: string } },
 }));
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
-    options = {};
+    options = emulator.options;
     cols = 80;
     rows = 24;
     open = emulator.open;
@@ -87,6 +88,7 @@ async function connect() {
 beforeEach(() => {
   Socket.instances = [];
   emulator.key = null;
+  emulator.options = {};
   emulator.open.mockReset().mockImplementation((target: HTMLElement) => {
     const input = document.createElement("textarea");
     input.setAttribute("aria-label", "Shell input");
@@ -120,6 +122,32 @@ afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  document.documentElement.removeAttribute("data-palette");
+});
+
+test("palette changes repaint an open terminal without reconnecting", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(json(grant));
+  vi.spyOn(window, "getComputedStyle").mockImplementation(
+    () =>
+      ({
+        getPropertyValue: (name: string) =>
+          name === "--signal"
+            ? document.documentElement.dataset.palette === "iris"
+              ? "#bcafeb"
+              : "#8fbdb0"
+            : "#111b22",
+      }) as CSSStyleDeclaration,
+  );
+  renderTerminal();
+  await connect();
+  expect(emulator.options.theme?.cursor).toBe("#8fbdb0");
+  await act(async () => {
+    document.documentElement.dataset.palette = "iris";
+  });
+  expect(emulator.options.theme?.cursor).toBe("#bcafeb");
+  expect(Socket.instances).toHaveLength(1);
+  expect(Socket.instances[0].readyState).toBe(Socket.OPEN);
+  expect(screen.getByRole("status")).toHaveTextContent("Connected");
 });
 
 test("transient attach failure preserves the session for retry and cleanup", async () => {

@@ -73,6 +73,36 @@ function App() {
   }, [activePage]);
 
   useEffect(() => {
+    const dismissOutside = (event: PointerEvent) => {
+      const menu = utilities.current;
+      if (
+        menu?.open &&
+        event.target instanceof Node &&
+        !menu.contains(event.target)
+      ) {
+        menu.open = false;
+      }
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (
+        event.key !== "Escape" ||
+        event.defaultPrevented ||
+        !utilities.current?.open
+      )
+        return;
+      utilities.current.open = false;
+      utilities.current.querySelector("summary")?.focus();
+      event.preventDefault();
+    };
+    document.addEventListener("pointerdown", dismissOutside);
+    document.addEventListener("keydown", dismissOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOutside);
+      document.removeEventListener("keydown", dismissOnEscape);
+    };
+  }, []);
+
+  useEffect(() => {
     const onHashChange = () => {
       setActivePage(pageFromHash());
       setActiveHash(window.location.hash);
@@ -204,7 +234,7 @@ function App() {
           >
             Retry connection
           </button>
-          <AppearanceControls />
+          <AppearanceControls showControls={false} />
         </section>
       </main>
     );
@@ -307,7 +337,34 @@ function App() {
         </nav>
 
         <details className="rail-utilities" ref={utilities}>
-          <summary aria-label="Appearance and session options">Options</summary>
+          <summary aria-label="Appearance and session options">
+            <svg
+              className="options-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M4 7h7m4 0h5M4 17h3m4 0h9" />
+              <circle cx="13" cy="7" r="2" />
+              <circle cx="9" cy="17" r="2" />
+            </svg>
+            <span>Options</span>
+            <svg
+              className="options-chevron"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m5 9 3-3 3 3" />
+            </svg>
+          </summary>
           <div className="rail-utilities-content">
             <AppearanceControls />
             <button
@@ -788,7 +845,7 @@ function LoginScreen({
             {mode === "invite" ? "Back to sign in" : "Redeem invitation"}
           </button>
         )}
-        <AppearanceControls />
+        <AppearanceControls showControls={false} />
       </form>
     </main>
   );

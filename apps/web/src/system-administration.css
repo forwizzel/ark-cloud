@@ -66,9 +66,9 @@
   font-size: 0.85rem;
 }
 .system-admin-state--connected {
-  background: var(--accent-tint);
-  color: var(--signal);
-  border-color: var(--signal);
+  background: var(--success-tint);
+  color: var(--success);
+  border-color: var(--success);
 }
 .system-admin-facts {
   display: grid;

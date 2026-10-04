@@ -409,8 +409,8 @@
   margin-bottom: 0;
 }
 .storage-connection-state--healthy {
-  color: var(--signal);
-  background: var(--accent-tint);
+  color: var(--success);
+  background: var(--success-tint);
 }
 .storage-admin .storage-connection-state--attention {
   color: var(--warning);

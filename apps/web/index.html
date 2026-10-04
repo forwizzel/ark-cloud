@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#111b22" />
+    <meta name="theme-color" content="#1b1d21" />
     <link
       rel="preload"
       href="/node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2"
@@ -47,15 +47,25 @@
               : "normal";
         document.documentElement.dataset.theme = theme;
         document.documentElement.dataset.contrast = contrast;
+        const palettes = {
+          spruce: ["#111b22", "#f2f5f2"],
+          harbor: ["#121b2a", "#f2f5fa"],
+          iris: ["#1b1826", "#f5f3fa"],
+          copper: ["#231b18", "#f8f4f0"],
+          graphite: ["#1b1d21", "#f4f5f6"],
+        };
+        const savedPalette = saved("ark-cloud-palette");
+        const palette = Object.hasOwn(palettes, savedPalette)
+          ? savedPalette
+          : "graphite";
+        document.documentElement.dataset.palette = palette;
         document.documentElement.style.colorScheme = theme;
         document.querySelector('meta[name="theme-color"]').content =
           contrast === "more"
             ? theme === "light"
               ? "#ffffff"
               : "#000000"
-            : theme === "light"
-              ? "#f2f5f2"
-              : "#111b22";
+            : palettes[palette][theme === "light" ? 1 : 0];
       })();
     </script>
     <meta
