@@ -67,18 +67,26 @@ beforeEach(() => {
   vi.mocked(api.localMutation).mockResolvedValue(undefined);
 });
 
+async function findFileAction(role: "button" | "link", name: string) {
+  const filename = name.replace(/^(Download|Rename|Move|Delete) /, "");
+  const summary = await screen.findByLabelText(`Actions for ${filename}`, {
+    selector: "summary",
+  });
+  if (!summary.closest("details")?.open) fireEvent.click(summary);
+  return screen.findByRole(role, { name });
+}
+
 test("browses and downloads through the authenticated same-origin route", async () => {
   render(<LocalFiles csrfToken="csrf" />);
-  expect(
-    await screen.findByRole("link", { name: "Download notes.txt" }),
-  ).toHaveAttribute(
+  expect(await findFileAction("link", "Download notes.txt")).toHaveAttribute(
     "href",
     expect.stringContaining("/api/storage/personal/download?path=notes.txt"),
   );
   expect(screen.getByText("512 B available")).toBeInTheDocument();
   expect(
-    screen.queryByRole("navigation", { name: "File breadcrumbs" }),
-  ).not.toBeInTheDocument();
+    screen.getByRole("navigation", { name: "File breadcrumbs" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Up one folder" })).toBeDisabled();
 });
 
 test("a linked folder takes precedence over the saved starting folder", async () => {
@@ -88,7 +96,7 @@ test("a linked folder takes precedence over the saved starting folder", async ()
     "/?files-path=Reports%2F2026#local-files/personal",
   );
   render(<LocalFiles csrfToken="csrf" />);
-  await screen.findByRole("link", { name: "Download notes.txt" });
+  await findFileAction("link", "Download notes.txt");
   expect(api.fetchLocalItems).toHaveBeenCalledWith(
     "personal",
     "Reports/2026",
@@ -99,11 +107,47 @@ test("a linked folder takes precedence over the saved starting folder", async ()
   ).toBeInTheDocument();
 });
 
+test("Up traverses one folder at a time and breadcrumbs identify the current folder", async () => {
+  window.history.replaceState(
+    {},
+    "",
+    "/?files-path=Reports%2F2026#local-files/personal",
+  );
+  render(<LocalFiles csrfToken="csrf" />);
+  await screen.findByRole("link", { name: "notes.txt" });
+  const breadcrumbs = screen.getByRole("navigation", {
+    name: "File breadcrumbs",
+  });
+  expect(breadcrumbs.querySelector('[aria-current="page"]')).toHaveTextContent(
+    "2026",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Up one folder" }));
+  await waitFor(() =>
+    expect(api.fetchLocalItems).toHaveBeenLastCalledWith(
+      "personal",
+      "Reports",
+      expect.any(AbortSignal),
+    ),
+  );
+  expect(breadcrumbs.querySelector('[aria-current="page"]')).toHaveTextContent(
+    "Reports",
+  );
+  fireEvent.click(
+    within(breadcrumbs).getByRole("button", { name: "My files" }),
+  );
+  await waitFor(() =>
+    expect(api.fetchLocalItems).toHaveBeenLastCalledWith(
+      "personal",
+      "",
+      expect.any(AbortSignal),
+    ),
+  );
+  expect(screen.getByRole("button", { name: "Up one folder" })).toBeDisabled();
+});
+
 test("requires explicit deletion confirmation and includes the item revision", async () => {
   render(<LocalFiles csrfToken="csrf" />);
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Delete notes.txt" }),
-  );
+  fireEvent.click(await findFileAction("button", "Delete notes.txt"));
   expect(api.localMutation).not.toHaveBeenCalled();
   expect(
     screen.getByText("This cannot be undone. Folders must be empty."),
@@ -124,9 +168,7 @@ test("renames in the current directory and reports conflicts", async () => {
     new Error("The destination already exists. Choose another name."),
   );
   render(<LocalFiles csrfToken="csrf" />);
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Rename notes.txt" }),
-  );
+  fireEvent.click(await findFileAction("button", "Rename notes.txt"));
   fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
     target: { value: "new.txt" },
   });
@@ -147,7 +189,7 @@ test("read-only roots expose downloads without write controls", async () => {
     message: "",
   });
   render(<LocalFiles csrfToken="csrf" />);
-  await screen.findByRole("link", { name: "Download notes.txt" });
+  await findFileAction("link", "Download notes.txt");
   expect(
     screen.queryByRole("button", { name: "Upload file" }),
   ).not.toBeInTheDocument();
@@ -158,7 +200,7 @@ test("read-only roots expose downloads without write controls", async () => {
 
 test("refresh detects a deleted host location and removes file controls", async () => {
   render(<LocalFiles csrfToken="csrf" />);
-  await screen.findByRole("link", { name: "Download notes.txt" });
+  await findFileAction("link", "Download notes.txt");
   vi.mocked(api.fetchStorageRoots).mockResolvedValue({
     roots: [
       {
@@ -188,7 +230,7 @@ test("refresh detects a deleted host location and removes file controls", async 
 
 test("failed host refresh does not leave old connected file controls usable", async () => {
   render(<LocalFiles csrfToken="csrf" />);
-  await screen.findByRole("link", { name: "Download notes.txt" });
+  await findFileAction("link", "Download notes.txt");
   vi.mocked(api.fetchStorageRoots).mockRejectedValue(
     new Error("Host storage refresh timed out."),
   );
@@ -264,8 +306,10 @@ test("does not silently select a default and saves an explicit starting folder",
   fireEvent.change(screen.getByLabelText("Storage location"), {
     target: { value: "personal" },
   });
-  await screen.findByText("Folder options", { selector: "summary" });
-  fireEvent.click(screen.getByText("Folder options", { selector: "summary" }));
+  await screen.findByLabelText("Folder options", { selector: "summary" });
+  fireEvent.click(
+    screen.getByLabelText("Folder options", { selector: "summary" }),
+  );
   fireEvent.click(
     await screen.findByRole("button", { name: "Set as starting folder" }),
   );
@@ -308,16 +352,18 @@ test("administrator empty state links directly to setup", async () => {
 
 test("delete confirmation receives focus and cancel returns to its trigger", async () => {
   render(<LocalFiles csrfToken="csrf" />);
-  const trigger = await screen.findByRole("button", {
-    name: "Delete notes.txt",
-  });
+  const trigger = await findFileAction("button", "Delete notes.txt");
   trigger.focus();
   fireEvent.click(trigger);
   expect(
     screen.getByRole("heading", { name: "Permanently delete this item?" }),
   ).toHaveFocus();
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-  await waitFor(() => expect(trigger).toHaveFocus());
+  await waitFor(() =>
+    expect(
+      screen.getByLabelText("Actions for notes.txt", { selector: "summary" }),
+    ).toHaveFocus(),
+  );
 });
 
 test("failed folder navigation moves focus to the location heading", async () => {
@@ -356,7 +402,7 @@ test("folder queries belong to their root while legacy linked folders remain sup
     "/?files-root=other&files-path=Private#local-files/personal",
   );
   render(<LocalFiles csrfToken="csrf" />);
-  await screen.findByRole("link", { name: "Download notes.txt" });
+  await findFileAction("link", "Download notes.txt");
   expect(api.fetchLocalItems).toHaveBeenCalledWith(
     "personal",
     "",
@@ -372,9 +418,7 @@ test("refresh after a stale rename preserves the draft and retries with the fres
     new Error("Item changed. Refresh and retry."),
   );
   render(<LocalFiles csrfToken="csrf" />);
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Rename notes.txt" }),
-  );
+  fireEvent.click(await findFileAction("button", "Rename notes.txt"));
   fireEvent.change(screen.getByLabelText("Name"), {
     target: { value: "draft.txt" },
   });
@@ -410,9 +454,7 @@ test("refreshed deletion requires renewed review and uses the fresh item revisio
     new Error("Item changed. Refresh and retry."),
   );
   render(<LocalFiles csrfToken="csrf" />);
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Delete notes.txt" }),
-  );
+  fireEvent.click(await findFileAction("button", "Delete notes.txt"));
   fireEvent.click(screen.getByRole("button", { name: "Delete permanently" }));
   await screen.findByRole("alert");
   vi.mocked(api.fetchLocalItems).mockResolvedValue({
@@ -449,9 +491,7 @@ test("refreshed deletion requires renewed review and uses the fresh item revisio
 
 test("refresh reconciles edited items on later pages and closes a vanished item", async () => {
   render(<LocalFiles csrfToken="csrf" />);
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Rename notes.txt" }),
-  );
+  fireEvent.click(await findFileAction("button", "Rename notes.txt"));
   fireEvent.change(screen.getByLabelText("Name"), {
     target: { value: "draft.txt" },
   });
@@ -468,7 +508,9 @@ test("refresh reconciles edited items on later pages and closes a vanished item"
       next_offset: null,
       skipped_count: 0,
     });
-  fireEvent.click(screen.getByText("Folder options", { selector: "summary" }));
+  fireEvent.click(
+    screen.getByLabelText("Folder options", { selector: "summary" }),
+  );
   fireEvent.click(screen.getByRole("button", { name: "Refresh files" }));
   await screen.findByText("Item refreshed. Your draft has been preserved.");
   expect(screen.getByLabelText("Name")).toHaveValue("draft.txt");
@@ -499,6 +541,7 @@ test("final pagination focuses the first added file and announces completion", a
     });
   render(<LocalFiles csrfToken="csrf" />);
   const more = await screen.findByRole("button", { name: "Load more files" });
+  expect(screen.getByText("1 item shown ·")).toBeInTheDocument();
   more.focus();
   fireEvent.click(more);
   await waitFor(() =>
@@ -510,6 +553,7 @@ test("final pagination focuses the first added file and announces completion", a
   expect(
     screen.queryByRole("button", { name: "Load more files" }),
   ).not.toBeInTheDocument();
+  expect(screen.getByText("2 items shown ·")).toBeInTheDocument();
 });
 
 test("active upload warns on leaving, stays on declined navigation and cancels on unmount", async () => {
@@ -541,16 +585,16 @@ test("active upload warns on leaving, stays on declined navigation and cancels o
 
 test("a failed refresh blocks stale revision submission until refresh succeeds", async () => {
   render(<LocalFiles csrfToken="csrf" />);
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Rename notes.txt" }),
-  );
+  fireEvent.click(await findFileAction("button", "Rename notes.txt"));
   fireEvent.change(screen.getByLabelText("Name"), {
     target: { value: "draft.txt" },
   });
   vi.mocked(api.fetchLocalItems).mockRejectedValueOnce(
     new Error("Refresh unavailable"),
   );
-  fireEvent.click(screen.getByText("Folder options", { selector: "summary" }));
+  fireEvent.click(
+    screen.getByLabelText("Folder options", { selector: "summary" }),
+  );
   fireEvent.click(screen.getByRole("button", { name: "Refresh files" }));
   await screen.findByRole("alert");
   expect(screen.getByRole("button", { name: "Rename item" })).toBeDisabled();
@@ -568,23 +612,19 @@ test("a failed refresh blocks stale revision submission until refresh succeeds",
 test("declining an editor switch leaves the existing rename draft untouched", async () => {
   vi.spyOn(window, "confirm").mockReturnValue(false);
   render(<LocalFiles csrfToken="csrf" />);
-  const rename = await screen.findByRole("button", {
-    name: "Rename notes.txt",
-  });
+  const rename = await findFileAction("button", "Rename notes.txt");
   fireEvent.click(rename);
   fireEvent.change(screen.getByLabelText("Name"), {
     target: { value: "draft.txt" },
   });
-  fireEvent.click(rename);
+  fireEvent.click(await findFileAction("button", "Rename notes.txt"));
   expect(screen.getByLabelText("Name")).toHaveValue("draft.txt");
 });
 
 test("cancelling an editor during a paginated refresh does not reopen it", async () => {
   let resolve: (listing: api.LocalListing) => void = () => {};
   render(<LocalFiles csrfToken="csrf" />);
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Delete notes.txt" }),
-  );
+  fireEvent.click(await findFileAction("button", "Delete notes.txt"));
   vi.mocked(api.fetchLocalItems)
     .mockResolvedValueOnce({
       items: [],
@@ -597,7 +637,9 @@ test("cancelling an editor during a paginated refresh does not reopen it", async
         resolve = done;
       }),
     );
-  fireEvent.click(screen.getByText("Folder options", { selector: "summary" }));
+  fireEvent.click(
+    screen.getByLabelText("Folder options", { selector: "summary" }),
+  );
   fireEvent.click(screen.getByRole("button", { name: "Refresh files" }));
   await waitFor(() => expect(api.fetchLocalItems).toHaveBeenCalledTimes(3));
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
@@ -641,26 +683,7 @@ test("accepted page navigation cancels the transfer and ignores its late rejecti
   expect(api.fetchLocalItems).toHaveBeenCalledOnce();
 });
 
-function compactMedia(initial: boolean) {
-  const media = Object.assign(new EventTarget(), { matches: initial });
-  vi.stubGlobal(
-    "matchMedia",
-    vi.fn(() => media),
-  );
-  return {
-    media,
-    resize(matches: boolean) {
-      media.matches = matches;
-      const event = Object.assign(new Event("change"), { matches });
-      act(() => {
-        media.dispatchEvent(event);
-      });
-    },
-  };
-}
-
-test("phone item actions start closed and expand to a usable editor with focus restoration", async () => {
-  compactMedia(true);
+test("item actions start closed and return focus to the menu after editing", async () => {
   render(<LocalFiles csrfToken="csrf" />);
   const summary = await screen.findByLabelText("Actions for notes.txt", {
     selector: "summary",
@@ -678,36 +701,29 @@ test("phone item actions start closed and expand to a usable editor with focus r
   fireEvent.click(rename);
   expect(screen.getByRole("heading", { name: "Rename item" })).toHaveFocus();
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-  expect(rename).toHaveFocus();
-  expect(disclosure).toHaveAttribute("open");
+  expect(summary).toHaveFocus();
+  expect(disclosure).not.toHaveAttribute("open");
 });
 
-test("item disclosures update on phone and desktop resize and remove the media listener", async () => {
-  const { media, resize } = compactMedia(false);
-  const removeListener = vi.spyOn(media, "removeEventListener");
-  const view = render(<LocalFiles csrfToken="csrf" />);
+test("item menus dismiss on Escape and outside interaction", async () => {
+  render(<LocalFiles csrfToken="csrf" />);
   const summary = await screen.findByLabelText("Actions for notes.txt", {
     selector: "summary",
   });
   const disclosure = summary.closest("details");
-  expect(disclosure).toHaveAttribute("open");
-  expect(
-    screen.getByRole("button", { name: "Delete notes.txt" }),
-  ).toBeEnabled();
-  resize(true);
   expect(disclosure).not.toHaveAttribute("open");
   fireEvent.click(summary);
   expect(disclosure).toHaveAttribute("open");
-  resize(false);
-  expect(disclosure).toHaveAttribute("open");
-  resize(true);
+  summary.focus();
+  fireEvent.keyDown(summary, { key: "Escape" });
   expect(disclosure).not.toHaveAttribute("open");
-  view.unmount();
-  expect(removeListener).toHaveBeenCalledWith("change", expect.any(Function));
+  expect(summary).toHaveFocus();
+  fireEvent.click(summary);
+  fireEvent.pointerDown(screen.getByRole("heading", { name: "My files" }));
+  expect(disclosure).not.toHaveAttribute("open");
 });
 
 test("read-only phone folders have no useless Actions disclosure", async () => {
-  compactMedia(true);
   vi.mocked(api.fetchStorageRoots).mockResolvedValue({
     roots: [{ ...root, read_only: true }],
     message: "",
