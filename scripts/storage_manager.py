@@ -258,7 +258,7 @@ def inspect_folder(config, path, root=None):
                 "message": "The running API will verify access before accounts are enabled",
             },
         ],
-        "message": "Directory inspected. Ark prepares access automatically and verifies the running API before connecting.",
+        "message": "Directory inspected. Ark Cloud prepares access automatically and verifies the running API before connecting.",
     }
 
 
@@ -341,7 +341,7 @@ def execute(config, job):
             if managed or create:
                 return {
                     "path": str(path),
-                    "message": "Ark will create and verify this new directory.",
+                    "message": "Ark Cloud will create and verify this new directory.",
                 }
             return inspect_folder(config, path)
         result = {}

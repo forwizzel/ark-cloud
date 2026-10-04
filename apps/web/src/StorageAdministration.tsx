@@ -341,7 +341,8 @@ export default function StorageAdministration({
               <h3>Your files need a location</h3>
               <p>
                 Create a folder or connect one of the server's authorized
-                directories. Ark configures and verifies access automatically.
+                directories. Ark Cloud configures and verifies access
+                automatically.
               </p>
             </div>
           )}
@@ -799,8 +800,8 @@ function LocationConfiguration({
             />
           </label>
           <p>
-            Ark copies and verifies the account folders. The original files
-            remain on the server.
+            Ark Cloud copies and verifies the account folders. The original
+            files remain on the server.
           </p>
           <button disabled={!canApply}>Copy and move base</button>
         </form>

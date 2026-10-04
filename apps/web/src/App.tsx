@@ -246,7 +246,9 @@ function App() {
           className="login-panel"
           aria-labelledby="session-error-heading"
         >
-          <h1 id="session-error-heading">Ark could not check your session</h1>
+          <h1 id="session-error-heading">
+            Ark Cloud could not check your session
+          </h1>
           <p role="alert">
             The connection is unavailable. Retry to continue with your existing
             session.
@@ -268,7 +270,7 @@ function App() {
   if (sessionState.phase === "loading") {
     return (
       <main className="auth-frame auth-frame--loading">
-        <p role="status">Checking Ark session…</p>
+        <p role="status">Checking session…</p>
       </main>
     );
   }
@@ -574,7 +576,7 @@ function DashboardView({
           </div>
           <div>
             <div className="system-title-row">
-              <h2 id="system-heading">{system?.hostname ?? "Ark"}</h2>
+              <h2 id="system-heading">{system?.hostname ?? "System"}</h2>
               <StatusPill state={systemHealth?.state ?? "unavailable"} />
             </div>
             <p className="system-meta">
@@ -665,7 +667,7 @@ function DashboardView({
         />
         <div className="service-list">
           <ServiceRow
-            name="Ark API"
+            name="Ark Cloud API"
             detail={dashboard.platform.service}
             state="healthy"
           />
@@ -1054,7 +1056,7 @@ function LoadingDashboard() {
   return (
     <div className="loading-dashboard" role="status">
       <span className="loading-line" />
-      <strong>Reading Ark telemetry</strong>
+      <strong>Reading telemetry…</strong>
       <small>Checking integrations and system resources</small>
     </div>
   );

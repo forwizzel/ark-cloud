@@ -69,6 +69,46 @@ class SystemAgentTests(unittest.TestCase):
             self.assertFalse(psutil.pid_exists(terminal.pid))
             terminal.close()
 
+    def test_identity_is_detected_on_other_linux_distributions(self):
+        for hostname, distribution, kernel in (
+            ("backup-node", "Ubuntu 24.04 LTS", "6.8.0-generic"),
+            ("nas", "Debian GNU/Linux 13", "6.12.0-amd64"),
+        ):
+            with self.subTest(distribution=distribution):
+                with (
+                    patch("system_collect.socket.gethostname", return_value=hostname),
+                    patch(
+                        "system_collect.platform.freedesktop_os_release",
+                        return_value={"PRETTY_NAME": distribution},
+                    ),
+                    patch("system_collect.platform.release", return_value=kernel),
+                ):
+                    value = Collector().collect({"processes": False, "services": []})
+                self.assertEqual(value["identity"]["hostname"], hostname)
+                self.assertEqual(value["identity"]["os"], distribution)
+                self.assertEqual(value["identity"]["kernel"], kernel)
+
+    def test_distribution_name_falls_back_to_name_then_linux(self):
+        for release, expected in (
+            ({"NAME": "Alpine Linux"}, "Alpine Linux"),
+            ({"PRETTY_NAME": "   ", "NAME": "Debian"}, "Debian"),
+            ({}, "Linux"),
+        ):
+            with self.subTest(release=release):
+                with patch("system_collect.platform.freedesktop_os_release", return_value=release):
+                    value = Collector().collect({"processes": False, "services": []})
+                self.assertEqual(value["identity"]["os"], expected)
+
+    def test_missing_distribution_metadata_keeps_host_readings_available(self):
+        with patch(
+            "system_collect.platform.freedesktop_os_release", side_effect=OSError("No os-release")
+        ):
+            value = Collector().collect({"processes": False, "services": []})
+        self.assertEqual(value["identity"]["os"], "Linux")
+        self.assertTrue(value["identity"]["hostname"])
+        self.assertTrue(value["identity"]["kernel"])
+        self.assertIn("Distribution metadata is unavailable; showing Linux.", value["warnings"])
+
 
 if __name__ == "__main__":
     unittest.main()

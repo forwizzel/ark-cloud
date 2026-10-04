@@ -319,7 +319,7 @@ export default function LocalFiles({
           <h2>Choose your starting location</h2>
           <p>
             Select a location above. You can make any available folder your
-            default; Ark will open it the next time you visit.
+            default; Ark Cloud will open it the next time you visit.
           </p>
         </section>
       )}
@@ -392,7 +392,7 @@ export default function LocalFiles({
           />
         ))}
       <p className="local-scope">
-        Files stay on your Ark host. Available space describes the location’s
+        Files stay on your server. Available space describes the location’s
         filesystem, shared with other host data; it is not a personal quota.
       </p>
     </div>

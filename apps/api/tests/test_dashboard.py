@@ -23,12 +23,12 @@ NOW = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
 
 class FakeSystemIntegration:
     integration_id = "system"
-    name = "Ark system"
+    name = "System metrics"
 
     def summary(self) -> SystemSummary:
         return SystemSummary(
-            hostname="Ark",
-            os="Fedora Linux",
+            hostname="storage-server",
+            os="Debian GNU/Linux",
             kernel="6.18-test",
             uptime_seconds=3600,
             cpu_percent=10,
@@ -99,7 +99,8 @@ def test_dashboard_normalizes_platform_and_integrations() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["platform"]["database"] == "connected"
-    assert payload["system"]["hostname"] == "Ark"
+    assert payload["system"]["hostname"] == "storage-server"
+    assert payload["system"]["os"] == "Debian GNU/Linux"
     assert payload["system"]["cpu_percent"] == 10
     assert payload["tailscale"]["state"] == "not_configured"
     assert "google_drive" not in payload

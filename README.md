@@ -6,6 +6,9 @@ Ark Cloud is a self-hosted personal cloud with a browser-based file workspace, l
 and optional private remote access through Tailscale. Keep file content on your own Linux
 server, choose who can access it, and manage storage and accounts from one interface.
 
+Ark Cloud is the application name. It does not require a host named “Ark”, a particular
+Linux distribution, or a machine-specific kernel version.
+
 **v1.0 · MVP** brings together local file management, private and shared storage, UI-managed
 Tailscale access, and a dashboard for service health and runtime system information.
 
@@ -43,10 +46,11 @@ permissions, settings, and other control-plane state.
 
 ### Requirements
 
-Use a Linux host with:
+Use a compatible Linux x86_64 or aarch64 host with:
 
 - Git, Bash, and `curl`.
 - Docker Engine and Docker Compose v2, with access to a local Docker daemon.
+- Kernel support for `openat2` (Linux 5.6+) and `renameat2` for confined local-file access.
 - Python 3.10+ for the host storage helpers.
 - `setfacl` from your distribution's `acl` package and systemd user services for automatic
   storage-manager setup.
@@ -69,7 +73,8 @@ Edit `.env` before starting:
   the same randomly generated password. URL-encode reserved characters in the URL's password.
 - Keep `ARK_BIND_ADDRESS=127.0.0.1`.
 - Leave `ARK_TAILSCALE_API_KEY` blank; remote access is configured in the app.
-- Optionally adjust `ARK_SYSTEM_HOSTNAME` and `ARK_SYSTEM_OS_NAME` to label your instance.
+- Leave `ARK_SYSTEM_HOSTNAME` and `ARK_SYSTEM_OS_NAME` blank for neutral dashboard/runtime
+  labels, or set your own display labels. These do not configure or detect the physical host.
 
 ### 2. Start Ark Cloud
 
@@ -92,7 +97,7 @@ After setup, open **Administration → Storage → Add location**:
 
 1. Choose a new or existing server folder within an owner-approved area.
 2. Select private or shared storage and the accounts that should have access.
-3. Press **Connect**. Ark prepares filesystem access and checks the running API's mounts.
+3. Press **Connect**. Ark Cloud prepares filesystem access and checks the running API's mounts.
 
 Open **Local Files** to start working with your files. Use **Set as starting folder** to save
 your preferred opening location. Administrators can invite more users under
@@ -103,15 +108,15 @@ see [Local storage](docs/local-storage.md).
 
 ## Private remote access
 
-Local access works without Tailscale. To reach Ark from another device:
+Local access works without Tailscale. To reach Ark Cloud from another device:
 
 1. Create a Tailscale API key using an account with device-create rights in your tailnet.
 2. Open **Administration → Tailscale**, enter the key, and press **Connect**.
-3. Complete any Tailscale approval requested by the UI. Ark resumes setup automatically.
+3. Complete any Tailscale approval requested by the UI. Ark Cloud resumes setup automatically.
 4. Open the displayed HTTPS URL from a device running Tailscale and authorized by your
    tailnet's access policy, then sign in with your Ark Cloud account.
 
-Ark stores the API credentials encrypted and manages its own userspace Tailscale node.
+Ark Cloud stores the API credentials encrypted and manages its own userspace Tailscale node.
 Setup requires no `.env` edits, manual Serve commands, or stack restart.
 
 - **Disable remote access** stops the managed HTTPS endpoint while retaining credentials
@@ -127,7 +132,7 @@ credential expiry, existing configurations, and backups.
 
 **The source repository can be public; your running Ark Cloud instance should remain private.**
 v1.0 is an MVP for localhost and authorized Tailscale access. Public Internet hosting is outside
-the supported deployment model. Ark uses private Tailscale Serve, not public Tailscale Funnel.
+the supported deployment model. Ark Cloud uses private Tailscale Serve, not public Tailscale Funnel.
 
 The supplied Compose stack currently runs Vite and a reload-enabled API. The v1.0 milestone
 marks the MVP feature set; it does not establish hardened public-hosting support. The only
@@ -142,11 +147,20 @@ telemetry. Some kernel readings can reflect host-wide information; storage readi
 the container filesystem. GPU and sensor details appear only when available. Telemetry does
 not require host-root mounts, Docker socket access, or privileged containers.
 
+The default dashboard identity is **API runtime · Linux**, without assuming a hostname or
+distribution. Explicit environment labels are retained, including on existing installations.
+The kernel and resource values still come from the API's runtime view.
+
 The **System** page separately uses a managed host agent for real host readings and operations.
 Open **Administration → System** and press **Connect System**; ArkCloud prepares and enrolls
 the agent through its existing deployment host manager. See [System host setup](docs/system-host.md) for privileges, selected services,
 terminal lifecycle, and recovery. The API remains unprivileged; terminal access uses the enrolled
 host account's permissions.
+
+The connected host agent independently detects the real hostname, distribution, kernel and
+architecture. Its installed shells, available services, hardware readings and permitted actions
+come from that host. Missing distribution metadata falls back to the generic **Linux** label;
+it does not prevent other host readings from being collected.
 
 Read [Security](docs/security.md) for trust boundaries and production-hardening considerations,
 and [Roadmap](docs/roadmap.md) for validation work, planned improvements, and feature boundaries.

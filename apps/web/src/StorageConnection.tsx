@@ -168,8 +168,8 @@ export default function StorageConnection({
     >
       <h2 id="connect-heading">Add location</h2>
       <p>
-        Choose the folder and its accounts. Ark prepares filesystem access and
-        verifies the connection automatically.
+        Choose the folder and its accounts. Ark Cloud prepares filesystem access
+        and verifies the connection automatically.
       </p>
       {error && (
         <p

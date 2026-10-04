@@ -19,8 +19,12 @@ Edit `.env` and replace the development password in both `POSTGRES_PASSWORD` and
 `ARK_DATABASE_URL`. Environment variables keep machine-specific configuration and secrets
 out of source code.
 
-`ARK_SYSTEM_HOSTNAME`, `ARK_SYSTEM_OS_NAME`, and `ARK_SYSTEM_STORAGE_PATH` label the runtime
-metrics shown on the dashboard. Configure Tailscale in **Administration → Tailscale**;
+`ARK_SYSTEM_HOSTNAME` and `ARK_SYSTEM_OS_NAME` are optional display labels for the API-runtime
+metrics shown on the dashboard; unset, empty or whitespace-only values use **API runtime** and
+**Linux**. Explicit labels are preserved. `ARK_SYSTEM_STORAGE_PATH` selects the filesystem for
+runtime storage telemetry. These settings never identify or configure the physical host; connect
+the host agent in **Administration → System** for detected hostname, distribution, kernel and
+architecture. Configure Tailscale in **Administration → Tailscale**;
 leave `ARK_TAILSCALE_API_KEY` blank for new installations. Existing environment API key and
 tailnet values provide legacy read-only inventory only; `ARK_TAILSCALE_TAILNET=-` uses the
 tailnet associated with the API key. UI saves supersede that fallback, and explicit Disconnect
@@ -262,7 +266,7 @@ These URLs pass through Vite because the API intentionally has no host port.
 
 ## Local Storage
 
-Provisioning, Fedora mount requirements, file-operation limits, and recovery are documented in
+Provisioning, SELinux mount requirements, file-operation limits, and recovery are documented in
 [Local storage](local-storage.md). File content remains in owner-approved host directories;
 PostgreSQL stores only control-plane state. The managed Tailscale gateway automatically marks
 remote HTTPS session cookies Secure while local loopback HTTP remains available for recovery.

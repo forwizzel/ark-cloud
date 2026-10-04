@@ -1,10 +1,22 @@
 from types import SimpleNamespace
 
+import pytest
+
 from app.core.config import Settings
 from app.integrations.system import SystemIntegration
 
 
-def test_system_summary_normalizes_psutil_metrics(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("hostname", "os_name", "expected_hostname", "expected_os"),
+    [
+        ("backup-node", "Ubuntu 24.04 LTS", "backup-node", "Ubuntu 24.04 LTS"),
+        ("nas", "Debian GNU/Linux", "nas", "Debian GNU/Linux"),
+        ("", "", "API runtime", "Linux"),
+    ],
+)
+def test_system_summary_normalizes_psutil_metrics(
+    monkeypatch, hostname, os_name, expected_hostname, expected_os
+) -> None:
     monkeypatch.setattr(
         "app.integrations.system.psutil.virtual_memory",
         lambda: SimpleNamespace(total=1_000, available=400, percent=60.0),
@@ -20,16 +32,16 @@ def test_system_summary_normalizes_psutil_metrics(monkeypatch) -> None:
     monkeypatch.setattr("app.integrations.system.release", lambda: "6.18-test")
     settings = Settings(
         database_url="sqlite://",
-        system_hostname="Ark",
-        system_os_name="Fedora Linux",
+        system_hostname=hostname,
+        system_os_name=os_name,
         system_storage_path="/data",
     )
 
     integration = SystemIntegration(settings)
     summary = integration.summary()
 
-    assert summary.hostname == "Ark"
-    assert summary.os == "Fedora Linux"
+    assert summary.hostname == expected_hostname
+    assert summary.os == expected_os
     assert summary.kernel == "6.18-test"
     assert summary.uptime_seconds == 100
     assert summary.cpu_percent == 12.5
@@ -38,6 +50,11 @@ def test_system_summary_normalizes_psutil_metrics(monkeypatch) -> None:
     assert summary.storage.available_bytes == 1_500
     assert summary.scope == "api-runtime-view"
     assert integration.health_for(summary).state == "healthy"
+    assert integration.health_for(summary).name == "System metrics"
+    information = integration.information()
+    assert information.identity.hostname == expected_hostname
+    assert information.identity.os == expected_os
+    assert information.identity.kernel == "6.18-test"
 
 
 def test_system_health_degrades_when_storage_is_nearly_full(monkeypatch) -> None:

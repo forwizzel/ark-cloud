@@ -66,7 +66,16 @@ class Collector:
         warnings = []
         was_warm = self.warm
         boot = psutil.boot_time()
-        os_name = platform.freedesktop_os_release().get("PRETTY_NAME", "Linux")
+        os_name = "Linux"
+        try:
+            release_info = platform.freedesktop_os_release()
+            for key in ("PRETTY_NAME", "NAME"):
+                label = release_info.get(key, "").strip()
+                if label:
+                    os_name = label
+                    break
+        except OSError:
+            warnings.append("Distribution metadata is unavailable; showing Linux.")
         cpuinfo = text("/proc/cpuinfo", 262144)
         model = next(
             (

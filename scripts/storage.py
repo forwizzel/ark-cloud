@@ -260,7 +260,7 @@ def provision_new(path, *, identity=None):
             "Init requires a NEW directory; it will not relabel or change existing data."
         )
     if not shutil.which("setfacl"):
-        raise ValueError("Install Fedora's acl package (setfacl) before provisioning.")
+        raise ValueError("Install your distribution's acl package (setfacl) before provisioning.")
     uid, gid = identity or probe()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.mkdir(mode=0o700)

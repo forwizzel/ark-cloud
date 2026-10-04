@@ -18,6 +18,12 @@ It discovers the account's installed shells and controllable services, prepares 
 enrolls the separate agent, installs its user service, and waits for authenticated host readings.
 The UI shows preparing/connecting/verification progress and reports success only after readings arrive.
 
+Host identity is detected from the enrolled Linux system: hostname, distribution metadata,
+kernel release and architecture. No hostname, distribution or kernel version is assumed from
+Ark Cloud branding. If distribution metadata is unavailable, the OS label is **Linux** and a
+warning is reported while other host readings remain available. Dashboard environment labels
+apply only to the separate API-runtime view and do not override these detected host values.
+
 Select terminal access, an installed shell (or the host account default), process inspection and
 termination, available power controls, and selected service actions. **Save changes** applies the
 settings and reconnects the agent. Reconnection rotates its credential and ends existing terminal

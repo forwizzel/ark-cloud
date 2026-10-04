@@ -18,8 +18,8 @@ const dashboard: Dashboard = {
     database: "connected",
   },
   system: {
-    hostname: "Ark",
-    os: "Fedora Linux",
+    hostname: "storage-server",
+    os: "Debian GNU/Linux",
     kernel: "6.18.7",
     uptime_seconds: 392_400,
     cpu_percent: 12,
@@ -51,7 +51,7 @@ const dashboard: Dashboard = {
   integrations: [
     {
       id: "system",
-      name: "Ark system",
+      name: "System metrics",
       state: "healthy",
       message: "System metrics are available.",
       checked_at: "2026-09-13T12:00:00Z",
@@ -112,7 +112,7 @@ test.each(["setup", "session-error"])(
       name:
         state === "setup"
           ? "Set up Ark Cloud"
-          : "Ark could not check your session",
+          : "Ark Cloud could not check your session",
     });
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
     expect(screen.queryByRole("radio")).not.toBeInTheDocument();
@@ -310,7 +310,7 @@ test("session lookup failure offers recovery instead of asking for credentials",
     .mockRejectedValueOnce(new Error("offline"));
   render(<App />);
   await screen.findByRole("heading", {
-    name: "Ark could not check your session",
+    name: "Ark Cloud could not check your session",
   });
   expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
   fetch.mockResolvedValueOnce(jsonResponse({ authenticated: false }));
@@ -544,7 +544,7 @@ test("renders normalized system and integration health", async () => {
   render(<App />);
 
   expect(
-    await screen.findByRole("heading", { name: "Ark" }),
+    await screen.findByRole("heading", { name: "storage-server" }),
   ).toBeInTheDocument();
   expect(screen.getByText("4d 13h")).toBeInTheDocument();
   expect(screen.getByText("12%")).toBeInTheDocument();
@@ -574,6 +574,40 @@ test("renders normalized system and integration health", async () => {
   expect(
     screen.getByRole("switch", { name: "High contrast" }),
   ).toBeInTheDocument();
+});
+
+test("unavailable system metrics use a neutral heading instead of inventing host identity", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    if (String(input) === "/api/auth/session")
+      return jsonResponse({
+        authenticated: true,
+        username: "owner",
+        csrf_token: "csrf",
+      });
+    if (String(input) === "/api/dashboard")
+      return jsonResponse({
+        ...dashboard,
+        system: null,
+        integrations: dashboard.integrations.map((integration) =>
+          integration.id === "system"
+            ? {
+                ...integration,
+                state: "unavailable",
+                message: "System metrics are unavailable. Refresh and retry.",
+              }
+            : integration,
+        ),
+      });
+    return new Response(null, { status: 503 });
+  });
+  render(<App />);
+  expect(
+    await screen.findByRole("heading", { name: "System" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Ark" }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText(/Fedora Linux/)).not.toBeInTheDocument();
 });
 
 test("renders normalized Tailscale devices", async () => {

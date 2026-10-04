@@ -148,7 +148,7 @@ The commands below are the fallback for host recovery or a deployment without th
 ## Enable private account folders
 
 Requirements: Linux x86_64/aarch64 with `openat2` (kernel 5.6+), Docker Compose v2 supporting
-long-form bind options, Python 3.10+ on the host, and Fedora's `acl` package (`setfacl`). The API
+long-form bind options, Python 3.10+ on the host, and the distribution's `acl` package (`setfacl`). The API
 continues running as `arkcloud`, not root. Build/start Ark and bootstrap your first account using
 the README, then run:
 

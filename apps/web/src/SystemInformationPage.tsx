@@ -365,11 +365,8 @@ function Runtime({
         </div>
       ) : (
         <dl className="host-details">
-          <Detail
-            label="Configured hostname"
-            value={information.identity.hostname}
-          />
-          <Detail label="Configured OS" value={information.identity.os} />
+          <Detail label="Runtime label" value={information.identity.hostname} />
+          <Detail label="OS label" value={information.identity.os} />
           <Detail label="CPU model" value={information.compute.model} />
           <Detail
             label="CPU utilization"

@@ -60,16 +60,16 @@ def reviewed_root(data, requested, kind="managed"):
     if managed:
         if requested and str(storage.source_path(requested)) != managed["source"]:
             raise ValueError(
-                "Private folders already have a base. Use Change base directory in Ark."
+                "Private folders already have a base. Use Change base directory in Ark Cloud."
             )
         path = storage.source_path(managed["source"])
         if not path.is_dir():
             raise ValueError(
-                "The storage location is missing. Restore the disk or disconnect it in Ark."
+                "The storage location is missing. Restore the disk or disconnect it in Ark Cloud."
             )
         info = path.stat()
         if (info.st_dev, info.st_ino) != (managed["device"], managed["inode"]):
-            raise ValueError("Storage identity changed. Review the disk and use Reconnect in Ark.")
+            raise ValueError("Storage identity changed. Review the disk and use Reconnect in Ark Cloud.")
         return path, managed
     path = storage.source_path(requested or default)
     for root in data["roots"]:
@@ -99,7 +99,7 @@ def prepare_root(data, path, root, record):
         if path.exists():
             raise ValueError(
                 "This directory already exists and is not registered as Ark storage. "
-                "Use Connect existing folder in Ark, or run storage setup --path with a NEW directory."
+            "Use Connect existing folder in Ark Cloud, or run storage setup --path with a NEW directory."
             )
         storage.provision_new(path)
         info = path.stat()
@@ -205,7 +205,7 @@ def perform_setup(args):
                 record = {}
             if not root and path.exists() and not record.get("root"):
                 raise ValueError(
-                    "The folder already exists. Use Connect existing folder in Ark, or "
+                    "The folder already exists. Use Connect existing folder in Ark Cloud, or "
                     "./scripts/ark storage setup --path /a/new/directory. Nothing was overwritten."
                 )
             # Probe before creating any directory or changing saved configuration.
@@ -239,7 +239,7 @@ def perform_setup(args):
                 )
                 root = prepare_root(data, path, root, record)
                 record["phase"] = "applying"
-                progress(record, "Applying storage mounts. Ark will reconnect automatically.")
+                progress(record, "Applying storage mounts. Ark Cloud will reconnect automatically.")
                 storage.save(data, announce=False)
                 manager.compose("config", "--quiet")
                 manager.compose("up", "--detach", "--no-deps", "--force-recreate", "--wait", "api")
@@ -268,7 +268,7 @@ def perform_setup(args):
                         **manager.snapshot(config),
                         "job_id": job["id"],
                         "state": "completed",
-                        "message": "Local Files is ready. Open my files in Ark."
+                        "message": "Local Files is ready. Open my files in Ark Cloud."
                         if kind == "managed"
                         else "Shared directory connected. Use Manage access to choose accounts.",
                     },

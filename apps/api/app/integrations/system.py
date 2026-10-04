@@ -133,7 +133,7 @@ def _temperature_label(group: str, raw_label: str, index: int) -> str:
 
 class SystemIntegration(Integration):
     integration_id = "system"
-    name = "Ark system"
+    name = "System metrics"
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings

@@ -122,7 +122,7 @@ export default function TailscaleAdministration({
         action === "test"
           ? "Stored API key tested. Integration status updated."
           : action === "connect"
-            ? "API key saved. Private access is enabled; Ark is connecting automatically."
+            ? "API key saved. Private access is enabled; Ark Cloud is connecting automatically."
             : "Private access settings updated.",
       );
     } catch (error) {
@@ -176,7 +176,7 @@ export default function TailscaleAdministration({
           <h2>Tailscale</h2>
           <p>
             Private HTTPS access to Ark Cloud from devices on your tailnet. An
-            Ark sign-in is still required.
+            Ark Cloud sign-in is still required.
           </p>
         </div>
       </header>
@@ -226,9 +226,9 @@ export default function TailscaleAdministration({
             <div className="tailscale-approval">
               <h4>Approve HTTPS in Tailscale</h4>
               <p>
-                Tailscale needs your approval before Ark can finish enabling
-                private HTTPS. Return here after approval; status updates
-                automatically.
+                Tailscale needs your approval before Ark Cloud can finish
+                enabling private HTTPS. Return here after approval; status
+                updates automatically.
               </p>
               {approvalUrl ? (
                 <a
@@ -241,8 +241,8 @@ export default function TailscaleAdministration({
                 </a>
               ) : (
                 <p>
-                  An approval link is not available yet. Ark will show it here
-                  when the controller provides one.
+                  An approval link is not available yet. Ark Cloud will show it
+                  here when the controller provides one.
                 </p>
               )}
             </div>
@@ -315,10 +315,10 @@ export default function TailscaleAdministration({
           </p>
         )}
         <p>
-          Enter a Tailscale API key. Ark validates and saves it server-side,
-          connects a dedicated managed node, and enables Tailscale Serve
-          automatically. Occasionally, Tailscale may ask you to approve HTTPS
-          through a link shown here.
+          Enter a Tailscale API key. Ark Cloud validates and saves it
+          server-side, connects a dedicated managed node, and enables Tailscale
+          Serve automatically. Occasionally, Tailscale may ask you to approve
+          HTTPS through a link shown here.
         </p>
         {status?.source === "environment" && (
           <p>
